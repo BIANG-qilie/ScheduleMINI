@@ -13,7 +13,8 @@ Tauri 2 + React + TypeScript 桌面应用：设置窗口管理每周循环日程
 ## 环境要求
 
 - Node.js 20+
-- Rust（[Tauri 前置依赖](https://tauri.app/start/prerequisites/)）
+- Rust **1.85+**（推荐 `stable`；仓库含 `rust-toolchain.toml`）
+- [Tauri Linux 系统依赖](https://tauri.app/start/prerequisites/)（webkit2gtk、libgtk 等）；本云环境可能缺 WebKit，此时用 `npm run dev` 预览前端
 - Windows 为第一期主目标；macOS / Linux 可开发运行
 
 ## 开发
