@@ -12,10 +12,15 @@ export const ScheduleItemSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const WidgetModeSchema = z.enum(["full", "current"]);
+export type WidgetMode = z.infer<typeof WidgetModeSchema>;
+
 export const AppConfigSchema = z.object({
   version: z.literal(1),
   showHolidays: z.boolean(),
   widgetVisible: z.boolean(),
+  /** full=今日全部；current=仅当前时段 + 距下一程 */
+  widgetMode: WidgetModeSchema.default("current"),
   items: z.array(ScheduleItemSchema),
 });
 
@@ -33,6 +38,7 @@ export function defaultConfig(): AppConfig {
     version: CONFIG_VERSION,
     showHolidays: true,
     widgetVisible: true,
+    widgetMode: "current",
     items: [
       {
         id: "sample-morning",
@@ -76,10 +82,14 @@ export function compareTime(a: string, b: string) {
   return a.localeCompare(b);
 }
 
-export function isCurrentItem(item: ScheduleItem, now = new Date()) {
+export function nowTimeString(now = new Date()) {
   const hh = String(now.getHours()).padStart(2, "0");
   const mm = String(now.getMinutes()).padStart(2, "0");
-  const current = `${hh}:${mm}`;
+  return `${hh}:${mm}`;
+}
+
+export function isCurrentItem(item: ScheduleItem, now = new Date()) {
+  const current = nowTimeString(now);
   return compareTime(item.start, current) <= 0 && compareTime(current, item.end) < 0;
 }
 
@@ -88,6 +98,38 @@ export function todaysItems(items: ScheduleItem[], now = new Date()) {
   return items
     .filter((item) => item.enabled && item.weekdays.includes(weekday))
     .sort((a, b) => compareTime(a.start, b.start));
+}
+
+export function getCurrentItem(items: ScheduleItem[], now = new Date()) {
+  return todaysItems(items, now).find((item) => isCurrentItem(item, now)) ?? null;
+}
+
+/** 下一程：开始时间晚于当前时刻的第一条今日日程 */
+export function getNextItem(items: ScheduleItem[], now = new Date()) {
+  const current = nowTimeString(now);
+  return (
+    todaysItems(items, now).find((item) => compareTime(item.start, current) > 0) ??
+    null
+  );
+}
+
+export function msUntilTime(hhmm: string, now = new Date()) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const target = new Date(now);
+  target.setHours(h, m, 0, 0);
+  return target.getTime() - now.getTime();
+}
+
+/** 中文相对时长，如「23 分钟」「1 小时 5 分钟」 */
+export function formatDurationZh(ms: number) {
+  if (ms <= 0) return "不到 1 分钟";
+  const totalSec = Math.ceil(ms / 1000);
+  if (totalSec < 60) return "不到 1 分钟";
+  const totalMin = Math.ceil(totalSec / 60);
+  if (totalMin < 60) return `${totalMin} 分钟`;
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  return mins === 0 ? `${hours} 小时` : `${hours} 小时 ${mins} 分钟`;
 }
 
 export function formatWeekdays(weekdays: number[]) {

@@ -5,7 +5,7 @@ Tauri 2 + React + TypeScript 桌面应用：设置窗口管理每周循环日程
 ## 功能
 
 - 日程 CRUD：时间范围、标题、备注、星期循环、启用开关
-- 悬浮窗：始终置顶、可拖拽、当前时段高亮、节假日条
+- 悬浮窗：始终置顶、可拖拽、当前时段高亮、节假日条；可切换「仅当前时段」并显示距下一程倒计时
 - 系统托盘：打开设置 / 显示隐藏悬浮窗 / 退出（关闭设置窗不退出）
 - `chinese-days` 离线节假日数据
 - 导入导出整份 `AppConfig`（导入前二次确认）
@@ -51,6 +51,7 @@ npm run tauri build
   "version": 1,
   "showHolidays": true,
   "widgetVisible": true,
+  "widgetMode": "current",
   "items": [
     {
       "id": "sample-morning",

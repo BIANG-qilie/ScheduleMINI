@@ -2,9 +2,57 @@ import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { GripHorizontal } from "lucide-react";
-import { isCurrentItem, todaysItems } from "@/lib/config";
+import {
+  formatDurationZh,
+  getCurrentItem,
+  getNextItem,
+  isCurrentItem,
+  msUntilTime,
+  todaysItems,
+} from "@/lib/config";
 import { getTodayLabel } from "@/lib/holidays";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
+
+function ItemCard({
+  item,
+  current,
+  badge,
+}: {
+  item: { id: string; start: string; end: string; title: string; note?: string };
+  current: boolean;
+  badge?: string;
+}) {
+  return (
+    <div
+      className={
+        current
+          ? "rounded-xl border border-emerald-300/50 bg-emerald-400/20 px-3 py-2.5"
+          : "rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={
+            current
+              ? "font-mono text-xs text-emerald-100"
+              : "font-mono text-xs text-white/65"
+          }
+        >
+          {item.start}–{item.end}
+        </span>
+        {badge ? (
+          <span className="text-[10px] tracking-wide text-emerald-100 uppercase">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-1 text-sm font-medium leading-snug">{item.title}</p>
+      {item.note ? (
+        <p className="mt-0.5 text-xs text-white/55">{item.note}</p>
+      ) : null}
+    </div>
+  );
+}
 
 export function WidgetPage() {
   const { config, loading, hydrated, init, setConfig } = useConfigStore();
@@ -15,7 +63,7 @@ export function WidgetPage() {
   }, [init]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    const timer = window.setInterval(() => setNow(new Date()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -38,8 +86,21 @@ export function WidgetPage() {
   }, [setConfig]);
 
   const items = useMemo(() => todaysItems(config.items, now), [config.items, now]);
+  const currentItem = useMemo(
+    () => getCurrentItem(config.items, now),
+    [config.items, now],
+  );
+  const nextItem = useMemo(
+    () => getNextItem(config.items, now),
+    [config.items, now],
+  );
   const holiday = useMemo(() => getTodayLabel(now), [now]);
   const dateText = format(now, "M月d日 EEEE", { locale: zhCN });
+  const focusMode = config.widgetMode === "current";
+
+  const remainingCurrent =
+    currentItem != null ? msUntilTime(currentItem.end, now) : null;
+  const untilNext = nextItem != null ? msUntilTime(nextItem.start, now) : null;
 
   if (!hydrated || loading) {
     return (
@@ -61,7 +122,7 @@ export function WidgetPage() {
           <GripHorizontal className="h-4 w-4 text-white/55" data-tauri-drag-region />
           <div data-tauri-drag-region className="min-w-0 flex-1">
             <p data-tauri-drag-region className="truncate text-xs text-white/60">
-              今日日程
+              {focusMode ? "当前日程" : "今日日程"}
             </p>
             <p data-tauri-drag-region className="truncate text-sm font-medium">
               {dateText}
@@ -82,7 +143,48 @@ export function WidgetPage() {
         ) : null}
 
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
-          {items.length === 0 ? (
+          {focusMode ? (
+            <>
+              {currentItem ? (
+                <ItemCard
+                  item={currentItem}
+                  current
+                  badge={
+                    remainingCurrent != null && remainingCurrent > 0
+                      ? `剩余 ${formatDurationZh(remainingCurrent)}`
+                      : "进行中"
+                  }
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-white/20 px-3 py-6 text-center">
+                  <p className="text-sm font-medium text-white/90">此刻没有进行中的日程</p>
+                  <p className="mt-1 text-xs text-white/55">
+                    {nextItem
+                      ? `下一程「${nextItem.title}」将开始`
+                      : "今日后续也没有安排"}
+                  </p>
+                </div>
+              )}
+
+              {nextItem && untilNext != null ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
+                  <p className="text-[10px] tracking-wide text-white/50 uppercase">
+                    距离下一程
+                  </p>
+                  <p className="mt-1 text-sm font-medium">
+                    {formatDurationZh(untilNext)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-white/55">
+                    {nextItem.start} · {nextItem.title}
+                  </p>
+                </div>
+              ) : currentItem ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-white/55">
+                  今日已无后续日程
+                </div>
+              ) : null}
+            </>
+          ) : items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/20 px-3 py-8 text-center">
               <p className="text-sm font-medium text-white/90">今日暂无日程</p>
               <p className="mt-1 text-xs text-white/55">
@@ -90,40 +192,30 @@ export function WidgetPage() {
               </p>
             </div>
           ) : (
-            items.map((item) => {
-              const current = isCurrentItem(item, now);
-              return (
-                <div
-                  key={item.id}
-                  className={
-                    current
-                      ? "rounded-xl border border-emerald-300/50 bg-emerald-400/20 px-3 py-2.5"
-                      : "rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
-                  }
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={
-                        current
-                          ? "font-mono text-xs text-emerald-100"
-                          : "font-mono text-xs text-white/65"
-                      }
-                    >
-                      {item.start}–{item.end}
-                    </span>
-                    {current ? (
-                      <span className="text-[10px] tracking-wide text-emerald-100 uppercase">
-                        进行中
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-sm font-medium leading-snug">{item.title}</p>
-                  {item.note ? (
-                    <p className="mt-0.5 text-xs text-white/55">{item.note}</p>
-                  ) : null}
+            <>
+              {nextItem && untilNext != null && !currentItem ? (
+                <div className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
+                  距离「{nextItem.title}」还有 {formatDurationZh(untilNext)}
                 </div>
-              );
-            })
+              ) : null}
+              {items.map((item) => {
+                const current = isCurrentItem(item, now);
+                return (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    current={current}
+                    badge={
+                      current
+                        ? remainingCurrent != null && remainingCurrent > 0
+                          ? `剩余 ${formatDurationZh(remainingCurrent)}`
+                          : "进行中"
+                        : undefined
+                    }
+                  />
+                );
+              })}
+            </>
           )}
         </div>
       </div>

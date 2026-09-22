@@ -26,6 +26,7 @@ type ConfigState = {
   deleteItem: (id: string) => Promise<void>;
   setShowHolidays: (value: boolean) => Promise<void>;
   setWidgetVisible: (value: boolean) => Promise<void>;
+  setWidgetMode: (value: AppConfig["widgetMode"]) => Promise<void>;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
 };
@@ -101,6 +102,11 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   setWidgetVisible: async (value) => {
     const { config, setConfig } = get();
     await setConfig({ ...config, widgetVisible: value });
+  },
+
+  setWidgetMode: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, widgetMode: value });
   },
 
   exportConfig: async () => {

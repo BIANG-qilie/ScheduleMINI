@@ -66,6 +66,7 @@ export function SettingsPage() {
     deleteItem,
     setShowHolidays,
     setWidgetVisible: setWidgetVisibleFlag,
+    setWidgetMode,
     exportConfig,
     importConfig,
     setConfig,
@@ -340,6 +341,22 @@ export function SettingsPage() {
               id="show-holidays"
               checked={config.showHolidays}
               onCheckedChange={(v) => void setShowHolidays(v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="widget-focus">悬浮窗仅显示当前时段</Label>
+              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                开启后只展示进行中的日程，并显示距离下一程的时间；关闭则列出今日全部条目。
+              </p>
+            </div>
+            <Switch
+              id="widget-focus"
+              checked={config.widgetMode === "current"}
+              onCheckedChange={(v) =>
+                void setWidgetMode(v ? "current" : "full")
+              }
             />
           </div>
 
