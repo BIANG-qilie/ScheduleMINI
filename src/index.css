@@ -56,3 +56,27 @@ body.widget-body {
   background: color-mix(in oklab, var(--color-ink) 25%, transparent);
   border-radius: 999px;
 }
+
+@keyframes widget-current-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.18),
+      0 12px 28px rgba(15, 143, 114, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.28),
+      0 14px 34px rgba(25, 195, 154, 0.55);
+  }
+}
+
+.widget-current-pulse {
+  animation: widget-current-pulse 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-current-pulse {
+    animation: none;
+  }
+}

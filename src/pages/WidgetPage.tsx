@@ -9,16 +9,17 @@ import {
   isCurrentItem,
   msUntilTime,
   todaysItems,
+  type ScheduleItem,
 } from "@/lib/config";
 import { getTodayLabel } from "@/lib/holidays";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
 
-function ItemCard({
+function FullModeItemCard({
   item,
   current,
   badge,
 }: {
-  item: { id: string; start: string; end: string; title: string; note?: string };
+  item: ScheduleItem;
   current: boolean;
   badge?: string;
 }) {
@@ -41,7 +42,7 @@ function ItemCard({
           {item.start}–{item.end}
         </span>
         {badge ? (
-          <span className="text-[10px] tracking-wide text-emerald-100 uppercase">
+          <span className="text-[10px] tracking-wide text-emerald-100">
             {badge}
           </span>
         ) : null}
@@ -112,6 +113,51 @@ export function WidgetPage() {
     );
   }
 
+  if (focusMode) {
+    return (
+      <div className="h-full p-1.5">
+        <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(160deg,#071512_0%,#0d2a24_48%,#0a1c18_100%)] text-white shadow-[0_16px_36px_rgba(0,0,0,0.35)]">
+          <div
+            data-tauri-drag-region
+            className="absolute inset-x-0 top-0 z-10 flex h-7 cursor-grab items-center justify-center active:cursor-grabbing"
+          >
+            <GripHorizontal className="h-3.5 w-3.5 text-white/25" data-tauri-drag-region />
+          </div>
+
+          <div className="flex flex-1 flex-col justify-center px-4 pb-3 pt-7">
+            {currentItem ? (
+              <div className="widget-current-pulse rounded-2xl bg-[linear-gradient(145deg,#19c39a_0%,#0f8f72_55%,#0b6b56_100%)] px-4 py-5 text-[#041512] shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_12px_28px_rgba(15,143,114,0.45)]">
+                <p className="font-mono text-xs font-semibold tracking-wide text-[#041512]/80">
+                  {currentItem.start}–{currentItem.end}
+                  {remainingCurrent != null && remainingCurrent > 0
+                    ? ` · 剩 ${formatDurationZh(remainingCurrent)}`
+                    : ""}
+                </p>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-[1.65rem] leading-tight font-semibold tracking-tight">
+                  {currentItem.title}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center">
+                <p className="text-lg font-medium text-white/75">空闲</p>
+              </div>
+            )}
+          </div>
+
+          {nextItem && untilNext != null ? (
+            <div className="border-t border-white/5 px-4 py-2.5">
+              <p className="truncate text-[11px] leading-relaxed text-white/28">
+                下一程 {nextItem.start} {nextItem.title}
+                <span className="text-white/18"> · </span>
+                {formatDurationZh(untilNext)}后
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full p-2">
       <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/15 bg-[linear-gradient(165deg,rgba(16,35,31,0.92),rgba(20,48,42,0.88))] text-white shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-md">
@@ -122,7 +168,7 @@ export function WidgetPage() {
           <GripHorizontal className="h-4 w-4 text-white/55" data-tauri-drag-region />
           <div data-tauri-drag-region className="min-w-0 flex-1">
             <p data-tauri-drag-region className="truncate text-xs text-white/60">
-              {focusMode ? "当前日程" : "今日日程"}
+              今日日程
             </p>
             <p data-tauri-drag-region className="truncate text-sm font-medium">
               {dateText}
@@ -143,48 +189,7 @@ export function WidgetPage() {
         ) : null}
 
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
-          {focusMode ? (
-            <>
-              {currentItem ? (
-                <ItemCard
-                  item={currentItem}
-                  current
-                  badge={
-                    remainingCurrent != null && remainingCurrent > 0
-                      ? `剩余 ${formatDurationZh(remainingCurrent)}`
-                      : "进行中"
-                  }
-                />
-              ) : (
-                <div className="rounded-xl border border-dashed border-white/20 px-3 py-6 text-center">
-                  <p className="text-sm font-medium text-white/90">此刻没有进行中的日程</p>
-                  <p className="mt-1 text-xs text-white/55">
-                    {nextItem
-                      ? `下一程「${nextItem.title}」将开始`
-                      : "今日后续也没有安排"}
-                  </p>
-                </div>
-              )}
-
-              {nextItem && untilNext != null ? (
-                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
-                  <p className="text-[10px] tracking-wide text-white/50 uppercase">
-                    距离下一程
-                  </p>
-                  <p className="mt-1 text-sm font-medium">
-                    {formatDurationZh(untilNext)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-white/55">
-                    {nextItem.start} · {nextItem.title}
-                  </p>
-                </div>
-              ) : currentItem ? (
-                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-white/55">
-                  今日已无后续日程
-                </div>
-              ) : null}
-            </>
-          ) : items.length === 0 ? (
+          {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/20 px-3 py-8 text-center">
               <p className="text-sm font-medium text-white/90">今日暂无日程</p>
               <p className="mt-1 text-xs text-white/55">
@@ -192,30 +197,23 @@ export function WidgetPage() {
               </p>
             </div>
           ) : (
-            <>
-              {nextItem && untilNext != null && !currentItem ? (
-                <div className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
-                  距离「{nextItem.title}」还有 {formatDurationZh(untilNext)}
-                </div>
-              ) : null}
-              {items.map((item) => {
-                const current = isCurrentItem(item, now);
-                return (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    current={current}
-                    badge={
-                      current
-                        ? remainingCurrent != null && remainingCurrent > 0
-                          ? `剩余 ${formatDurationZh(remainingCurrent)}`
-                          : "进行中"
-                        : undefined
-                    }
-                  />
-                );
-              })}
-            </>
+            items.map((item) => {
+              const current = isCurrentItem(item, now);
+              return (
+                <FullModeItemCard
+                  key={item.id}
+                  item={item}
+                  current={current}
+                  badge={
+                    current
+                      ? remainingCurrent != null && remainingCurrent > 0
+                        ? `剩余 ${formatDurationZh(remainingCurrent)}`
+                        : "进行中"
+                      : undefined
+                  }
+                />
+              );
+            })
           )}
         </div>
       </div>

@@ -348,7 +348,7 @@ export function SettingsPage() {
             <div>
               <Label htmlFor="widget-focus">悬浮窗仅显示当前时段</Label>
               <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                开启后只展示进行中的日程，并显示距离下一程的时间；关闭则列出今日全部条目。
+                开启后只突出当前日程，下一程淡化显示在底部；不展示节假日条、备注与今日列表。
               </p>
             </div>
             <Switch
