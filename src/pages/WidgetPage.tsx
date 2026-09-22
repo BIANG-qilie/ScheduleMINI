@@ -3,11 +3,13 @@ import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { GripHorizontal } from "lucide-react";
 import {
+  formatDurationCompact,
   formatDurationZh,
   getCurrentItem,
   getNextItem,
   isCurrentItem,
   msUntilTime,
+  progressThroughItem,
   todaysItems,
   type ScheduleItem,
 } from "@/lib/config";
@@ -51,6 +53,117 @@ function FullModeItemCard({
       {item.note ? (
         <p className="mt-0.5 text-xs text-white/55">{item.note}</p>
       ) : null}
+    </div>
+  );
+}
+
+/** 行业 Now/Next 扫视：Now 高对比 + 进度条；Next 底栏弱对比 */
+function FocusWidget({
+  currentItem,
+  nextItem,
+  remainingCurrent,
+  untilNext,
+  progress,
+}: {
+  currentItem: ScheduleItem | null;
+  nextItem: ScheduleItem | null;
+  remainingCurrent: number | null;
+  untilNext: number | null;
+  progress: number;
+}) {
+  const urgent =
+    remainingCurrent != null && remainingCurrent > 0 && remainingCurrent < 5 * 60_000;
+
+  return (
+    <div className="h-full p-1">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-[22px] border border-white/[0.08] bg-[rgba(8,14,16,0.72)] text-white shadow-[0_18px_48px_rgba(0,0,0,0.42)] backdrop-blur-xl">
+        {/* 顶部细光边，贴近桌面玻璃质感 */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
+        />
+
+        <div
+          data-tauri-drag-region
+          className="absolute inset-x-0 top-0 z-10 flex h-6 cursor-grab items-center justify-center active:cursor-grabbing"
+        >
+          <div
+            data-tauri-drag-region
+            className="h-1 w-8 rounded-full bg-white/20"
+          />
+        </div>
+
+        <div className="flex flex-1 flex-col justify-center gap-3 px-3.5 pb-2 pt-6">
+          {currentItem ? (
+            <div
+              className={
+                urgent
+                  ? "widget-now-surface relative overflow-hidden rounded-2xl bg-[linear-gradient(145deg,#f0b35a_0%,#e07a3a_55%,#c45a28_100%)] px-3.5 py-4 text-[#1a0f08] shadow-[0_10px_28px_rgba(224,122,58,0.35)]"
+                  : "widget-now-surface relative overflow-hidden rounded-2xl bg-[linear-gradient(145deg,#2ae0b0_0%,#12a884_52%,#0c7a62_100%)] px-3.5 py-4 text-[#041510] shadow-[0_10px_28px_rgba(18,168,132,0.38)]"
+              }
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-current/80">
+                  NOW
+                </span>
+                <span className="font-mono text-[11px] font-semibold tabular-nums text-current/75">
+                  {remainingCurrent != null && remainingCurrent > 0
+                    ? `剩 ${formatDurationCompact(remainingCurrent)}`
+                    : "进行中"}
+                </span>
+              </div>
+
+              <p className="mt-2.5 font-[family-name:var(--font-display)] text-[1.7rem] leading-[1.15] font-semibold tracking-tight text-balance">
+                {currentItem.title}
+              </p>
+
+              <p className="mt-1.5 font-mono text-[11px] tabular-nums text-current/55">
+                {currentItem.start} – {currentItem.end}
+              </p>
+
+              <div className="mt-3 h-1 overflow-hidden rounded-full bg-black/15">
+                <div
+                  className="h-full rounded-full bg-black/35 transition-[width] duration-700 ease-out"
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-5">
+              <span className="rounded-md bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-white/40">
+                FREE
+              </span>
+              <p className="mt-2.5 font-[family-name:var(--font-display)] text-xl font-medium tracking-tight text-white/70">
+                空闲中
+              </p>
+              {nextItem && untilNext != null ? (
+                <p className="mt-1 text-xs text-white/35">
+                  {formatDurationCompact(untilNext)}后进入下一程
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-white/30">今日已无后续安排</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {nextItem && untilNext != null ? (
+          <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl bg-white/[0.03] px-2.5 py-2">
+            <span className="shrink-0 text-[9px] font-semibold tracking-[0.16em] text-white/25">
+              NEXT
+            </span>
+            <p className="min-w-0 flex-1 truncate text-[11px] text-white/32">
+              <span className="font-mono tabular-nums text-white/38">
+                {nextItem.start}
+              </span>{" "}
+              {nextItem.title}
+            </p>
+            <span className="shrink-0 font-mono text-[10px] tabular-nums text-white/22">
+              {formatDurationCompact(untilNext)}
+            </span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -102,6 +215,7 @@ export function WidgetPage() {
   const remainingCurrent =
     currentItem != null ? msUntilTime(currentItem.end, now) : null;
   const untilNext = nextItem != null ? msUntilTime(nextItem.start, now) : null;
+  const progress = currentItem ? progressThroughItem(currentItem, now) : 0;
 
   if (!hydrated || loading) {
     return (
@@ -115,46 +229,13 @@ export function WidgetPage() {
 
   if (focusMode) {
     return (
-      <div className="h-full p-1.5">
-        <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(160deg,#071512_0%,#0d2a24_48%,#0a1c18_100%)] text-white shadow-[0_16px_36px_rgba(0,0,0,0.35)]">
-          <div
-            data-tauri-drag-region
-            className="absolute inset-x-0 top-0 z-10 flex h-7 cursor-grab items-center justify-center active:cursor-grabbing"
-          >
-            <GripHorizontal className="h-3.5 w-3.5 text-white/25" data-tauri-drag-region />
-          </div>
-
-          <div className="flex flex-1 flex-col justify-center px-4 pb-3 pt-7">
-            {currentItem ? (
-              <div className="widget-current-pulse rounded-2xl bg-[linear-gradient(145deg,#19c39a_0%,#0f8f72_55%,#0b6b56_100%)] px-4 py-5 text-[#041512] shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_12px_28px_rgba(15,143,114,0.45)]">
-                <p className="font-mono text-xs font-semibold tracking-wide text-[#041512]/80">
-                  {currentItem.start}–{currentItem.end}
-                  {remainingCurrent != null && remainingCurrent > 0
-                    ? ` · 剩 ${formatDurationZh(remainingCurrent)}`
-                    : ""}
-                </p>
-                <p className="mt-2 font-[family-name:var(--font-display)] text-[1.65rem] leading-tight font-semibold tracking-tight">
-                  {currentItem.title}
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center">
-                <p className="text-lg font-medium text-white/75">空闲</p>
-              </div>
-            )}
-          </div>
-
-          {nextItem && untilNext != null ? (
-            <div className="border-t border-white/5 px-4 py-2.5">
-              <p className="truncate text-[11px] leading-relaxed text-white/28">
-                下一程 {nextItem.start} {nextItem.title}
-                <span className="text-white/18"> · </span>
-                {formatDurationZh(untilNext)}后
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <FocusWidget
+        currentItem={currentItem}
+        nextItem={nextItem}
+        remainingCurrent={remainingCurrent}
+        untilNext={untilNext}
+        progress={progress}
+      />
     );
   }
 

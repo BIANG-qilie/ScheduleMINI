@@ -132,6 +132,28 @@ export function formatDurationZh(ms: number) {
   return mins === 0 ? `${hours} 小时` : `${hours} 小时 ${mins} 分钟`;
 }
 
+/** 扫视用紧凑时长：40分 / 1时05分 / <1分 */
+export function formatDurationCompact(ms: number) {
+  if (ms <= 0) return "<1分";
+  const totalSec = Math.ceil(ms / 1000);
+  if (totalSec < 60) return "<1分";
+  const totalMin = Math.ceil(totalSec / 60);
+  if (totalMin < 60) return `${totalMin}分`;
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  return mins === 0 ? `${hours}时` : `${hours}时${String(mins).padStart(2, "0")}分`;
+}
+
+/** 当前时段进度 0–1 */
+export function progressThroughItem(item: ScheduleItem, now = new Date()) {
+  const startMs = msUntilTime(item.start, now);
+  const endMs = msUntilTime(item.end, now);
+  const total = endMs - startMs;
+  if (total <= 0) return 1;
+  const elapsed = -startMs;
+  return Math.min(1, Math.max(0, elapsed / total));
+}
+
 export function formatWeekdays(weekdays: number[]) {
   return [...weekdays]
     .sort((a, b) => a - b)
