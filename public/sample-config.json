@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "showHolidays": true,
+  "widgetVisible": true,
+  "items": [
+    {
+      "id": "sample-morning",
+      "start": "09:00",
+      "end": "10:00",
+      "title": "晨会",
+      "note": "同步今日重点",
+      "weekdays": [1, 2, 3, 4, 5],
+      "enabled": true
+    },
+    {
+      "id": "sample-deepwork",
+      "start": "14:00",
+      "end": "16:00",
+      "title": "深度工作",
+      "note": "关闭通知",
+      "weekdays": [1, 2, 3, 4, 5],
+      "enabled": true
+    },
+    {
+      "id": "sample-review",
+      "start": "20:00",
+      "end": "20:30",
+      "title": "复盘",
+      "weekdays": [0, 6],
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI",
+    sans-serif;
+  --font-display: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --color-bg: #f3f0e8;
+  --color-bg-deep: #e7e1d4;
+  --color-ink: #1c2430;
+  --color-ink-muted: #5b6675;
+  --color-accent: #0f6b5c;
+  --color-accent-soft: #d7efe9;
+  --color-warn: #b45309;
+  --color-danger: #b42318;
+  --color-surface: #fffcf6;
+  --color-line: #d4cdc0;
+  --color-current: #0b4f44;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: local("Noto Sans SC"), local("PingFang SC"), local("Microsoft YaHei");
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.widget-body {
+  background: transparent;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--color-ink) 25%, transparent);
+  border-radius: 999px;
+}
