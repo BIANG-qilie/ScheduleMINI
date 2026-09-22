@@ -18,9 +18,11 @@ import { isTauriRuntime } from "@/lib/utils";
 const LOCAL_STORAGE_KEY = "desktop-schedule-widget:config";
 
 async function ensureConfigDir() {
-  const ok = await exists(".", { baseDir: BaseDirectory.AppConfig });
-  if (!ok) {
-    await mkdir(".", { baseDir: BaseDirectory.AppConfig, recursive: true });
+  try {
+    // 递归创建 AppConfig 根目录（含 ~/.config 等父路径）
+    await mkdir("", { baseDir: BaseDirectory.AppConfig, recursive: true });
+  } catch {
+    // 目录已存在时忽略
   }
 }
 

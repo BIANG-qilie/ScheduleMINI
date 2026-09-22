@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Runtime, WebviewWindow,
+    AppHandle, Manager, WebviewWindow,
 };
 
 #[tauri::command]
@@ -48,7 +48,7 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
-fn show_settings_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+fn show_settings_window(app: &AppHandle) -> Result<(), String> {
     let Some(settings) = app.get_webview_window("settings") else {
         return Err("找不到设置窗口".into());
     };
@@ -57,7 +57,7 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     Ok(())
 }
 
-fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_settings_i = MenuItem::with_id(app, "show_settings", "打开设置", true, None::<&str>)?;
     let toggle_widget_i =
         MenuItem::with_id(app, "toggle_widget", "显示/隐藏悬浮窗", true, None::<&str>)?;
@@ -123,7 +123,6 @@ pub fn run() {
             if let Some(settings) = app.get_webview_window("settings") {
                 intercept_settings_close(&settings);
             }
-            // Widget close should also hide rather than destroy if possible
             if let Some(widget) = app.get_webview_window("widget") {
                 let widget_ = widget.clone();
                 widget.on_window_event(move |event| {
