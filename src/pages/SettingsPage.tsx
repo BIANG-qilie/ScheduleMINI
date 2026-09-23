@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  CalendarRange,
   Download,
   Eye,
   EyeOff,
+  List,
   Pencil,
   Plus,
   Trash2,
@@ -15,7 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { WeekGrid } from "@/components/WeekGrid";
 import {
+  APP_DISPLAY_NAME,
   WEEKDAY_LABELS,
   type ScheduleItem,
   formatWeekdays,
@@ -23,6 +27,7 @@ import {
 import { HOLIDAY_DATA_YEARS, getTodayLabel } from "@/lib/holidays";
 import { setWidgetVisible } from "@/lib/windows";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
+import { cn } from "@/lib/utils";
 
 type Draft = {
   id?: string;
@@ -67,6 +72,7 @@ export function SettingsPage() {
     setShowHolidays,
     setWidgetVisible: setWidgetVisibleFlag,
     setWidgetMode,
+    setSettingsViewMode,
     exportConfig,
     importConfig,
     setConfig,
@@ -113,6 +119,17 @@ export function SettingsPage() {
 
   const openCreate = () => {
     setDraft(emptyDraft());
+    setFormError(null);
+    setEditorOpen(true);
+  };
+
+  const openCreateAt = (weekday: number, start: string, end: string) => {
+    setDraft({
+      ...emptyDraft(),
+      start,
+      end,
+      weekdays: [weekday],
+    });
     setFormError(null);
     setEditorOpen(true);
   };
@@ -220,16 +237,16 @@ export function SettingsPage() {
 
   return (
     <div className="min-h-full bg-[linear-gradient(160deg,#f7f3ea_0%,#e9f3ef_45%,#efe8db_100%)]">
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 px-5 py-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-5 py-6">
         <header className="space-y-2">
           <p className="text-xs font-medium tracking-[0.18em] text-[var(--color-accent)] uppercase">
-            Desktop Schedule
+            ScheduleMINI
           </p>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-ink)]">
-            桌面日程小窗
+            {APP_DISPLAY_NAME}
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            管理每周循环的日程条目，打开置顶悬浮窗查看今日安排。配置仅保存在本机。
+            管理每周循环的日程，用周视图扫结构，用悬浮窗盯当前。配置仅保存在本机。
           </p>
         </header>
 
@@ -248,18 +265,57 @@ export function SettingsPage() {
         <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold">日程列表</h2>
+              <h2 className="text-base font-semibold">日程</h2>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                共 {sortedItems.length} 条 · 按开始时间排序
+                共 {sortedItems.length} 条 ·{" "}
+                {config.settingsViewMode === "week"
+                  ? "周视图 · 点空白新建、点色块编辑"
+                  : "列表 · 按开始时间排序"}
               </p>
             </div>
-            <Button type="button" onClick={openCreate} disabled={busy}>
-              <Plus className="h-4 w-4" />
-              新建日程
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1 rounded-[5px] px-2.5 text-xs",
+                    config.settingsViewMode === "week"
+                      ? "bg-[var(--color-accent)] text-white"
+                      : "text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() => void setSettingsViewMode("week")}
+                >
+                  <CalendarRange className="h-3.5 w-3.5" />
+                  周视图
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1 rounded-[5px] px-2.5 text-xs",
+                    config.settingsViewMode === "list"
+                      ? "bg-[var(--color-accent)] text-white"
+                      : "text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() => void setSettingsViewMode("list")}
+                >
+                  <List className="h-3.5 w-3.5" />
+                  列表
+                </button>
+              </div>
+              <Button type="button" onClick={openCreate} disabled={busy}>
+                <Plus className="h-4 w-4" />
+                新建日程
+              </Button>
+            </div>
           </div>
 
-          {sortedItems.length === 0 ? (
+          {config.settingsViewMode === "week" ? (
+            <WeekGrid
+              items={config.items}
+              onCreateAt={openCreateAt}
+              onEditItem={openEdit}
+            />
+          ) : sortedItems.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-line)] px-4 py-10 text-center">
               <p className="text-sm font-medium">还没有日程</p>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">

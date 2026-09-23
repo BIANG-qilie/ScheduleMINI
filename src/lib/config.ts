@@ -15,12 +15,17 @@ export const ScheduleItemSchema = z.object({
 export const WidgetModeSchema = z.enum(["full", "current"]);
 export type WidgetMode = z.infer<typeof WidgetModeSchema>;
 
+export const SettingsViewModeSchema = z.enum(["list", "week"]);
+export type SettingsViewMode = z.infer<typeof SettingsViewModeSchema>;
+
 export const AppConfigSchema = z.object({
   version: z.literal(1),
   showHolidays: z.boolean(),
   widgetVisible: z.boolean(),
   /** full=今日全部；current=仅当前时段 + 距下一程 */
   widgetMode: WidgetModeSchema.default("current"),
+  /** 设置页日程展示：list=列表；week=周网格（默认） */
+  settingsViewMode: SettingsViewModeSchema.default("week"),
   items: z.array(ScheduleItemSchema),
 });
 
@@ -30,6 +35,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 export const CONFIG_VERSION = 1 as const;
 export const CONFIG_FILE_NAME = "config.json";
 export const CONFIG_CHANGED_EVENT = "config-changed";
+export const APP_DISPLAY_NAME = "小日程";
 
 export const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] as const;
 
@@ -39,6 +45,7 @@ export function defaultConfig(): AppConfig {
     showHolidays: true,
     widgetVisible: true,
     widgetMode: "current",
+    settingsViewMode: "week",
     items: [
       {
         id: "sample-morning",

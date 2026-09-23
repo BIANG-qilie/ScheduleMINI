@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "桌面日程小窗",
+  "productName": "小日程",
   "version": "0.1.0",
   "identifier": "com.desktop.schedule",
   "build": {
@@ -14,18 +14,18 @@
     "windows": [
       {
         "label": "settings",
-        "title": "桌面日程小窗",
+        "title": "小日程",
         "url": "index.html",
-        "width": 880,
-        "height": 720,
-        "minWidth": 720,
-        "minHeight": 560,
+        "width": 1080,
+        "height": 780,
+        "minWidth": 860,
+        "minHeight": 600,
         "resizable": true,
         "visible": true
       },
       {
         "label": "widget",
-        "title": "今日日程",
+        "title": "小日程",
         "url": "index.html?view=widget",
         "width": 320,
         "height": 440,

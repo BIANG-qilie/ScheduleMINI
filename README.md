@@ -1,12 +1,13 @@
-# 桌面日程小窗
+# 小日程（ScheduleMINI）
 
-Tauri 2 + React + TypeScript 桌面应用：设置窗口管理每周循环日程，置顶无边框悬浮窗展示今日安排与中国大陆法定节假日/调休标签。配置保存在本机 JSON，支持导入导出。
+Tauri 2 + React + TypeScript 桌面应用：设置窗用周视图管理每周循环日程，置顶悬浮窗聚焦「当前 / 下一程」。配置保存在本机 JSON，支持导入导出。
 
 ## 功能
 
 - 日程 CRUD：时间范围、标题、备注、星期循环、启用开关
-- 悬浮窗：始终置顶、可拖拽、当前时段高亮、节假日条；可切换「仅当前时段」并显示距下一程倒计时
-- 系统托盘：打开设置 / 显示隐藏悬浮窗 / 退出（关闭设置窗不退出）
+- **周视图（默认）**：整周 7 列时间轴网格；点空白新建、点色块编辑；可切回列表
+- 悬浮窗 Now/Next：当前日程醒目、下一程淡化；临近结束暖色提示
+- 系统托盘：打开小日程 / 显示隐藏悬浮窗 / 退出（关闭设置窗不退出）
 - `chinese-days` 离线节假日数据
 - 导入导出整份 `AppConfig`（导入前二次确认）
 
@@ -14,29 +15,20 @@ Tauri 2 + React + TypeScript 桌面应用：设置窗口管理每周循环日程
 
 - Node.js 20+
 - Rust **1.85+**（推荐 `stable`；仓库含 `rust-toolchain.toml`）
-- [Tauri Linux 系统依赖](https://tauri.app/start/prerequisites/)（webkit2gtk、libgtk 等）；本云环境可能缺 WebKit，此时用 `npm run dev` 预览前端
-- Windows 为第一期主目标；macOS / Linux 可开发运行
+- [Tauri 前置依赖](https://tauri.app/start/prerequisites/)（Windows 需 WebView2）
 
 ## 开发
 
 ```bash
 npm install
-
-# 仅前端（浏览器预览，端口 45231）
-npm run dev
-
-# 完整桌面壳（双窗 + 托盘）
-npm run tauri dev
+npm run dev          # 前端预览，端口 45231
+npm run tauri dev    # 完整桌面壳
 ```
 
-浏览器预览：
+- 设置页：http://127.0.0.1:45231/
+- 悬浮窗：http://127.0.0.1:45231/?view=widget
 
-- 设置页：[http://127.0.0.1:45231/](http://127.0.0.1:45231/)
-- 悬浮窗预览：[http://127.0.0.1:45231/?view=widget](http://127.0.0.1:45231/?view=widget)
-
-配置在浏览器模式下写入 `localStorage`；在 `tauri dev` / 安装包中写入应用配置目录的 `config.json`。
-
-## 构建安装包
+## 构建
 
 ```bash
 npm run tauri build
@@ -52,23 +44,9 @@ npm run tauri build
   "showHolidays": true,
   "widgetVisible": true,
   "widgetMode": "current",
-  "items": [
-    {
-      "id": "sample-morning",
-      "start": "09:00",
-      "end": "10:00",
-      "title": "晨会",
-      "note": "同步今日重点",
-      "weekdays": [1, 2, 3, 4, 5],
-      "enabled": true
-    }
-  ]
+  "settingsViewMode": "week",
+  "items": []
 }
 ```
 
 `weekdays`：`0` = 周日 … `6` = 周六。样例见 `public/sample-config.json`。
-
-## 说明
-
-- Android / 云同步不在本期范围
-- 节假日数据年份随 `chinese-days` 依赖升级；设置页会标注覆盖范围

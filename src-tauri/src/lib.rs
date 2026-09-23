@@ -58,7 +58,7 @@ fn show_settings_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show_settings_i = MenuItem::with_id(app, "show_settings", "打开设置", true, None::<&str>)?;
+    let show_settings_i = MenuItem::with_id(app, "show_settings", "打开小日程", true, None::<&str>)?;
     let toggle_widget_i =
         MenuItem::with_id(app, "toggle_widget", "显示/隐藏悬浮窗", true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -66,7 +66,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let _tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
-        .tooltip("桌面日程小窗")
+        .tooltip("小日程")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {

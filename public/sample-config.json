@@ -3,6 +3,7 @@
   "showHolidays": true,
   "widgetVisible": true,
   "widgetMode": "current",
+  "settingsViewMode": "week",
   "items": [
     {
       "id": "sample-morning",
