@@ -21,8 +21,10 @@ import { WeekGrid } from "@/components/WeekGrid";
 import {
   APP_DISPLAY_NAME,
   WEEKDAY_LABELS,
+  formatDateKey,
+  formatScheduleScope,
+  type Recurrence,
   type ScheduleItem,
-  formatWeekdays,
 } from "@/lib/config";
 import { HOLIDAY_DATA_YEARS, getTodayLabel } from "@/lib/holidays";
 import { setWidgetVisible } from "@/lib/windows";
@@ -37,6 +39,8 @@ type Draft = {
   note: string;
   weekdays: number[];
   enabled: boolean;
+  recurrence: Recurrence;
+  date: string;
 };
 
 const emptyDraft = (): Draft => ({
@@ -46,6 +50,8 @@ const emptyDraft = (): Draft => ({
   note: "",
   weekdays: [1, 2, 3, 4, 5],
   enabled: true,
+  recurrence: "weekly",
+  date: formatDateKey(new Date()),
 });
 
 function itemToDraft(item: ScheduleItem): Draft {
@@ -57,6 +63,8 @@ function itemToDraft(item: ScheduleItem): Draft {
     note: item.note ?? "",
     weekdays: [...item.weekdays],
     enabled: item.enabled,
+    recurrence: item.recurrence ?? "weekly",
+    date: item.date ?? formatDateKey(new Date()),
   };
 }
 
@@ -123,12 +131,19 @@ export function SettingsPage() {
     setEditorOpen(true);
   };
 
-  const openCreateAt = (weekday: number, start: string, end: string) => {
+  const openCreateAt = (
+    weekday: number,
+    dateKey: string,
+    start: string,
+    end: string,
+  ) => {
     setDraft({
       ...emptyDraft(),
       start,
       end,
       weekdays: [weekday],
+      date: dateKey,
+      recurrence: "weekly",
     });
     setFormError(null);
     setEditorOpen(true);
@@ -156,8 +171,12 @@ export function SettingsPage() {
       setFormError("请填写标题");
       return;
     }
-    if (draft.weekdays.length === 0) {
+    if (draft.recurrence === "weekly" && draft.weekdays.length === 0) {
       setFormError("请至少选择一个星期几");
+      return;
+    }
+    if (draft.recurrence === "once" && !draft.date) {
+      setFormError("请选择日期");
       return;
     }
     if (draft.start >= draft.end) {
@@ -172,8 +191,10 @@ export function SettingsPage() {
         end: draft.end,
         title: draft.title,
         note: draft.note,
-        weekdays: draft.weekdays,
+        weekdays: draft.recurrence === "weekly" ? draft.weekdays : [],
         enabled: draft.enabled,
+        recurrence: draft.recurrence,
+        date: draft.recurrence === "once" ? draft.date : undefined,
       });
       setEditorOpen(false);
       setStatus(draft.id ? "已更新日程" : "已添加日程");
@@ -347,7 +368,7 @@ export function SettingsPage() {
                       </p>
                     ) : null}
                     <p className="text-xs text-[var(--color-ink-muted)]">
-                      {formatWeekdays(item.weekdays)}
+                      {formatScheduleScope(item)}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
@@ -478,7 +499,7 @@ export function SettingsPage() {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         title={draft.id ? "编辑日程" : "新建日程"}
-        description="时间按 24 小时制填写；星期可多选，按周循环生效。"
+        description="可设每周重复，或指定某一天的一次性日程。"
         footer={
           <>
             <Button
@@ -494,6 +515,40 @@ export function SettingsPage() {
           </>
         }
       >
+        <div className="space-y-2">
+          <Label>重复方式</Label>
+          <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+            <button
+              type="button"
+              className={cn(
+                "h-8 rounded-[5px] px-3 text-xs",
+                draft.recurrence === "weekly"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+              )}
+              onClick={() =>
+                setDraft((prev) => ({ ...prev, recurrence: "weekly" }))
+              }
+            >
+              每周重复
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "h-8 rounded-[5px] px-3 text-xs",
+                draft.recurrence === "once"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+              )}
+              onClick={() =>
+                setDraft((prev) => ({ ...prev, recurrence: "once" }))
+              }
+            >
+              仅一次
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="start">开始</Label>
@@ -519,12 +574,49 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {draft.recurrence === "once" ? (
+          <div className="space-y-2">
+            <Label htmlFor="once-date">日期</Label>
+            <Input
+              id="once-date"
+              type="date"
+              value={draft.date}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, date: e.target.value }))
+              }
+            />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>每周重复</Label>
+            <div className="flex flex-wrap gap-2">
+              {WEEKDAY_LABELS.map((label, day) => {
+                const active = draft.weekdays.includes(day);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => toggleWeekday(day)}
+                    className={
+                      active
+                        ? "h-9 min-w-9 rounded-md bg-[var(--color-accent)] px-3 text-sm text-white"
+                        : "h-9 min-w-9 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
+                    }
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="title">标题 / 内容</Label>
           <Input
             id="title"
             value={draft.title}
-            placeholder="例如：站会、深度工作"
+            placeholder="例如：站会、深度工作、约谈"
             onChange={(e) =>
               setDraft((prev) => ({ ...prev, title: e.target.value }))
             }
@@ -541,29 +633,6 @@ export function SettingsPage() {
               setDraft((prev) => ({ ...prev, note: e.target.value }))
             }
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label>每周重复</Label>
-          <div className="flex flex-wrap gap-2">
-            {WEEKDAY_LABELS.map((label, day) => {
-              const active = draft.weekdays.includes(day);
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => toggleWeekday(day)}
-                  className={
-                    active
-                      ? "h-9 min-w-9 rounded-md bg-[var(--color-accent)] px-3 text-sm text-white"
-                      : "h-9 min-w-9 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
-                  }
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         <div className="flex items-center justify-between">

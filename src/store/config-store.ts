@@ -74,11 +74,15 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   upsertItem: async (item) => {
     const { config, setConfig } = get();
+    const recurrence = item.recurrence ?? "weekly";
     const nextItem: ScheduleItem = {
       ...item,
       id: item.id ?? createId(),
       note: item.note?.trim() ? item.note.trim() : undefined,
       title: item.title.trim(),
+      recurrence,
+      weekdays: recurrence === "weekly" ? item.weekdays : [],
+      date: recurrence === "once" ? item.date : undefined,
     };
     const exists = config.items.some((it) => it.id === nextItem.id);
     const items = exists

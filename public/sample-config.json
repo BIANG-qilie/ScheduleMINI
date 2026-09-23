@@ -12,7 +12,8 @@
       "title": "晨会",
       "note": "同步今日重点",
       "weekdays": [1, 2, 3, 4, 5],
-      "enabled": true
+      "enabled": true,
+      "recurrence": "weekly"
     },
     {
       "id": "sample-deepwork",
@@ -21,7 +22,8 @@
       "title": "深度工作",
       "note": "关闭通知",
       "weekdays": [1, 2, 3, 4, 5],
-      "enabled": true
+      "enabled": true,
+      "recurrence": "weekly"
     },
     {
       "id": "sample-review",
@@ -29,7 +31,18 @@
       "end": "20:30",
       "title": "复盘",
       "weekdays": [0, 6],
-      "enabled": true
+      "enabled": true,
+      "recurrence": "weekly"
+    },
+    {
+      "id": "sample-once",
+      "start": "15:00",
+      "end": "16:00",
+      "title": "牙医预约",
+      "weekdays": [],
+      "enabled": true,
+      "recurrence": "once",
+      "date": "2026-09-25"
     }
   ]
 }

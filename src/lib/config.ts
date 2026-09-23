@@ -1,16 +1,45 @@
 import { z } from "zod";
 
-export const ScheduleItemSchema = z.object({
-  id: z.string().min(1),
-  start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "开始时间格式应为 HH:mm"),
-  end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "结束时间格式应为 HH:mm"),
-  title: z.string().trim().min(1, "请填写标题"),
-  note: z.string().optional(),
-  weekdays: z
-    .array(z.number().int().min(0).max(6))
-    .min(1, "请至少选择一个星期几"),
-  enabled: z.boolean(),
-});
+const TimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "时间格式应为 HH:mm");
+const DateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式应为 YYYY-MM-DD");
+
+export const RecurrenceSchema = z.enum(["weekly", "once"]);
+export type Recurrence = z.infer<typeof RecurrenceSchema>;
+
+export const ScheduleItemSchema = z
+  .object({
+    id: z.string().min(1),
+    start: TimeSchema,
+    end: TimeSchema,
+    title: z.string().trim().min(1, "请填写标题"),
+    note: z.string().optional(),
+    weekdays: z.array(z.number().int().min(0).max(6)).default([]),
+    enabled: z.boolean(),
+    /** weekly=按周循环；once=指定日期仅一次（旧配置缺省视为 weekly） */
+    recurrence: RecurrenceSchema.default("weekly"),
+    /** once 时必填，YYYY-MM-DD */
+    date: DateSchema.optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.recurrence === "weekly" && val.weekdays.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "请至少选择一个星期几",
+        path: ["weekdays"],
+      });
+    }
+    if (val.recurrence === "once" && !val.date) {
+      ctx.addIssue({
+        code: "custom",
+        message: "请选择日期",
+        path: ["date"],
+      });
+    }
+  });
 
 export const WidgetModeSchema = z.enum(["full", "current"]);
 export type WidgetMode = z.infer<typeof WidgetModeSchema>;
@@ -39,6 +68,9 @@ export const APP_DISPLAY_NAME = "小日程";
 
 export const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] as const;
 
+/** 课表列顺序：周一 → 周日 */
+export const WEEK_COLUMN_DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
+
 export function defaultConfig(): AppConfig {
   return {
     version: CONFIG_VERSION,
@@ -55,6 +87,7 @@ export function defaultConfig(): AppConfig {
         note: "同步今日重点",
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
+        recurrence: "weekly",
       },
       {
         id: "sample-deepwork",
@@ -64,6 +97,7 @@ export function defaultConfig(): AppConfig {
         note: "关闭通知",
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
+        recurrence: "weekly",
       },
       {
         id: "sample-review",
@@ -72,6 +106,7 @@ export function defaultConfig(): AppConfig {
         title: "复盘",
         weekdays: [0, 6],
         enabled: true,
+        recurrence: "weekly",
       },
     ],
   };
@@ -89,6 +124,53 @@ export function compareTime(a: string, b: string) {
   return a.localeCompare(b);
 }
 
+export function formatDateKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function parseDateKey(dateKey: string) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
+/** 以周一为一周起始的本周各列（含具体日期） */
+export function getCurrentWeekColumns(now = new Date()) {
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setHours(12, 0, 0, 0);
+  monday.setDate(now.getDate() + mondayOffset);
+
+  return WEEK_COLUMN_DAYS.map((weekday, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return {
+      weekday,
+      dateKey: formatDateKey(date),
+      monthDay: `${date.getMonth() + 1}/${date.getDate()}`,
+    };
+  });
+}
+
+export function itemRecurrence(item: ScheduleItem): Recurrence {
+  return item.recurrence ?? "weekly";
+}
+
+export function itemOccursOnDate(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+) {
+  if (!item.enabled) return false;
+  if (itemRecurrence(item) === "once") {
+    return item.date === dateKey;
+  }
+  return item.weekdays.includes(weekday);
+}
+
 export function nowTimeString(now = new Date()) {
   const hh = String(now.getHours()).padStart(2, "0");
   const mm = String(now.getMinutes()).padStart(2, "0");
@@ -101,9 +183,10 @@ export function isCurrentItem(item: ScheduleItem, now = new Date()) {
 }
 
 export function todaysItems(items: ScheduleItem[], now = new Date()) {
+  const dateKey = formatDateKey(now);
   const weekday = now.getDay();
   return items
-    .filter((item) => item.enabled && item.weekdays.includes(weekday))
+    .filter((item) => itemOccursOnDate(item, dateKey, weekday))
     .sort((a, b) => compareTime(a.start, b.start));
 }
 
@@ -166,4 +249,12 @@ export function formatWeekdays(weekdays: number[]) {
     .sort((a, b) => a - b)
     .map((d) => `周${WEEKDAY_LABELS[d]}`)
     .join("、");
+}
+
+export function formatScheduleScope(item: ScheduleItem) {
+  if (itemRecurrence(item) === "once" && item.date) {
+    const d = parseDateKey(item.date);
+    return `仅一次 · ${d.getMonth() + 1}月${d.getDate()}日`;
+  }
+  return formatWeekdays(item.weekdays);
 }
