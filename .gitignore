@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 artifacts
+output
 
 # Editor directories and files
 .vscode/*
