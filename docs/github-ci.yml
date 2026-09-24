@@ -1,0 +1,39 @@
+# CI（GitHub Actions）
+
+当前 Token 无 `workflow` 权限，正式仓不可直接写 `.github/workflows/`。
+
+启用步骤：
+
+1. 为 token 勾选 **workflow** 权限，或在 GitHub 网页创建 workflow
+2. 将本文件复制为 `.github/workflows/ci.yml`
+
+```bash
+mkdir -p .github/workflows
+cp docs/github-ci.yml .github/workflows/ci.yml
+git add .github/workflows/ci.yml && git commit -m "ci: enable GitHub Actions" && git push
+```
+
+---
+
+name: CI
+
+on:
+  push:
+    branches: [main, "cursor/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

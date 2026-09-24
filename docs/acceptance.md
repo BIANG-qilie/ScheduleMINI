@@ -20,9 +20,13 @@ npm run test:all
 
 ## 自动化门槛（CI）
 
+本地：
+
 - `npm run test`（Vitest）
 - `npm run build`
 - `npm run test:e2e`（Playwright Chromium，预览服）
+
+GitHub Actions 模板见 [docs/github-ci.yml](github-ci.yml)（需 `workflow` 权限后复制到 `.github/workflows/ci.yml`）。
 
 ## 功能抽检（桌面）
 
