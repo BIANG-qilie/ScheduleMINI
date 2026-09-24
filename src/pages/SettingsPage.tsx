@@ -8,6 +8,7 @@ import {
   List,
   Pencil,
   Plus,
+  Settings,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -150,6 +151,7 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
+  const [prefsOpen, setPrefsOpen] = useState(false);
 
   useEffect(() => {
     void init();
@@ -366,13 +368,19 @@ export function SettingsPage() {
   return (
     <div className="min-h-full bg-[linear-gradient(160deg,#f7f3ea_0%,#e9f3ef_45%,#efe8db_100%)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-5 py-6">
-        <header className="space-y-2">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-ink)]">
             {APP_DISPLAY_NAME}
           </h1>
-          <p className="max-w-xl text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            写好自己的安排，小窗里一眼看到对方现在在忙什么。少问一句「你现在干什么」。
-          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPrefsOpen(true)}
+          >
+            <Settings className="h-4 w-4" />
+            设置
+          </Button>
         </header>
 
         {error ? (
@@ -393,206 +401,6 @@ export function SettingsPage() {
             {status}
           </div>
         ) : null}
-
-        <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">我们</h2>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                显示名与颜色 · 邀请码配对（最多两人）
-              </p>
-            </div>
-            {config.couple.inviteCode ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => void syncNow()}
-              >
-                立即同步
-              </Button>
-            ) : null}
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
-              <Label htmlFor="self-name">我的名字</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="self-name"
-                  value={config.couple.selfName}
-                  onChange={(e) =>
-                    void setCoupleIdentity({ selfName: e.target.value || "我" })
-                  }
-                />
-                <input
-                  type="color"
-                  aria-label="我的颜色"
-                  value={config.couple.selfColor}
-                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
-                  onChange={(e) =>
-                    void setCoupleIdentity({ selfColor: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
-              <Label htmlFor="partner-name">对方怎么称呼</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="partner-name"
-                  value={config.couple.partnerName}
-                  onChange={(e) =>
-                    void setCoupleIdentity({
-                      partnerName: e.target.value || "对方",
-                    })
-                  }
-                />
-                <input
-                  type="color"
-                  aria-label="对方颜色"
-                  value={config.couple.partnerColor}
-                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
-                  onChange={(e) =>
-                    void setCoupleIdentity({ partnerColor: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="sync-relay-url">同步中继</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id="sync-relay-url"
-                className="font-mono text-xs"
-                placeholder={resolveRelayBaseUrl(null)}
-                value={
-                  config.syncRelayUrl ||
-                  resolveRelayBaseUrl(config.syncRelayUrl)
-                }
-                onChange={(e) => {
-                  void setSyncRelayUrl(e.target.value);
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => void setSyncRelayUrl("")}
-              >
-                恢复默认
-              </Button>
-            </div>
-            <p className="text-xs text-[var(--color-ink-muted)]">
-              生效中：{resolveRelayBaseUrl(config.syncRelayUrl)}
-            </p>
-          </div>
-
-          {isPaired(config.couple) ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-sm">
-              <p>
-                已与「{config.couple.partnerName}」配对
-                {config.couple.inviteCode
-                  ? ` · 码 ${config.couple.inviteCode}`
-                  : ""}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (window.confirm("解除后将移除对方日程，确定？")) {
-                    void unpair();
-                  }
-                }}
-              >
-                解除配对
-              </Button>
-            </div>
-          ) : config.couple.inviteCode ? (
-            <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-3 text-sm">
-              <p className="font-medium">
-                邀请码{" "}
-                <span className="font-mono tracking-widest">
-                  {config.couple.inviteCode}
-                </span>
-              </p>
-              <p className="text-xs text-[var(--color-ink-muted)]">
-                发给对方，在「加入」里输入。仍在等待对方上线同步。
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void unpair()}
-              >
-                取消邀请
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  void (async () => {
-                    setBusy(true);
-                    try {
-                      const code = await createInvite();
-                      setStatus(`邀请码 ${code}，发给对方即可`);
-                    } catch (err) {
-                      setStatus(
-                        err instanceof Error ? err.message : String(err),
-                      );
-                    } finally {
-                      setBusy(false);
-                    }
-                  })();
-                }}
-              >
-                生成邀请码
-              </Button>
-              <div className="flex min-w-0 flex-1 gap-2">
-                <Input
-                  placeholder="输入对方的邀请码"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy || !joinCode.trim()}
-                  onClick={() => {
-                    void (async () => {
-                      setBusy(true);
-                      try {
-                        await joinWithCode(joinCode);
-                        setJoinCode("");
-                        setStatus("已加入，正在同步");
-                      } catch (err) {
-                        setStatus(
-                          err instanceof Error ? err.message : String(err),
-                        );
-                      } finally {
-                        setBusy(false);
-                      }
-                    })();
-                  }}
-                >
-                  加入
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {syncStatus ? (
-            <p className="text-xs text-[var(--color-ink-muted)]">{syncStatus}</p>
-          ) : null}
-        </section>
 
         <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -756,9 +564,215 @@ export function SettingsPage() {
             </ul>
           )}
         </section>
+      </div>
 
-        <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
-          <h2 className="text-base font-semibold">显示与悬浮窗</h2>
+      <Dialog
+        open={prefsOpen}
+        onOpenChange={setPrefsOpen}
+        title="设置"
+        className="max-h-[min(90vh,780px)] max-w-2xl overflow-y-auto"
+      >
+        <section className="space-y-4 rounded-xl border border-[var(--color-line)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">我们</h3>
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                显示名与颜色 · 邀请码配对（最多两人）
+              </p>
+            </div>
+            {config.couple.inviteCode ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void syncNow()}
+              >
+                立即同步
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+              <Label htmlFor="self-name">我的名字</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="self-name"
+                  value={config.couple.selfName}
+                  onChange={(e) =>
+                    void setCoupleIdentity({ selfName: e.target.value || "我" })
+                  }
+                />
+                <input
+                  type="color"
+                  aria-label="我的颜色"
+                  value={config.couple.selfColor}
+                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
+                  onChange={(e) =>
+                    void setCoupleIdentity({ selfColor: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+              <Label htmlFor="partner-name">对方怎么称呼</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="partner-name"
+                  value={config.couple.partnerName}
+                  onChange={(e) =>
+                    void setCoupleIdentity({
+                      partnerName: e.target.value || "对方",
+                    })
+                  }
+                />
+                <input
+                  type="color"
+                  aria-label="对方颜色"
+                  value={config.couple.partnerColor}
+                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
+                  onChange={(e) =>
+                    void setCoupleIdentity({ partnerColor: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sync-relay-url">同步中继</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="sync-relay-url"
+                className="font-mono text-xs"
+                placeholder={resolveRelayBaseUrl(null)}
+                value={
+                  config.syncRelayUrl ||
+                  resolveRelayBaseUrl(config.syncRelayUrl)
+                }
+                onChange={(e) => {
+                  void setSyncRelayUrl(e.target.value);
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => void setSyncRelayUrl("")}
+              >
+                恢复默认
+              </Button>
+            </div>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              生效中：{resolveRelayBaseUrl(config.syncRelayUrl)}
+            </p>
+          </div>
+
+          {isPaired(config.couple) ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-sm">
+              <p>
+                已与「{config.couple.partnerName}」配对
+                {config.couple.inviteCode
+                  ? ` · 码 ${config.couple.inviteCode}`
+                  : ""}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (window.confirm("解除后将移除对方日程，确定？")) {
+                    void unpair();
+                  }
+                }}
+              >
+                解除配对
+              </Button>
+            </div>
+          ) : config.couple.inviteCode ? (
+            <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-3 text-sm">
+              <p className="font-medium">
+                邀请码{" "}
+                <span className="font-mono tracking-widest">
+                  {config.couple.inviteCode}
+                </span>
+              </p>
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                发给对方，在「加入」里输入。仍在等待对方上线同步。
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void unpair()}
+              >
+                取消邀请
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      await createInvite();
+                    } catch (err) {
+                      setStatus(
+                        err instanceof Error ? err.message : String(err),
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                生成邀请码
+              </Button>
+              <div className="flex min-w-0 flex-1 gap-2">
+                <Input
+                  placeholder="输入对方的邀请码"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || !joinCode.trim()}
+                  onClick={() => {
+                    void (async () => {
+                      setBusy(true);
+                      try {
+                        await joinWithCode(joinCode);
+                        setJoinCode("");
+                        setStatus("已加入，正在同步");
+                      } catch (err) {
+                        setStatus(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  加入
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {syncStatus ? (
+            <p className="text-xs text-[var(--color-ink-muted)]">{syncStatus}</p>
+          ) : null}
+        </section>
+
+        <section className="space-y-4 rounded-xl border border-[var(--color-line)] p-4">
+          <h3 className="text-sm font-semibold">显示与悬浮窗</h3>
 
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -918,11 +932,11 @@ export function SettingsPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
+        <section className="space-y-4 rounded-xl border border-[var(--color-line)] p-4">
           <div className="flex items-start gap-3">
             <CalendarDays className="mt-0.5 h-5 w-5 text-[var(--color-accent)]" />
             <div>
-              <h2 className="text-base font-semibold">导入 / 导出</h2>
+              <h3 className="text-sm font-semibold">导入 / 导出</h3>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
                 整份 JSON 配置。
               </p>
@@ -949,7 +963,7 @@ export function SettingsPage() {
             </Button>
           </div>
         </section>
-      </div>
+      </Dialog>
 
       <Dialog
         open={editorOpen}
@@ -1239,4 +1253,5 @@ export function SettingsPage() {
       </Dialog>
     </div>
   );
+
 }

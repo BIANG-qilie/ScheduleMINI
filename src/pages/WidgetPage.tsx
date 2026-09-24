@@ -287,7 +287,7 @@ function DualFocusWidget({
               <p className="text-[11px] leading-relaxed text-white/35">
                 生成或输入邀请码，小窗就能并排看到彼此的 Now / Next。
               </p>
-              <p className="text-[10px] text-white/25">打开设置页 → 我们</p>
+              <p className="text-[10px] text-white/25">打开设置 → 我们</p>
             </div>
           )}
         </div>
