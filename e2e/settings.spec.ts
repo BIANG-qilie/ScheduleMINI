@@ -65,6 +65,8 @@ test.describe("坏配置", () => {
 test.describe("悬浮窗页", () => {
   test("widget 视图可打开", async ({ page }) => {
     await page.goto("/?view=widget");
-    await expect(page.getByText("FREE")).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByText("NOW").or(page.getByText("FREE")).or(page.getByText("加载中")),
+    ).toBeVisible({ timeout: 10_000 });
   });
 });

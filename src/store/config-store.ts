@@ -7,6 +7,8 @@ import {
   type ScheduleItem,
   defaultConfig,
   emptyConfig,
+  itemSkippedDates,
+  occurrenceAnchorDate,
   parseAppConfig,
 } from "@/lib/config";
 import {
@@ -27,6 +29,8 @@ type ConfigState = {
   setConfig: (config: AppConfig, persist?: boolean) => Promise<void>;
   upsertItem: (item: Omit<ScheduleItem, "id"> & { id?: string }) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
+  skipOccurrence: (id: string, dateKey: string) => Promise<void>;
+  unskipOccurrence: (id: string, dateKey: string) => Promise<void>;
   setShowHolidays: (value: boolean) => Promise<void>;
   setWidgetVisible: (value: boolean) => Promise<void>;
   setWidgetMode: (value: AppConfig["widgetMode"]) => Promise<void>;
@@ -104,6 +108,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       weekdays: recurrence === "weekly" ? item.weekdays : [],
       date: recurrence === "once" ? item.date : undefined,
       tag: item.tag ?? "work",
+      skippedDates:
+        recurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
     };
     const exists = config.items.some((it) => it.id === nextItem.id);
     const items = exists
@@ -117,6 +123,31 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     await setConfig({
       ...config,
       items: config.items.filter((it) => it.id !== id),
+    });
+  },
+
+  skipOccurrence: async (id, dateKey) => {
+    const { config, upsertItem } = get();
+    const item = config.items.find((it) => it.id === id);
+    if (!item || (item.recurrence ?? "weekly") !== "weekly") return;
+    const anchor = occurrenceAnchorDate(item, dateKey);
+    const skipped = itemSkippedDates(item);
+    if (skipped.includes(anchor)) return;
+    await upsertItem({
+      ...item,
+      skippedDates: [...skipped, anchor].sort(),
+    });
+  },
+
+  unskipOccurrence: async (id, dateKey) => {
+    const { config, upsertItem } = get();
+    const item = config.items.find((it) => it.id === id);
+    if (!item) return;
+    const skipped = itemSkippedDates(item);
+    if (!skipped.includes(dateKey)) return;
+    await upsertItem({
+      ...item,
+      skippedDates: skipped.filter((d) => d !== dateKey),
     });
   },
 

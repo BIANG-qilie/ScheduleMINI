@@ -21,6 +21,7 @@ const overnightWeekly = {
   enabled: true,
   recurrence: "weekly" as const,
   tag: "work" as const,
+  skippedDates: [] as string[],
 };
 
 describe("ScheduleItemSchema", () => {
@@ -115,6 +116,7 @@ describe("holidays and work tag", () => {
       enabled: true,
       recurrence: "weekly" as const,
       tag: "work" as const,
+      skippedDates: [],
     };
     expect(itemOccursOnDate(item, "2026-09-25", 5, {})).toBe(false);
   });
@@ -129,6 +131,7 @@ describe("holidays and work tag", () => {
       enabled: true,
       recurrence: "weekly" as const,
       tag: "commute" as const,
+      skippedDates: [],
     };
     const study = {
       id: "s",
@@ -139,9 +142,36 @@ describe("holidays and work tag", () => {
       enabled: true,
       recurrence: "weekly" as const,
       tag: "study" as const,
+      skippedDates: [],
     };
     expect(itemOccursOnDate(commute, "2026-09-25", 5, {})).toBe(true);
     expect(itemOccursOnDate(study, "2026-09-25", 5, {})).toBe(true);
+  });
+
+  it("skips a single weekly occurrence by date", () => {
+    const item = {
+      id: "w",
+      start: "09:00",
+      end: "10:00",
+      title: "站会",
+      weekdays: [1],
+      enabled: true,
+      recurrence: "weekly" as const,
+      tag: "work" as const,
+      skippedDates: ["2026-09-21"],
+    };
+    expect(itemOccursOnDate(item, "2026-09-21", 1, {})).toBe(false);
+    expect(itemOccursOnDate(item, "2026-09-28", 1, {})).toBe(true);
+  });
+
+  it("overnight skip uses start-day anchor on end day", () => {
+    const item = {
+      ...overnightWeekly,
+      skippedDates: ["2026-09-21"],
+    };
+    expect(itemOccursOnDate(item, "2026-09-21", 1, {})).toBe(false);
+    expect(itemOccursOnDate(item, "2026-09-22", 2, {})).toBe(false);
+    expect(itemOccursOnDate(item, "2026-09-28", 1, {})).toBe(true);
   });
 });
 

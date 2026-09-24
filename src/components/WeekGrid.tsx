@@ -54,9 +54,20 @@ type WeekGridProps = {
     start: string,
     end: string,
   ) => void;
-  onEditItem: (item: ScheduleItem) => void;
+  onEditItem: (item: ScheduleItem, dateKey?: string) => void;
+  onSkipOccurrence: (item: ScheduleItem, dateKey: string) => void;
   onSetDayOverride: (dateKey: string, value: DayOverride | null) => void;
 };
+
+type GridMenu =
+  | { kind: "day"; dateKey: string; x: number; y: number }
+  | {
+      kind: "item";
+      item: ScheduleItem;
+      dateKey: string;
+      x: number;
+      y: number;
+    };
 
 export function WeekGrid({
   items,
@@ -66,14 +77,11 @@ export function WeekGrid({
   gridEndHour,
   onCreateAt,
   onEditItem,
+  onSkipOccurrence,
   onSetDayOverride,
 }: WeekGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
-  const [menu, setMenu] = useState<{
-    dateKey: string;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [menu, setMenu] = useState<GridMenu | null>(null);
 
   const hours = useMemo(
     () =>
@@ -207,11 +215,21 @@ export function WeekGrid({
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setMenu({ dateKey: col.dateKey, x: e.clientX, y: e.clientY });
+                  setMenu({
+                    kind: "day",
+                    dateKey: col.dateKey,
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setMenu({ dateKey: col.dateKey, x: e.clientX, y: e.clientY });
+                  setMenu({
+                    kind: "day",
+                    dateKey: col.dateKey,
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
                 }}
               >
                 <div>周{WEEKDAY_LABELS[col.weekday]}</div>
@@ -325,7 +343,22 @@ export function WeekGrid({
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEditItem(item);
+                        onEditItem(item, col.dateKey);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (once) {
+                          onEditItem(item, col.dateKey);
+                          return;
+                        }
+                        setMenu({
+                          kind: "item",
+                          item,
+                          dateKey: col.dateKey,
+                          x: e.clientX,
+                          y: e.clientY,
+                        });
                       }}
                     >
                       <p className="truncate text-[11px] font-semibold leading-tight text-[var(--color-ink)]">
@@ -349,36 +382,63 @@ export function WeekGrid({
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
-            onClick={() => {
-              onSetDayOverride(menu.dateKey, "off");
-              setMenu(null);
-            }}
-          >
-            设为放假
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
-            onClick={() => {
-              onSetDayOverride(menu.dateKey, "work");
-              setMenu(null);
-            }}
-          >
-            设为上班
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
-            onClick={() => {
-              onSetDayOverride(menu.dateKey, null);
-              setMenu(null);
-            }}
-          >
-            恢复默认
-          </button>
+          {menu.kind === "item" ? (
+            <>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                onClick={() => {
+                  onSkipOccurrence(menu.item, menu.dateKey);
+                  setMenu(null);
+                }}
+              >
+                取消本次
+              </button>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                onClick={() => {
+                  onEditItem(menu.item, menu.dateKey);
+                  setMenu(null);
+                }}
+              >
+                编辑
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                onClick={() => {
+                  onSetDayOverride(menu.dateKey, "off");
+                  setMenu(null);
+                }}
+              >
+                设为放假
+              </button>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                onClick={() => {
+                  onSetDayOverride(menu.dateKey, "work");
+                  setMenu(null);
+                }}
+              >
+                设为上班
+              </button>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                onClick={() => {
+                  onSetDayOverride(menu.dateKey, null);
+                  setMenu(null);
+                }}
+              >
+                恢复默认
+              </button>
+            </>
+          )}
         </div>
       ) : null}
     </div>

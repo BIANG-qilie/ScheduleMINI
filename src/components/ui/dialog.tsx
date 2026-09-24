@@ -58,7 +58,11 @@ export function Dialog({
           </Button>
         </div>
         <div className="space-y-4">{children}</div>
-        {footer ? <div className="mt-5 flex justify-end gap-2">{footer}</div> : null}
+        {footer ? (
+          <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );

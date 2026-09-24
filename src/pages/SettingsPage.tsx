@@ -24,6 +24,7 @@ import {
   WEEKDAY_LABELS,
   formatDateKey,
   formatScheduleScope,
+  itemSkippedDates,
   tagRespectsHolidays,
   type Recurrence,
   type ReminderMinutes,
@@ -86,6 +87,8 @@ export function SettingsPage() {
     init,
     upsertItem,
     deleteItem,
+    skipOccurrence,
+    unskipOccurrence,
     setShowHolidays,
     setWidgetVisible: setWidgetVisibleFlag,
     setWidgetMode,
@@ -103,6 +106,7 @@ export function SettingsPage() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [occurrenceDate, setOccurrenceDate] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -155,6 +159,7 @@ export function SettingsPage() {
 
   const openCreate = () => {
     setDraft(emptyDraft());
+    setOccurrenceDate(null);
     setFormError(null);
     setEditorOpen(true);
   };
@@ -174,12 +179,16 @@ export function SettingsPage() {
       recurrence: "weekly",
       tag: "work",
     });
+    setOccurrenceDate(null);
     setFormError(null);
     setEditorOpen(true);
   };
 
-  const openEdit = (item: ScheduleItem) => {
+  const openEdit = (item: ScheduleItem, dateKey?: string) => {
     setDraft(itemToDraft(item));
+    setOccurrenceDate(
+      (item.recurrence ?? "weekly") === "weekly" ? (dateKey ?? null) : null,
+    );
     setFormError(null);
     setEditorOpen(true);
   };
@@ -214,6 +223,9 @@ export function SettingsPage() {
     }
     setBusy(true);
     try {
+      const existing = draft.id
+        ? config.items.find((it) => it.id === draft.id)
+        : undefined;
       await upsertItem({
         id: draft.id,
         start: draft.start,
@@ -225,8 +237,13 @@ export function SettingsPage() {
         recurrence: draft.recurrence,
         date: draft.recurrence === "once" ? draft.date : undefined,
         tag: draft.tag,
+        skippedDates:
+          draft.recurrence === "weekly" && existing
+            ? itemSkippedDates(existing)
+            : [],
       });
       setEditorOpen(false);
+      setOccurrenceDate(null);
       setStatus(draft.id ? "已更新日程" : "已添加日程");
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
@@ -372,6 +389,11 @@ export function SettingsPage() {
               gridEndHour={config.gridEndHour}
               onCreateAt={openCreateAt}
               onEditItem={openEdit}
+              onSkipOccurrence={(item, dateKey) => {
+                void skipOccurrence(item.id, dateKey).then(() => {
+                  setStatus(`已取消「${item.title}」该次`);
+                });
+              }}
               onSetDayOverride={(dateKey, value) =>
                 void setDayOverride(dateKey, value)
               }
@@ -640,12 +662,44 @@ export function SettingsPage() {
         title={draft.id ? "编辑日程" : "新建日程"}
         footer={
           <>
+            {draft.id &&
+            draft.recurrence === "weekly" &&
+            occurrenceDate ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                className="mr-auto"
+                onClick={() => {
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      await skipOccurrence(draft.id!, occurrenceDate);
+                      setEditorOpen(false);
+                      setOccurrenceDate(null);
+                      setStatus("已取消本次");
+                    } catch (err) {
+                      setFormError(
+                        err instanceof Error ? err.message : String(err),
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                取消本次
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
-              onClick={() => setEditorOpen(false)}
+              onClick={() => {
+                setEditorOpen(false);
+                setOccurrenceDate(null);
+              }}
             >
-              取消
+              关闭
             </Button>
             <Button type="button" disabled={busy} onClick={() => void saveDraft()}>
               保存
@@ -809,6 +863,33 @@ export function SettingsPage() {
             }
           />
         </div>
+
+        {draft.id && draft.recurrence === "weekly"
+          ? (() => {
+              const existing = config.items.find((it) => it.id === draft.id);
+              const skipped = existing ? itemSkippedDates(existing) : [];
+              if (skipped.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <Label>已取消的日期</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {skipped.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--color-line)] px-2 font-mono text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                        title="恢复该次"
+                        onClick={() => void unskipOccurrence(draft.id!, d)}
+                      >
+                        {d}
+                        <span aria-hidden>×</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
+          : null}
 
         {formError ? (
           <p className="text-sm text-[var(--color-danger)]">{formError}</p>

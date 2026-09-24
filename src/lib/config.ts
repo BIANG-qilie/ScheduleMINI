@@ -64,6 +64,8 @@ export const ScheduleItemSchema = z
     date: DateSchema.optional(),
     /** 标签；仅 work 放假日跳过周循环 */
     tag: ScheduleTagSchema.default("work"),
+    /** 周循环：取消单次出现的日期（YYYY-MM-DD，跨日记起始日） */
+    skippedDates: z.array(DateSchema).default([]),
   })
   .superRefine((val, ctx) => {
     if (val.start === val.end) {
@@ -168,6 +170,7 @@ export function defaultConfig(): AppConfig {
         enabled: true,
         recurrence: "weekly",
         tag: "work",
+        skippedDates: [],
       },
       {
         id: "sample-deepwork",
@@ -179,6 +182,7 @@ export function defaultConfig(): AppConfig {
         enabled: true,
         recurrence: "weekly",
         tag: "work",
+        skippedDates: [],
       },
       {
         id: "sample-review",
@@ -189,6 +193,7 @@ export function defaultConfig(): AppConfig {
         enabled: true,
         recurrence: "weekly",
         tag: "rest",
+        skippedDates: [],
       },
     ],
   };
@@ -274,6 +279,44 @@ export function itemTag(item: ScheduleItem): ScheduleTag {
   return item.tag ?? "work";
 }
 
+export function itemSkippedDates(item: ScheduleItem): string[] {
+  return item.skippedDates ?? [];
+}
+
+/**
+ * 某次出现的锚点日期：非跨日即当天；跨日取起始日
+ *（在次日列取消时也写起始日）。
+ */
+export function occurrenceAnchorDate(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+): string {
+  if (itemRecurrence(item) === "once") {
+    return item.date ?? dateKey;
+  }
+  if (!isOvernightItem(item)) return dateKey;
+  const prevWeekday = (weekday + 6) % 7;
+  const onStartDay = item.weekdays.includes(weekday);
+  const onEndDay = item.weekdays.includes(prevWeekday);
+  if (onEndDay && !onStartDay) {
+    const prev = parseDateKey(dateKey);
+    prev.setDate(prev.getDate() - 1);
+    return formatDateKey(prev);
+  }
+  return dateKey;
+}
+
+export function isOccurrenceSkipped(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+) {
+  if (itemRecurrence(item) !== "weekly") return false;
+  const anchor = occurrenceAnchorDate(item, dateKey, weekday);
+  return itemSkippedDates(item).includes(anchor);
+}
+
 export function itemOccursOnDate(
   item: ScheduleItem,
   dateKey: string,
@@ -298,6 +341,8 @@ export function itemOccursOnDate(
   const onEndDay =
     isOvernightItem(item) && item.weekdays.includes(prevWeekday);
   if (!onStartDay && !onEndDay) return false;
+
+  if (isOccurrenceSkipped(item, dateKey, weekday)) return false;
 
   if (tagRespectsHolidays(itemTag(item))) {
     if (isDayOff(dateKey, dayOverrides)) return false;
