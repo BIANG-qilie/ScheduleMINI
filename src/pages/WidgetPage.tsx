@@ -3,15 +3,20 @@ import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { GripHorizontal } from "lucide-react";
 import {
+  WEEKDAY_LABELS,
+  formatDateKey,
   formatDurationCompact,
   formatDurationZh,
   getCurrentItem,
-  getNextItem,
+  getUpcomingItem,
   isCurrentItem,
+  itemRecurrence,
+  msUntilDate,
   msUntilTime,
   progressThroughItem,
   todaysItems,
   type ScheduleItem,
+  type UpcomingRef,
 } from "@/lib/config";
 import { getTodayLabel } from "@/lib/holidays";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
@@ -25,6 +30,7 @@ function FullModeItemCard({
   current: boolean;
   badge?: string;
 }) {
+  const once = itemRecurrence(item) === "once";
   return (
     <div
       className={
@@ -43,11 +49,16 @@ function FullModeItemCard({
         >
           {item.start}–{item.end}
         </span>
-        {badge ? (
-          <span className="text-[10px] tracking-wide text-emerald-100">
-            {badge}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-1.5">
+          {once ? (
+            <span className="text-[10px] text-amber-200/80">仅一次</span>
+          ) : null}
+          {badge ? (
+            <span className="text-[10px] tracking-wide text-emerald-100">
+              {badge}
+            </span>
+          ) : null}
+        </div>
       </div>
       <p className="mt-1 text-sm font-medium leading-snug">{item.title}</p>
       {item.note ? (
@@ -57,27 +68,39 @@ function FullModeItemCard({
   );
 }
 
-/** 行业 Now/Next 扫视：Now 高对比 + 进度条；Next 底栏弱对比 */
+function upcomingLabel(ref: UpcomingRef, todayKey: string) {
+  if (ref.dateKey === todayKey) return ref.item.start;
+  const d = ref.at.getDay();
+  return `周${WEEKDAY_LABELS[d]} ${ref.item.start}`;
+}
+
 function FocusWidget({
   currentItem,
-  nextItem,
+  upcoming,
   remainingCurrent,
   untilNext,
   progress,
+  todayKey,
 }: {
   currentItem: ScheduleItem | null;
-  nextItem: ScheduleItem | null;
+  upcoming: UpcomingRef | null;
   remainingCurrent: number | null;
   untilNext: number | null;
   progress: number;
+  todayKey: string;
 }) {
   const urgent =
-    remainingCurrent != null && remainingCurrent > 0 && remainingCurrent < 5 * 60_000;
+    remainingCurrent != null &&
+    remainingCurrent > 0 &&
+    remainingCurrent < 5 * 60_000;
+  const currentOnce =
+    currentItem != null && itemRecurrence(currentItem) === "once";
+  const nextOnce =
+    upcoming != null && itemRecurrence(upcoming.item) === "once";
 
   return (
     <div className="h-full p-1">
       <div className="relative flex h-full flex-col overflow-hidden rounded-[22px] border border-white/[0.08] bg-[rgba(8,14,16,0.72)] text-white shadow-[0_18px_48px_rgba(0,0,0,0.42)] backdrop-blur-xl">
-        {/* 顶部细光边，贴近桌面玻璃质感 */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
@@ -103,9 +126,16 @@ function FocusWidget({
               }
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-current/80">
-                  NOW
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-current/80">
+                    NOW
+                  </span>
+                  {currentOnce ? (
+                    <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-[10px] font-medium text-current/70">
+                      仅一次
+                    </span>
+                  ) : null}
+                </div>
                 <span className="font-mono text-[11px] font-semibold tabular-nums text-current/75">
                   {remainingCurrent != null && remainingCurrent > 0
                     ? `剩 ${formatDurationCompact(remainingCurrent)}`
@@ -136,27 +166,28 @@ function FocusWidget({
               <p className="mt-2.5 font-[family-name:var(--font-display)] text-xl font-medium tracking-tight text-white/70">
                 空闲中
               </p>
-              {nextItem && untilNext != null ? (
+              {upcoming && untilNext != null ? (
                 <p className="mt-1 text-xs text-white/35">
                   {formatDurationCompact(untilNext)}后进入下一程
                 </p>
               ) : (
-                <p className="mt-1 text-xs text-white/30">今日已无后续安排</p>
+                <p className="mt-1 text-xs text-white/30">近几天暂无后续安排</p>
               )}
             </div>
           )}
         </div>
 
-        {nextItem && untilNext != null ? (
+        {upcoming && untilNext != null ? (
           <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl bg-white/[0.03] px-2.5 py-2">
             <span className="shrink-0 text-[9px] font-semibold tracking-[0.16em] text-white/25">
               NEXT
             </span>
             <p className="min-w-0 flex-1 truncate text-[11px] text-white/32">
               <span className="font-mono tabular-nums text-white/38">
-                {nextItem.start}
+                {upcomingLabel(upcoming, todayKey)}
               </span>{" "}
-              {nextItem.title}
+              {upcoming.item.title}
+              {nextOnce ? <span className="text-white/22"> · 仅一次</span> : null}
             </p>
             <span className="shrink-0 font-mono text-[10px] tabular-nums text-white/22">
               {formatDurationCompact(untilNext)}
@@ -199,13 +230,14 @@ export function WidgetPage() {
     };
   }, [setConfig]);
 
+  const todayKey = formatDateKey(now);
   const items = useMemo(() => todaysItems(config.items, now), [config.items, now]);
   const currentItem = useMemo(
     () => getCurrentItem(config.items, now),
     [config.items, now],
   );
-  const nextItem = useMemo(
-    () => getNextItem(config.items, now),
+  const upcoming = useMemo(
+    () => getUpcomingItem(config.items, now, 7),
     [config.items, now],
   );
   const holiday = useMemo(() => getTodayLabel(now), [now]);
@@ -214,7 +246,7 @@ export function WidgetPage() {
 
   const remainingCurrent =
     currentItem != null ? msUntilTime(currentItem.end, now) : null;
-  const untilNext = nextItem != null ? msUntilTime(nextItem.start, now) : null;
+  const untilNext = upcoming != null ? msUntilDate(upcoming.at, now) : null;
   const progress = currentItem ? progressThroughItem(currentItem, now) : 0;
 
   if (!hydrated || loading) {
@@ -231,10 +263,11 @@ export function WidgetPage() {
     return (
       <FocusWidget
         currentItem={currentItem}
-        nextItem={nextItem}
+        upcoming={upcoming}
         remainingCurrent={remainingCurrent}
         untilNext={untilNext}
         progress={progress}
+        todayKey={todayKey}
       />
     );
   }
@@ -274,7 +307,7 @@ export function WidgetPage() {
             <div className="rounded-xl border border-dashed border-white/20 px-3 py-8 text-center">
               <p className="text-sm font-medium text-white/90">今日暂无日程</p>
               <p className="mt-1 text-xs text-white/55">
-                在设置里添加条目，或检查星期是否包含今天
+                在设置里添加条目，或检查今天是否有周循环/仅一次安排
               </p>
             </div>
           ) : (

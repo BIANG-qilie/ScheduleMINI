@@ -2,6 +2,7 @@ import { useMemo, type MouseEvent } from "react";
 import {
   WEEKDAY_LABELS,
   compareTime,
+  formatDateKey,
   getCurrentWeekColumns,
   itemOccursOnDate,
   itemRecurrence,
@@ -46,14 +47,11 @@ export function WeekGrid({ items, onCreateAt, onEditItem }: WeekGridProps) {
     () => Array.from({ length: GRID_END - GRID_START }, (_, i) => GRID_START + i),
     [],
   );
-  const columns = useMemo(() => getCurrentWeekColumns(new Date()), []);
-  const todayKey = useMemo(() => {
-    const n = new Date();
-    const y = n.getFullYear();
-    const m = String(n.getMonth() + 1).padStart(2, "0");
-    const d = String(n.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }, []);
+  const todayKey = formatDateKey(new Date());
+  const columns = useMemo(
+    () => getCurrentWeekColumns(new Date()),
+    [todayKey],
+  );
   const totalHeight = (GRID_END - GRID_START) * DAY_PX;
 
   const enabledItems = useMemo(

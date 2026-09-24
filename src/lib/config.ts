@@ -194,13 +194,53 @@ export function getCurrentItem(items: ScheduleItem[], now = new Date()) {
   return todaysItems(items, now).find((item) => isCurrentItem(item, now)) ?? null;
 }
 
-/** 下一程：开始时间晚于当前时刻的第一条今日日程 */
+export type UpcomingRef = {
+  item: ScheduleItem;
+  /** 该次发生的具体日期时间 */
+  at: Date;
+  dateKey: string;
+};
+
+/**
+ * 向后查找下一程（含今天尚未开始的，以及未来 7 天内的周循环/仅一次）。
+ * 这样仅一次日程在「今天已结束」后仍可作为下一程出现在后续日期。
+ */
+export function getUpcomingItem(
+  items: ScheduleItem[],
+  now = new Date(),
+  horizonDays = 7,
+): UpcomingRef | null {
+  let best: UpcomingRef | null = null;
+
+  for (let offset = 0; offset < horizonDays; offset++) {
+    const day = new Date(now);
+    day.setHours(12, 0, 0, 0);
+    day.setDate(now.getDate() + offset);
+    const dateKey = formatDateKey(day);
+    const weekday = day.getDay();
+
+    for (const item of items) {
+      if (!itemOccursOnDate(item, dateKey, weekday)) continue;
+      const [h, m] = item.start.split(":").map(Number);
+      const at = new Date(day);
+      at.setHours(h, m, 0, 0);
+      if (at.getTime() <= now.getTime()) continue;
+      if (!best || at.getTime() < best.at.getTime()) {
+        best = { item, at, dateKey };
+      }
+    }
+  }
+
+  return best;
+}
+
+/** @deprecated 仅今日下一程；请优先用 getUpcomingItem */
 export function getNextItem(items: ScheduleItem[], now = new Date()) {
-  const current = nowTimeString(now);
-  return (
-    todaysItems(items, now).find((item) => compareTime(item.start, current) > 0) ??
-    null
-  );
+  return getUpcomingItem(items, now, 1)?.item ?? null;
+}
+
+export function msUntilDate(at: Date, now = new Date()) {
+  return at.getTime() - now.getTime();
 }
 
 export function msUntilTime(hhmm: string, now = new Date()) {
