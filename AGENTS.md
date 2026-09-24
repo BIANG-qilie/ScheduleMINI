@@ -28,8 +28,10 @@ npm run build
 | `npm run dev` | 前端预览 :45231 |
 | `npm run tauri dev` | 完整桌面壳 |
 | `npm test` | Vitest 单元测试 |
-| `npm run test:e2e` | Playwright（先 build） |
+| `npm run test:e2e` | Playwright（端口 45331，默认不复用脏服务） |
 | `npm run test:all` | 单测 + 构建 + E2E |
+
+CI：`.github/workflows/ci.yml`（与 `docs/github-ci.yml` 同步）。推送到 GitHub 需 token 含 **workflow** scope。
 
 ## 约束
 
