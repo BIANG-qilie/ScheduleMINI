@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:all": "npm run test && npm run build && npm run test:e2e",
-    "sync-relay": "node sync-relay/server.mjs"
+    "sync-relay": "node sync-relay/server.mjs",
+    "pull:build": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/pull-and-build.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

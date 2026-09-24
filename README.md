@@ -59,3 +59,11 @@ npm run tauri build
 npm test
 npm run build && npm run test:e2e
 ```
+
+一键拉取 `main` 并只编译 exe（跳过 MSI）：
+
+```bash
+npm run pull:build
+```
+
+产物：`src-tauri/target/release/desktop-schedule-widget.exe`。

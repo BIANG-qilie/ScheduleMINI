@@ -27,6 +27,7 @@ npm run build
 | --- | --- |
 | `npm run dev` | 前端预览 :45231 |
 | `npm run tauri dev` | 完整桌面壳 |
+| `npm run pull:build` | 拉取 `origin/main` 并编译 release exe（`--no-bundle`） |
 | `npm test` | Vitest 单元测试 |
 | `npm run test:e2e` | Playwright（端口 45331，默认不复用脏服务） |
 | `npm run test:all` | 单测 + 构建 + E2E |
