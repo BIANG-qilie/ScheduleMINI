@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { mergeItemsLww } from "@/lib/sync/couple";
 import { generateInviteCode, normalizeInviteCode } from "@/lib/sync/crypto";
+import {
+  BUILTIN_SYNC_RELAY_URL,
+  resolveRelayBaseUrl,
+} from "@/lib/sync/relay";
 import type { ScheduleItem } from "@/lib/config";
 
 function item(
@@ -46,5 +50,17 @@ describe("invite code", () => {
 
   it("generates length 6", () => {
     expect(generateInviteCode(6)).toHaveLength(6);
+  });
+});
+
+describe("resolveRelayBaseUrl", () => {
+  it("settings wins", () => {
+    expect(resolveRelayBaseUrl("https://custom.example/")).toBe(
+      "https://custom.example",
+    );
+  });
+
+  it("empty uses builtin when vite unset", () => {
+    expect(resolveRelayBaseUrl("")).toBe(BUILTIN_SYNC_RELAY_URL);
   });
 });
