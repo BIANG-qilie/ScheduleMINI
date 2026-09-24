@@ -1,0 +1,9 @@
+node_modules
+src-tauri/target
+dist
+.git
+*.md
+!sync-relay/README.md
+e2e
+test-results
+playwright-report
