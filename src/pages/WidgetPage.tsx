@@ -23,9 +23,8 @@ import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
   applyWidgetOpacity,
-  applyWidgetSize,
-  persistCurrentWidgetPosition,
-  restoreWidgetPosition,
+  persistCurrentWidgetGeometry,
+  restoreWidgetGeometry,
 } from "@/lib/widget-chrome";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
 
@@ -89,6 +88,7 @@ function FocusWidget({
   untilNext,
   progress,
   todayKey,
+  holidayName,
 }: {
   currentItem: ScheduleItem | null;
   upcoming: UpcomingRef | null;
@@ -96,6 +96,7 @@ function FocusWidget({
   untilNext: number | null;
   progress: number;
   todayKey: string;
+  holidayName?: string;
 }) {
   const urgent =
     remainingCurrent != null &&
@@ -174,6 +175,9 @@ function FocusWidget({
               <p className="mt-2.5 font-[family-name:var(--font-display)] text-xl font-medium tracking-tight text-white/70">
                 空闲中
               </p>
+              {holidayName ? (
+                <p className="mt-1 text-xs text-amber-200/50">{holidayName}</p>
+              ) : null}
               {upcoming && untilNext != null ? (
                 <p className="mt-1 text-xs text-white/35">
                   {formatDurationCompact(untilNext)}后进入下一程
@@ -223,12 +227,11 @@ export function WidgetPage() {
   useEffect(() => {
     if (!hydrated) return;
     applyWidgetOpacity(config.widgetOpacity);
-    void applyWidgetSize(config.widgetSize);
-  }, [hydrated, config.widgetOpacity, config.widgetSize]);
+  }, [hydrated, config.widgetOpacity]);
 
   useEffect(() => {
     if (!hydrated) return;
-    void restoreWidgetPosition();
+    void restoreWidgetGeometry();
   }, [hydrated]);
 
   useEffect(() => {
@@ -239,7 +242,7 @@ export function WidgetPage() {
     const scheduleSave = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        void persistCurrentWidgetPosition();
+        void persistCurrentWidgetGeometry();
       }, 400);
     };
 
@@ -285,16 +288,23 @@ export function WidgetPage() {
   }, [setConfig]);
 
   const todayKey = formatDateKey(now);
-  const items = useMemo(() => todaysItems(config.items, now), [config.items, now]);
+  const overrides = config.dayOverrides;
+  const items = useMemo(
+    () => todaysItems(config.items, now, overrides),
+    [config.items, now, overrides],
+  );
   const currentItem = useMemo(
-    () => getCurrentItem(config.items, now),
-    [config.items, now],
+    () => getCurrentItem(config.items, now, overrides),
+    [config.items, now, overrides],
   );
   const upcoming = useMemo(
-    () => getUpcomingItem(config.items, now, 7),
-    [config.items, now],
+    () => getUpcomingItem(config.items, now, 7, overrides),
+    [config.items, now, overrides],
   );
-  const holiday = useMemo(() => getTodayLabel(now), [now]);
+  const holiday = useMemo(
+    () => getTodayLabel(now, overrides),
+    [now, overrides],
+  );
   const dateText = format(now, "M月d日 EEEE", { locale: zhCN });
   const focusMode = config.widgetMode === "current";
 
@@ -322,6 +332,9 @@ export function WidgetPage() {
         untilNext={untilNext}
         progress={progress}
         todayKey={todayKey}
+        holidayName={
+          config.showHolidays && holiday.kind !== "none" ? holiday.name : undefined
+        }
       />
     );
   }

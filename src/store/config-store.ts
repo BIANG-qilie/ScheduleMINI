@@ -3,6 +3,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import {
   CONFIG_CHANGED_EVENT,
   type AppConfig,
+  type DayOverride,
   type ScheduleItem,
   defaultConfig,
   parseAppConfig,
@@ -34,7 +35,11 @@ type ConfigState = {
     value: AppConfig["reminderMinutesBefore"],
   ) => Promise<void>;
   setWidgetOpacity: (value: number) => Promise<void>;
-  setWidgetSize: (value: AppConfig["widgetSize"]) => Promise<void>;
+  setGridHours: (start: number, end: number) => Promise<void>;
+  setDayOverride: (
+    dateKey: string,
+    value: DayOverride | null,
+  ) => Promise<void>;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
 };
@@ -90,6 +95,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       recurrence,
       weekdays: recurrence === "weekly" ? item.weekdays : [],
       date: recurrence === "once" ? item.date : undefined,
+      tag: item.tag ?? "work",
     };
     const exists = config.items.some((it) => it.id === nextItem.id);
     const items = exists
@@ -146,9 +152,20 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     await setConfig({ ...config, widgetOpacity: value });
   },
 
-  setWidgetSize: async (value) => {
+  setGridHours: async (start, end) => {
     const { config, setConfig } = get();
-    await setConfig({ ...config, widgetSize: value });
+    await setConfig({ ...config, gridStartHour: start, gridEndHour: end });
+  },
+
+  setDayOverride: async (dateKey, value) => {
+    const { config, setConfig } = get();
+    const dayOverrides = { ...config.dayOverrides };
+    if (value == null) {
+      delete dayOverrides[dateKey];
+    } else {
+      dayOverrides[dateKey] = value;
+    }
+    await setConfig({ ...config, dayOverrides });
   },
 
   exportConfig: async () => {

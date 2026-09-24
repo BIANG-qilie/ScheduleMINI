@@ -8,7 +8,9 @@
   "remindersEnabled": true,
   "reminderMinutesBefore": 10,
   "widgetOpacity": 0.92,
-  "widgetSize": "M",
+  "gridStartHour": 7,
+  "gridEndHour": 22,
+  "dayOverrides": {},
   "items": [
     {
       "id": "sample-morning",
@@ -18,7 +20,8 @@
       "note": "同步今日重点",
       "weekdays": [1, 2, 3, 4, 5],
       "enabled": true,
-      "recurrence": "weekly"
+      "recurrence": "weekly",
+      "tag": "work"
     },
     {
       "id": "sample-deepwork",
@@ -28,7 +31,8 @@
       "note": "关闭通知",
       "weekdays": [1, 2, 3, 4, 5],
       "enabled": true,
-      "recurrence": "weekly"
+      "recurrence": "weekly",
+      "tag": "work"
     },
     {
       "id": "sample-review",
@@ -37,7 +41,8 @@
       "title": "复盘",
       "weekdays": [0, 6],
       "enabled": true,
-      "recurrence": "weekly"
+      "recurrence": "weekly",
+      "tag": "rest"
     },
     {
       "id": "sample-once",
@@ -47,7 +52,8 @@
       "weekdays": [],
       "enabled": true,
       "recurrence": "once",
-      "date": "2026-09-25"
+      "date": "2026-09-25",
+      "tag": "rest"
     }
   ]
 }

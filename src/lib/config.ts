@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isDayOff } from "@/lib/holidays";
 
 const TimeSchema = z
   .string()
@@ -9,6 +10,12 @@ const DateSchema = z
 
 export const RecurrenceSchema = z.enum(["weekly", "once"]);
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
+
+export const ScheduleTagSchema = z.enum(["work", "rest"]);
+export type ScheduleTag = z.infer<typeof ScheduleTagSchema>;
+
+export const DayOverrideSchema = z.enum(["off", "work"]);
+export type DayOverride = z.infer<typeof DayOverrideSchema>;
 
 export const ScheduleItemSchema = z
   .object({
@@ -23,6 +30,8 @@ export const ScheduleItemSchema = z
     recurrence: RecurrenceSchema.default("weekly"),
     /** once 时必填，YYYY-MM-DD */
     date: DateSchema.optional(),
+    /** work=放假日跳过；rest=不受放假影响 */
+    tag: ScheduleTagSchema.default("work"),
   })
   .superRefine((val, ctx) => {
     if (val.recurrence === "weekly" && val.weekdays.length === 0) {
@@ -54,33 +63,33 @@ export const ReminderMinutesSchema = z.union([
 ]);
 export type ReminderMinutes = z.infer<typeof ReminderMinutesSchema>;
 
-export const WidgetSizeSchema = z.enum(["S", "M", "L"]);
-export type WidgetSize = z.infer<typeof WidgetSizeSchema>;
-
-export const WIDGET_SIZE_PX: Record<
-  WidgetSize,
-  { width: number; height: number }
-> = {
-  S: { width: 280, height: 360 },
-  M: { width: 320, height: 440 },
-  L: { width: 380, height: 520 },
-};
-
-export const AppConfigSchema = z.object({
-  version: z.literal(1),
-  showHolidays: z.boolean(),
-  widgetVisible: z.boolean(),
-  /** full=今日全部；current=仅当前时段 + 距下一程 */
-  widgetMode: WidgetModeSchema.default("current"),
-  /** 设置页日程展示：list=列表；week=周网格（默认） */
-  settingsViewMode: SettingsViewModeSchema.default("week"),
-  autostart: z.boolean().default(false),
-  remindersEnabled: z.boolean().default(true),
-  reminderMinutesBefore: ReminderMinutesSchema.default(10),
-  widgetOpacity: z.number().min(0.4).max(1).default(0.92),
-  widgetSize: WidgetSizeSchema.default("M"),
-  items: z.array(ScheduleItemSchema),
-});
+export const AppConfigSchema = z
+  .object({
+    version: z.literal(1),
+    showHolidays: z.boolean(),
+    widgetVisible: z.boolean(),
+    /** full=今日全部；current=仅当前时段 + 距下一程 */
+    widgetMode: WidgetModeSchema.default("current"),
+    /** 设置页日程展示：list=列表；week=周网格（默认） */
+    settingsViewMode: SettingsViewModeSchema.default("week"),
+    autostart: z.boolean().default(false),
+    remindersEnabled: z.boolean().default(true),
+    reminderMinutesBefore: ReminderMinutesSchema.default(10),
+    widgetOpacity: z.number().min(0.4).max(1).default(0.92),
+    gridStartHour: z.number().int().min(5).max(12).default(7),
+    gridEndHour: z.number().int().min(14).max(24).default(22),
+    dayOverrides: z.record(z.string(), DayOverrideSchema).default({}),
+    items: z.array(ScheduleItemSchema),
+  })
+  .superRefine((val, ctx) => {
+    if (val.gridEndHour <= val.gridStartHour) {
+      ctx.addIssue({
+        code: "custom",
+        message: "结束小时须晚于开始小时",
+        path: ["gridEndHour"],
+      });
+    }
+  });
 
 export type ScheduleItem = z.infer<typeof ScheduleItemSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -106,7 +115,9 @@ export function defaultConfig(): AppConfig {
     remindersEnabled: true,
     reminderMinutesBefore: 10,
     widgetOpacity: 0.92,
-    widgetSize: "M",
+    gridStartHour: 7,
+    gridEndHour: 22,
+    dayOverrides: {},
     items: [
       {
         id: "sample-morning",
@@ -117,6 +128,7 @@ export function defaultConfig(): AppConfig {
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
         recurrence: "weekly",
+        tag: "work",
       },
       {
         id: "sample-deepwork",
@@ -127,6 +139,7 @@ export function defaultConfig(): AppConfig {
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
         recurrence: "weekly",
+        tag: "work",
       },
       {
         id: "sample-review",
@@ -136,6 +149,7 @@ export function defaultConfig(): AppConfig {
         weekdays: [0, 6],
         enabled: true,
         recurrence: "weekly",
+        tag: "rest",
       },
     ],
   };
@@ -204,16 +218,25 @@ export function itemRecurrence(item: ScheduleItem): Recurrence {
   return item.recurrence ?? "weekly";
 }
 
+export function itemTag(item: ScheduleItem): ScheduleTag {
+  return item.tag ?? "work";
+}
+
 export function itemOccursOnDate(
   item: ScheduleItem,
   dateKey: string,
   weekday = parseDateKey(dateKey).getDay(),
+  dayOverrides: Record<string, DayOverride> = {},
 ) {
   if (!item.enabled) return false;
   if (itemRecurrence(item) === "once") {
     return item.date === dateKey;
   }
-  return item.weekdays.includes(weekday);
+  if (!item.weekdays.includes(weekday)) return false;
+  if (itemTag(item) === "work" && isDayOff(dateKey, dayOverrides)) {
+    return false;
+  }
+  return true;
 }
 
 export function nowTimeString(now = new Date()) {
@@ -227,16 +250,28 @@ export function isCurrentItem(item: ScheduleItem, now = new Date()) {
   return compareTime(item.start, current) <= 0 && compareTime(current, item.end) < 0;
 }
 
-export function todaysItems(items: ScheduleItem[], now = new Date()) {
+export function todaysItems(
+  items: ScheduleItem[],
+  now = new Date(),
+  dayOverrides: Record<string, DayOverride> = {},
+) {
   const dateKey = formatDateKey(now);
   const weekday = now.getDay();
   return items
-    .filter((item) => itemOccursOnDate(item, dateKey, weekday))
+    .filter((item) => itemOccursOnDate(item, dateKey, weekday, dayOverrides))
     .sort((a, b) => compareTime(a.start, b.start));
 }
 
-export function getCurrentItem(items: ScheduleItem[], now = new Date()) {
-  return todaysItems(items, now).find((item) => isCurrentItem(item, now)) ?? null;
+export function getCurrentItem(
+  items: ScheduleItem[],
+  now = new Date(),
+  dayOverrides: Record<string, DayOverride> = {},
+) {
+  return (
+    todaysItems(items, now, dayOverrides).find((item) =>
+      isCurrentItem(item, now),
+    ) ?? null
+  );
 }
 
 export type UpcomingRef = {
@@ -248,12 +283,12 @@ export type UpcomingRef = {
 
 /**
  * 向后查找下一程（含今天尚未开始的，以及未来 7 天内的周循环/仅一次）。
- * 这样仅一次日程在「今天已结束」后仍可作为下一程出现在后续日期。
  */
 export function getUpcomingItem(
   items: ScheduleItem[],
   now = new Date(),
   horizonDays = 7,
+  dayOverrides: Record<string, DayOverride> = {},
 ): UpcomingRef | null {
   let best: UpcomingRef | null = null;
 
@@ -265,7 +300,7 @@ export function getUpcomingItem(
     const weekday = day.getDay();
 
     for (const item of items) {
-      if (!itemOccursOnDate(item, dateKey, weekday)) continue;
+      if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) continue;
       const [h, m] = item.start.split(":").map(Number);
       const at = new Date(day);
       at.setHours(h, m, 0, 0);
@@ -280,8 +315,12 @@ export function getUpcomingItem(
 }
 
 /** @deprecated 仅今日下一程；请优先用 getUpcomingItem */
-export function getNextItem(items: ScheduleItem[], now = new Date()) {
-  return getUpcomingItem(items, now, 1)?.item ?? null;
+export function getNextItem(
+  items: ScheduleItem[],
+  now = new Date(),
+  dayOverrides: Record<string, DayOverride> = {},
+) {
+  return getUpcomingItem(items, now, 1, dayOverrides)?.item ?? null;
 }
 
 export function msUntilDate(at: Date, now = new Date()) {
@@ -337,9 +376,10 @@ export function formatWeekdays(weekdays: number[]) {
 }
 
 export function formatScheduleScope(item: ScheduleItem) {
+  const tagLabel = itemTag(item) === "rest" ? "休息" : "工作";
   if (itemRecurrence(item) === "once" && item.date) {
     const d = parseDateKey(item.date);
-    return `仅一次 · ${d.getMonth() + 1}月${d.getDate()}日`;
+    return `仅一次 · ${tagLabel} · ${d.getMonth() + 1}月${d.getDate()}日`;
   }
-  return formatWeekdays(item.weekdays);
+  return `${tagLabel} · ${formatWeekdays(item.weekdays)}`;
 }

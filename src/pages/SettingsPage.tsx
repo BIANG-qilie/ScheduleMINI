@@ -26,11 +26,11 @@ import {
   type Recurrence,
   type ReminderMinutes,
   type ScheduleItem,
-  type WidgetSize,
+  type ScheduleTag,
 } from "@/lib/config";
 import { HOLIDAY_DATA_YEARS, getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
-import { applyWidgetSize, syncAutostart } from "@/lib/widget-chrome";
+import { syncAutostart } from "@/lib/widget-chrome";
 import { setWidgetVisible } from "@/lib/windows";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ type Draft = {
   enabled: boolean;
   recurrence: Recurrence;
   date: string;
+  tag: ScheduleTag;
 };
 
 const emptyDraft = (): Draft => ({
@@ -56,6 +57,7 @@ const emptyDraft = (): Draft => ({
   enabled: true,
   recurrence: "weekly",
   date: formatDateKey(new Date()),
+  tag: "work",
 });
 
 function itemToDraft(item: ScheduleItem): Draft {
@@ -69,6 +71,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     enabled: item.enabled,
     recurrence: item.recurrence ?? "weekly",
     date: item.date ?? formatDateKey(new Date()),
+    tag: item.tag ?? "work",
   };
 }
 
@@ -89,7 +92,8 @@ export function SettingsPage() {
     setRemindersEnabled,
     setReminderMinutesBefore,
     setWidgetOpacity,
-    setWidgetSize,
+    setGridHours,
+    setDayOverride,
     exportConfig,
     importConfig,
     setConfig,
@@ -116,11 +120,6 @@ export function SettingsPage() {
   }, [hydrated, config.autostart]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    void applyWidgetSize(config.widgetSize);
-  }, [hydrated, config.widgetSize]);
-
-  useEffect(() => {
     let active = true;
     let unlisten: (() => void) | undefined;
     void subscribeConfigChanges((next) => {
@@ -138,7 +137,10 @@ export function SettingsPage() {
     };
   }, [setConfig]);
 
-  const todayLabel = useMemo(() => getTodayLabel(new Date()), []);
+  const todayLabel = useMemo(
+    () => getTodayLabel(new Date(), config.dayOverrides),
+    [config.dayOverrides],
+  );
   const sortedItems = useMemo(
     () =>
       [...config.items].sort((a, b) =>
@@ -168,6 +170,7 @@ export function SettingsPage() {
       weekdays: [weekday],
       date: dateKey,
       recurrence: "weekly",
+      tag: "work",
     });
     setFormError(null);
     setEditorOpen(true);
@@ -219,6 +222,7 @@ export function SettingsPage() {
         enabled: draft.enabled,
         recurrence: draft.recurrence,
         date: draft.recurrence === "once" ? draft.date : undefined,
+        tag: draft.tag,
       });
       setEditorOpen(false);
       setStatus(draft.id ? "已更新日程" : "已添加日程");
@@ -354,8 +358,15 @@ export function SettingsPage() {
           {config.settingsViewMode === "week" ? (
             <WeekGrid
               items={config.items}
+              showHolidays={config.showHolidays}
+              dayOverrides={config.dayOverrides}
+              gridStartHour={config.gridStartHour}
+              gridEndHour={config.gridEndHour}
               onCreateAt={openCreateAt}
               onEditItem={openEdit}
+              onSetDayOverride={(dateKey, value) =>
+                void setDayOverride(dateKey, value)
+              }
             />
           ) : sortedItems.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-line)] px-4 py-10 text-center">
@@ -501,13 +512,8 @@ export function SettingsPage() {
             </div>
           ) : null}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="widget-opacity">悬浮窗透明度</Label>
-              <span className="font-mono text-xs text-[var(--color-ink-muted)]">
-                {Math.round(config.widgetOpacity * 100)}%
-              </span>
-            </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Label htmlFor="widget-opacity">悬浮窗透明度</Label>
             <input
               id="widget-opacity"
               type="range"
@@ -515,32 +521,49 @@ export function SettingsPage() {
               max={100}
               step={1}
               value={Math.round(config.widgetOpacity * 100)}
-              className="w-full accent-[var(--color-accent)]"
+              className="h-2 w-48 max-w-full accent-[var(--color-accent)]"
               onChange={(e) =>
                 void setWidgetOpacity(Number(e.target.value) / 100)
               }
             />
+            <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+              {Math.round(config.widgetOpacity * 100)}%
+            </span>
           </div>
 
-          <div className="space-y-2">
-            <Label>悬浮窗尺寸</Label>
-            <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
-              {(["S", "M", "L"] as WidgetSize[]).map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 min-w-10 items-center justify-center rounded-[5px] px-2.5 text-xs",
-                    config.widgetSize === size
-                      ? "bg-[var(--color-accent)] text-white"
-                      : "text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() => void setWidgetSize(size)}
-                >
-                  {size}
-                </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Label>周视图时段</Label>
+            <select
+              className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
+              value={config.gridStartHour}
+              onChange={(e) => {
+                const start = Number(e.target.value);
+                const end = Math.max(config.gridEndHour, start + 1);
+                void setGridHours(start, end);
+              }}
+            >
+              {Array.from({ length: 8 }, (_, i) => 5 + i).map((h) => (
+                <option key={`s-${h}`} value={h}>
+                  {String(h).padStart(2, "0")}:00
+                </option>
               ))}
-            </div>
+            </select>
+            <span className="text-sm text-[var(--color-ink-muted)]">至</span>
+            <select
+              className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
+              value={config.gridEndHour}
+              onChange={(e) => {
+                const end = Number(e.target.value);
+                const start = Math.min(config.gridStartHour, end - 1);
+                void setGridHours(start, end);
+              }}
+            >
+              {Array.from({ length: 11 }, (_, i) => 14 + i).map((h) => (
+                <option key={`e-${h}`} value={h}>
+                  {String(h).padStart(2, "0")}:00
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -652,6 +675,39 @@ export function SettingsPage() {
               仅一次
             </button>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>标签</Label>
+          <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+            <button
+              type="button"
+              className={cn(
+                "h-8 rounded-[5px] px-3 text-xs",
+                draft.tag === "work"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+              )}
+              onClick={() => setDraft((prev) => ({ ...prev, tag: "work" }))}
+            >
+              工作
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "h-8 rounded-[5px] px-3 text-xs",
+                draft.tag === "rest"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+              )}
+              onClick={() => setDraft((prev) => ({ ...prev, tag: "rest" }))}
+            >
+              休息
+            </button>
+          </div>
+          {draft.tag === "work" && draft.recurrence === "weekly" ? (
+            <p className="text-xs text-[var(--color-ink-muted)]">放假日不出现</p>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

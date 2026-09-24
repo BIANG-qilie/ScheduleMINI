@@ -1,12 +1,16 @@
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { WIDGET_SIZE_PX, type WidgetSize } from "@/lib/config";
 import { isTauriRuntime } from "@/lib/utils";
 
-const POSITION_KEY = "xiaoricheng-widget-position";
+const GEOMETRY_KEY = "xiaoricheng-widget-geometry";
 
-type StoredPosition = { x: number; y: number };
+type StoredGeometry = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 export function applyWidgetOpacity(opacity: number) {
   const clamped = Math.min(1, Math.max(0.4, opacity));
@@ -33,37 +37,18 @@ async function getWidgetWindow() {
   }
 }
 
-export async function applyWidgetSize(size: WidgetSize) {
-  const dim = WIDGET_SIZE_PX[size];
-  if (!isTauriRuntime()) {
-    if (typeof document !== "undefined") {
-      document.documentElement.style.setProperty(
-        "--widget-width",
-        `${dim.width}px`,
-      );
-      document.documentElement.style.setProperty(
-        "--widget-height",
-        `${dim.height}px`,
-      );
-    }
-    return;
-  }
-  const win = await getWidgetWindow();
-  if (!win) return;
+export function loadWidgetGeometry(): StoredGeometry | null {
   try {
-    await win.setSize(new LogicalSize(dim.width, dim.height));
-  } catch {
-    // ignore when window API unavailable
-  }
-}
-
-export function loadWidgetPosition(): StoredPosition | null {
-  try {
-    const raw = localStorage.getItem(POSITION_KEY);
+    const raw = localStorage.getItem(GEOMETRY_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredPosition;
-    if (typeof parsed.x === "number" && typeof parsed.y === "number") {
-      return parsed;
+    const parsed = JSON.parse(raw) as Partial<StoredGeometry>;
+    if (
+      typeof parsed.x === "number" &&
+      typeof parsed.y === "number" &&
+      typeof parsed.width === "number" &&
+      typeof parsed.height === "number"
+    ) {
+      return parsed as StoredGeometry;
     }
   } catch {
     // ignore
@@ -71,37 +56,41 @@ export function loadWidgetPosition(): StoredPosition | null {
   return null;
 }
 
-export function saveWidgetPosition(pos: StoredPosition) {
+export function saveWidgetGeometry(geo: StoredGeometry) {
   try {
-    localStorage.setItem(POSITION_KEY, JSON.stringify(pos));
+    localStorage.setItem(GEOMETRY_KEY, JSON.stringify(geo));
   } catch {
     // ignore
   }
 }
 
-export async function restoreWidgetPosition() {
+export async function restoreWidgetGeometry() {
   if (!isTauriRuntime()) return;
-  const pos = loadWidgetPosition();
-  if (!pos) return;
+  const geo = loadWidgetGeometry();
+  if (!geo) return;
   const win = await getWidgetWindow();
   if (!win) return;
   try {
-    await win.setPosition(new LogicalPosition(pos.x, pos.y));
+    await win.setSize(new LogicalSize(geo.width, geo.height));
+    await win.setPosition(new LogicalPosition(geo.x, geo.y));
   } catch {
     // ignore
   }
 }
 
-export async function persistCurrentWidgetPosition() {
+export async function persistCurrentWidgetGeometry() {
   if (!isTauriRuntime()) return;
   try {
     const win = getCurrentWindow();
     if (win.label !== "widget") return;
     const pos = await win.outerPosition();
+    const size = await win.outerSize();
     const scale = await win.scaleFactor();
-    saveWidgetPosition({
+    saveWidgetGeometry({
       x: pos.x / scale,
       y: pos.y / scale,
+      width: size.width / scale,
+      height: size.height / scale,
     });
   } catch {
     // ignore
