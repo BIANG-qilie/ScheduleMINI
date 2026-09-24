@@ -234,10 +234,6 @@ export function WeekGrid({ items, onCreateAt, onEditItem }: WeekGridProps) {
         })}
       </div>
       </div>
-      <p className="border-t border-[var(--color-line)] px-3 py-2 text-[11px] text-[var(--color-ink-muted)]">
-        {isCurrentWeek ? "本周" : rangeLabel} · ← → 翻周 · 点空白新建 · 点色块编辑 · 琥珀色块为仅一次 ·{" "}
-        {GRID_START}:00–{GRID_END}:00
-      </p>
     </div>
   );
 }

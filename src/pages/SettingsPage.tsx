@@ -267,7 +267,7 @@ export function SettingsPage() {
             {APP_DISPLAY_NAME}
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            管理每周循环的日程，用周视图扫结构，用悬浮窗盯当前。配置仅保存在本机。
+            周视图管日程，悬浮窗盯当前。配置保存在本机。
           </p>
         </header>
 
@@ -288,10 +288,7 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold">日程</h2>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                共 {sortedItems.length} 条 ·{" "}
-                {config.settingsViewMode === "week"
-                  ? "周视图 · 可翻周 · 点空白新建、点色块编辑"
-                  : "列表 · 按开始时间排序"}
+                共 {sortedItems.length} 条
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -339,9 +336,6 @@ export function SettingsPage() {
           ) : sortedItems.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-line)] px-4 py-10 text-center">
               <p className="text-sm font-medium">还没有日程</p>
-              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                点击「新建日程」添加第一条，或导入已有 JSON 配置。
-              </p>
             </div>
           ) : (
             <ul className="space-y-3">
@@ -425,7 +419,7 @@ export function SettingsPage() {
             <div>
               <Label htmlFor="widget-focus">悬浮窗仅显示当前时段</Label>
               <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                开启后只突出当前日程，下一程淡化显示在底部；不展示节假日条、备注与今日列表。
+                当前日程居中，下一程收在底部。
               </p>
             </div>
             <Switch
@@ -457,7 +451,7 @@ export function SettingsPage() {
               )}
             </Button>
             <p className="text-xs text-[var(--color-ink-muted)]">
-              关闭设置窗口不会退出；请从系统托盘退出。
+              从系统托盘退出。
             </p>
           </div>
         </section>
@@ -468,7 +462,7 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold">导入 / 导出</h2>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                导出当前完整 JSON 配置。导入会在确认后整份替换。
+                整份 JSON 配置。
               </p>
             </div>
           </div>
@@ -499,7 +493,6 @@ export function SettingsPage() {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         title={draft.id ? "编辑日程" : "新建日程"}
-        description="可设每周重复，或指定某一天的一次性日程。"
         footer={
           <>
             <Button

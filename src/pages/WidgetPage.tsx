@@ -171,7 +171,7 @@ function FocusWidget({
                   {formatDurationCompact(untilNext)}后进入下一程
                 </p>
               ) : (
-                <p className="mt-1 text-xs text-white/30">近几天暂无后续安排</p>
+                <p className="mt-1 text-xs text-white/30">暂无后续安排</p>
               )}
             </div>
           )}
@@ -306,9 +306,6 @@ export function WidgetPage() {
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/20 px-3 py-8 text-center">
               <p className="text-sm font-medium text-white/90">今日暂无日程</p>
-              <p className="mt-1 text-xs text-white/55">
-                在设置里添加条目，或检查今天是否有周循环/仅一次安排
-              </p>
             </div>
           ) : (
             items.map((item) => {
