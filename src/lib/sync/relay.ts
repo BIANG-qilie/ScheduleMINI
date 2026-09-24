@@ -14,18 +14,38 @@ export type RelayRoom = {
   members: RelayMember[];
 };
 
-/** Default local relay; override with VITE_SYNC_RELAY_URL for remote. */
-export function getRelayBaseUrl() {
-  const fromEnv = (import.meta.env.VITE_SYNC_RELAY_URL as string | undefined)?.trim();
+/** 内置默认中继（Railway） */
+export const BUILTIN_SYNC_RELAY_URL =
+  "https://schedulemini-production.up.railway.app";
+
+/**
+ * 解析中继基址。优先级：设置页保存值 > VITE_SYNC_RELAY_URL > 内置默认。
+ * settingsUrl 为空字符串 / null / undefined 时跳过，继续往下找。
+ */
+export function resolveRelayBaseUrl(settingsUrl?: string | null) {
+  const fromSettings = settingsUrl?.trim();
+  if (fromSettings) return fromSettings.replace(/\/$/, "");
+  const fromEnv = (
+    import.meta.env.VITE_SYNC_RELAY_URL as string | undefined
+  )?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
-  return "http://127.0.0.1:8787";
+  return BUILTIN_SYNC_RELAY_URL;
+}
+
+/** @deprecated 用 resolveRelayBaseUrl；无设置时走 VITE → 内置 */
+export function getRelayBaseUrl() {
+  return resolveRelayBaseUrl(null);
 }
 
 async function request<T>(
   path: string,
   init?: RequestInit,
-): Promise<{ ok: true; data: T } | { ok: false; error: string; status?: number }> {
-  const url = `${getRelayBaseUrl()}${path}`;
+  baseUrl?: string | null,
+): Promise<
+  { ok: true; data: T } | { ok: false; error: string; status?: number }
+> {
+  const root = resolveRelayBaseUrl(baseUrl);
+  const url = `${root}${path}`;
   try {
     const res = await fetch(url, {
       ...init,
@@ -34,7 +54,10 @@ async function request<T>(
         ...(init?.headers ?? {}),
       },
     });
-    const data = (await res.json().catch(() => ({}))) as T & { error?: string; message?: string };
+    const data = (await res.json().catch(() => ({}))) as T & {
+      error?: string;
+      message?: string;
+    };
     if (!res.ok) {
       return {
         ok: false,
@@ -48,15 +71,22 @@ async function request<T>(
       ok: false,
       error:
         e instanceof Error
-          ? `中继不可达（${getRelayBaseUrl()}）：${e.message}`
+          ? `中继不可达（${root}）：${e.message}`
           : "中继不可达",
     };
   }
 }
 
-export async function fetchRoom(inviteCode: string) {
+export async function fetchRoom(
+  inviteCode: string,
+  baseUrl?: string | null,
+) {
   const code = normalizeInviteCode(inviteCode);
-  return request<RelayRoom>(`/v1/rooms/${encodeURIComponent(code)}`);
+  return request<RelayRoom>(
+    `/v1/rooms/${encodeURIComponent(code)}`,
+    undefined,
+    baseUrl,
+  );
 }
 
 export async function pushMemberSlice(args: {
@@ -66,6 +96,7 @@ export async function pushMemberSlice(args: {
   color: string;
   payload: string;
   updatedAt: string;
+  baseUrl?: string | null;
 }) {
   const code = normalizeInviteCode(args.inviteCode);
   return request<RelayRoom>(
@@ -79,5 +110,6 @@ export async function pushMemberSlice(args: {
         updatedAt: args.updatedAt,
       }),
     },
+    args.baseUrl,
   );
 }

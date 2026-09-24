@@ -46,6 +46,7 @@ import {
   scheduleChipClass,
   TAG_SURFACE,
 } from "@/lib/schedule-style";
+import { resolveRelayBaseUrl } from "@/lib/sync/relay";
 import { syncAutostart } from "@/lib/widget-chrome";
 import { setWidgetVisible } from "@/lib/windows";
 import {
@@ -131,6 +132,7 @@ export function SettingsPage() {
     setGridHours,
     setDayOverride,
     setCoupleIdentity,
+    setSyncRelayUrl,
     createInvite,
     joinWithCode,
     unpair,
@@ -458,6 +460,36 @@ export function SettingsPage() {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sync-relay-url">同步中继</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="sync-relay-url"
+                className="font-mono text-xs"
+                placeholder={resolveRelayBaseUrl(null)}
+                value={
+                  config.syncRelayUrl ||
+                  resolveRelayBaseUrl(config.syncRelayUrl)
+                }
+                onChange={(e) => {
+                  void setSyncRelayUrl(e.target.value);
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => void setSyncRelayUrl("")}
+              >
+                恢复默认
+              </Button>
+            </div>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              生效中：{resolveRelayBaseUrl(config.syncRelayUrl)}
+            </p>
           </div>
 
           {isPaired(config.couple) ? (

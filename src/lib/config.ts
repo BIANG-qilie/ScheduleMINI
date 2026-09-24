@@ -166,6 +166,11 @@ export const AppConfigSchema = z
     gridEndHour: z.number().int().min(14).max(24).default(22),
     dayOverrides: z.record(z.string(), DayOverrideSchema).default({}),
     couple: CoupleIdentitySchema.default(() => defaultCouple()),
+    /**
+     * 同步中继基址。空字符串表示未自定义：
+     * 解析顺序为 设置值 > VITE_SYNC_RELAY_URL > 内置 Railway 默认。
+     */
+    syncRelayUrl: z.string().default(""),
     items: z.array(ScheduleItemSchema),
   })
   .superRefine((val, ctx) => {
@@ -230,6 +235,7 @@ export function defaultConfig(): AppConfig {
     gridEndHour: 22,
     dayOverrides: {},
     couple,
+    syncRelayUrl: "",
     items: [
       {
         id: "sample-morning",

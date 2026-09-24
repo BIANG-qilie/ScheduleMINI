@@ -60,6 +60,7 @@ type ConfigState = {
       >
     >,
   ) => Promise<void>;
+  setSyncRelayUrl: (url: string) => Promise<void>;
   createInvite: () => Promise<string>;
   joinWithCode: (code: string) => Promise<void>;
   unpair: () => Promise<void>;
@@ -266,6 +267,15 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     if (get().config.couple.inviteCode) void syncNow();
   },
 
+  setSyncRelayUrl: async (url) => {
+    const { config, setConfig, syncNow } = get();
+    await setConfig({
+      ...config,
+      syncRelayUrl: url.trim(),
+    });
+    if (get().config.couple.inviteCode) void syncNow();
+  },
+
   createInvite: async () => {
     const { config, setConfig, syncNow } = get();
     const code = generateInviteCode(6);
@@ -332,6 +342,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       inviteCode: code,
       couple: config.couple,
       items: config.items,
+      baseUrl: config.syncRelayUrl,
     });
     if (!pushed.ok) {
       set({ syncStatus: pushed.error });
@@ -341,6 +352,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       inviteCode: code,
       couple: get().config.couple,
       items: get().config.items,
+      baseUrl: get().config.syncRelayUrl,
     });
     if (pulled.error) {
       set({ syncStatus: pulled.error });

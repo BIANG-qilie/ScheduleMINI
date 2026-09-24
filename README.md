@@ -16,22 +16,21 @@
 2. 另一端在「我们」里输入码并「加入」  
 3. 两端自动推送自己的加密日程切片，拉取对方的；冲突按条目 `updatedAt` 后写覆盖  
 
-### 中继（默认无需自建云账号）
+### 中继（默认已连 Railway）
 
-仓库自带轻量中继（内存房间，不存明文）：
+应用默认中继：`https://schedulemini-production.up.railway.app`  
+设置 → **我们** →「同步中继」可改；「恢复默认」清空自定义。
+
+优先级：**设置页 > `VITE_SYNC_RELAY_URL` > 内置 Railway**。
+
+本地另起中继：
 
 ```bash
 npm run sync-relay
-# http://127.0.0.1:8787
+# 设置里改为 http://127.0.0.1:8787
 ```
 
-前端默认连该地址。跨设备时把 `sync-relay` 部署到任意免费 Node 主机，并设置：
-
-```bash
-VITE_SYNC_RELAY_URL=https://your-relay.example.com
-```
-
-密钥由邀请码在本地派生（AES-GCM）；中继只存密文。
+跨设备自建时部署 `sync-relay`，再在设置里填公网地址（或构建时设 `VITE_SYNC_RELAY_URL`，仅当设置项为空时生效）。
 
 ## 环境要求
 

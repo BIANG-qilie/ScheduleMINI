@@ -70,6 +70,7 @@ export async function pullAndMergePartner(args: {
   inviteCode: string;
   couple: CoupleIdentity;
   items: ScheduleItem[];
+  baseUrl?: string | null;
 }): Promise<{
   items: ScheduleItem[];
   couple: CoupleIdentity;
@@ -77,7 +78,7 @@ export async function pullAndMergePartner(args: {
   error?: string;
 }> {
   const code = normalizeInviteCode(args.inviteCode);
-  const room = await fetchRoom(code);
+  const room = await fetchRoom(code, args.baseUrl);
   if (!room.ok) {
     return {
       items: args.items,
@@ -140,6 +141,7 @@ export async function pushSelfSlice(args: {
   inviteCode: string;
   couple: CoupleIdentity;
   items: ScheduleItem[];
+  baseUrl?: string | null;
 }) {
   const code = normalizeInviteCode(args.inviteCode);
   const { payload, updatedAt } = await buildEncryptedSelfSlice(
@@ -154,5 +156,6 @@ export async function pushSelfSlice(args: {
     color: args.couple.selfColor,
     payload,
     updatedAt,
+    baseUrl: args.baseUrl,
   });
 }
