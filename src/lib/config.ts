@@ -11,8 +11,40 @@ const DateSchema = z
 export const RecurrenceSchema = z.enum(["weekly", "once"]);
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
 
-export const ScheduleTagSchema = z.enum(["work", "rest"]);
+export const ScheduleTagSchema = z.enum([
+  "work",
+  "commute",
+  "study",
+  "rest",
+  "life",
+  "other",
+]);
 export type ScheduleTag = z.infer<typeof ScheduleTagSchema>;
+
+/** 标签展示名与是否随放假跳过 */
+export const SCHEDULE_TAG_META: Record<
+  ScheduleTag,
+  { label: string; respectsHolidays: boolean }
+> = {
+  work: { label: "工作", respectsHolidays: true },
+  commute: { label: "交通", respectsHolidays: true },
+  study: { label: "学习", respectsHolidays: false },
+  rest: { label: "休息", respectsHolidays: false },
+  life: { label: "生活", respectsHolidays: false },
+  other: { label: "其他", respectsHolidays: false },
+};
+
+export const SCHEDULE_TAG_OPTIONS = (
+  Object.keys(SCHEDULE_TAG_META) as ScheduleTag[]
+).map((id) => ({ id, ...SCHEDULE_TAG_META[id] }));
+
+export function tagRespectsHolidays(tag: ScheduleTag) {
+  return SCHEDULE_TAG_META[tag]?.respectsHolidays ?? false;
+}
+
+export function formatTagLabel(tag: ScheduleTag) {
+  return SCHEDULE_TAG_META[tag]?.label ?? tag;
+}
 
 export const DayOverrideSchema = z.enum(["off", "work"]);
 export type DayOverride = z.infer<typeof DayOverrideSchema>;
@@ -30,7 +62,7 @@ export const ScheduleItemSchema = z
     recurrence: RecurrenceSchema.default("weekly"),
     /** once 时必填，YYYY-MM-DD */
     date: DateSchema.optional(),
-    /** work=放假日跳过；rest=不受放假影响 */
+    /** 标签；work/commute 放假日跳过周循环 */
     tag: ScheduleTagSchema.default("work"),
   })
   .superRefine((val, ctx) => {
@@ -267,7 +299,7 @@ export function itemOccursOnDate(
     isOvernightItem(item) && item.weekdays.includes(prevWeekday);
   if (!onStartDay && !onEndDay) return false;
 
-  if (itemTag(item) === "work") {
+  if (tagRespectsHolidays(itemTag(item))) {
     if (isDayOff(dateKey, dayOverrides)) return false;
     // 跨日次日：若起始日放假则整段不生效
     if (onEndDay && !onStartDay) {
@@ -494,7 +526,7 @@ export function formatWeekdays(weekdays: number[]) {
 }
 
 export function formatScheduleScope(item: ScheduleItem) {
-  const tagLabel = itemTag(item) === "rest" ? "休息" : "工作";
+  const tagLabel = formatTagLabel(itemTag(item));
   if (itemRecurrence(item) === "once" && item.date) {
     const d = parseDateKey(item.date);
     return `仅一次 · ${tagLabel} · ${d.getMonth() + 1}月${d.getDate()}日`;

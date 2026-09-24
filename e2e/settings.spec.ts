@@ -16,6 +16,12 @@ test.describe("小日程设置页", () => {
     await expect(
       page.getByRole("button", { name: "工作", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "交通", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "学习", exact: true }),
+    ).toBeVisible();
   });
 
   test("同点起止被拒绝", async ({ page }) => {

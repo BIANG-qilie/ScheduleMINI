@@ -118,6 +118,31 @@ describe("holidays and work tag", () => {
     };
     expect(itemOccursOnDate(item, "2026-09-25", 5, {})).toBe(false);
   });
+
+  it("skips commute on holiday, keeps study", () => {
+    const commute = {
+      id: "c",
+      start: "07:30",
+      end: "08:20",
+      title: "通勤",
+      weekdays: [5],
+      enabled: true,
+      recurrence: "weekly" as const,
+      tag: "commute" as const,
+    };
+    const study = {
+      id: "s",
+      start: "20:00",
+      end: "21:00",
+      title: "读书",
+      weekdays: [5],
+      enabled: true,
+      recurrence: "weekly" as const,
+      tag: "study" as const,
+    };
+    expect(itemOccursOnDate(commute, "2026-09-25", 5, {})).toBe(false);
+    expect(itemOccursOnDate(study, "2026-09-25", 5, {})).toBe(true);
+  });
 });
 
 describe("emptyConfig", () => {

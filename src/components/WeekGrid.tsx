@@ -7,17 +7,29 @@ import {
   formatWeekRangeLabel,
   getCurrentWeekColumns,
   getWeekAnchor,
+  formatTagLabel,
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
   itemTag,
   type DayOverride,
   type ScheduleItem,
+  type ScheduleTag,
 } from "@/lib/config";
 import { resolveDayState, type DayLabel } from "@/lib/holidays";
 import { cn } from "@/lib/utils";
 
 const DAY_PX = 52;
+
+const TAG_BLOCK_CLASS: Record<ScheduleTag, string> = {
+  work: "border border-[color-mix(in_oklab,var(--color-accent)_35%,white)] bg-[var(--color-accent-soft)]",
+  commute:
+    "border border-violet-500/35 bg-violet-50",
+  study: "border border-sky-500/35 bg-sky-50",
+  rest: "border border-emerald-500/35 bg-emerald-50",
+  life: "border border-orange-500/35 bg-orange-50",
+  other: "border border-[var(--color-line)] bg-[var(--color-bg-deep)]",
+};
 
 function timeToMinutes(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
@@ -291,21 +303,19 @@ export function WeekGrid({
                   const height = Math.max(22, ((end - start) / 60) * DAY_PX - 2);
                   const overlapOffset = (index % 3) * 4;
                   const once = itemRecurrence(item) === "once";
-                  const rest = itemTag(item) === "rest";
+                  const tag = itemTag(item);
                   const overnight =
                     segment.end === "24:00" || segment.start === "00:00";
                   return (
                     <button
                       key={`${item.id}-${col.dateKey}`}
                       type="button"
-                      title={`${item.start}–${item.end} ${item.title}${once ? "（仅一次）" : ""}${rest ? "（休息）" : ""}${overnight ? "（跨日）" : ""}`}
+                      title={`${item.start}–${item.end} ${item.title} · ${formatTagLabel(tag)}${once ? "（仅一次）" : ""}${overnight ? "（跨日）" : ""}`}
                       className={cn(
                         "absolute z-10 overflow-hidden rounded-md px-1.5 py-1 text-left shadow-sm transition hover:brightness-95",
                         once
                           ? "border border-amber-500/40 bg-amber-50"
-                          : rest
-                            ? "border border-sky-500/35 bg-sky-50"
-                            : "border border-[color-mix(in_oklab,var(--color-accent)_35%,white)] bg-[var(--color-accent-soft)]",
+                          : TAG_BLOCK_CLASS[tag],
                       )}
                       style={{
                         top,

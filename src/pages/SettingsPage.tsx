@@ -20,9 +20,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { WeekGrid } from "@/components/WeekGrid";
 import {
   APP_DISPLAY_NAME,
+  SCHEDULE_TAG_OPTIONS,
   WEEKDAY_LABELS,
   formatDateKey,
   formatScheduleScope,
+  tagRespectsHolidays,
   type Recurrence,
   type ReminderMinutes,
   type ScheduleItem,
@@ -687,33 +689,24 @@ export function SettingsPage() {
 
         <div className="space-y-2">
           <Label>标签</Label>
-          <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
-            <button
-              type="button"
-              className={cn(
-                "h-8 rounded-[5px] px-3 text-xs",
-                draft.tag === "work"
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-muted)]",
-              )}
-              onClick={() => setDraft((prev) => ({ ...prev, tag: "work" }))}
-            >
-              工作
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "h-8 rounded-[5px] px-3 text-xs",
-                draft.tag === "rest"
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-muted)]",
-              )}
-              onClick={() => setDraft((prev) => ({ ...prev, tag: "rest" }))}
-            >
-              休息
-            </button>
+          <div className="flex flex-wrap gap-1.5">
+            {SCHEDULE_TAG_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={cn(
+                  "h-8 rounded-md border px-2.5 text-xs",
+                  draft.tag === opt.id
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+                    : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
+                )}
+                onClick={() => setDraft((prev) => ({ ...prev, tag: opt.id }))}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-          {draft.tag === "work" && draft.recurrence === "weekly" ? (
+          {tagRespectsHolidays(draft.tag) && draft.recurrence === "weekly" ? (
             <p className="text-xs text-[var(--color-ink-muted)]">放假日不出现</p>
           ) : null}
         </div>
