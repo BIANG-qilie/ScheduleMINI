@@ -24,9 +24,13 @@ import {
   formatDateKey,
   formatScheduleScope,
   type Recurrence,
+  type ReminderMinutes,
   type ScheduleItem,
+  type WidgetSize,
 } from "@/lib/config";
 import { HOLIDAY_DATA_YEARS, getTodayLabel } from "@/lib/holidays";
+import { startReminderLoop } from "@/lib/reminders";
+import { applyWidgetSize, syncAutostart } from "@/lib/widget-chrome";
 import { setWidgetVisible } from "@/lib/windows";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
 import { cn } from "@/lib/utils";
@@ -81,6 +85,11 @@ export function SettingsPage() {
     setWidgetVisible: setWidgetVisibleFlag,
     setWidgetMode,
     setSettingsViewMode,
+    setAutostart,
+    setRemindersEnabled,
+    setReminderMinutesBefore,
+    setWidgetOpacity,
+    setWidgetSize,
     exportConfig,
     importConfig,
     setConfig,
@@ -95,6 +104,21 @@ export function SettingsPage() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    return startReminderLoop(() => useConfigStore.getState().config);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void syncAutostart(config.autostart);
+  }, [hydrated, config.autostart]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void applyWidgetSize(config.widgetSize);
+  }, [hydrated, config.widgetSize]);
 
   useEffect(() => {
     let active = true;
@@ -429,6 +453,94 @@ export function SettingsPage() {
                 void setWidgetMode(v ? "current" : "full")
               }
             />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="autostart">开机自启</Label>
+            </div>
+            <Switch
+              id="autostart"
+              checked={config.autostart}
+              onCheckedChange={(v) => void setAutostart(v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="reminders">课前提醒</Label>
+              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                开始前 {config.reminderMinutesBefore} 分钟通知
+              </p>
+            </div>
+            <Switch
+              id="reminders"
+              checked={config.remindersEnabled}
+              onCheckedChange={(v) => void setRemindersEnabled(v)}
+            />
+          </div>
+
+          {config.remindersEnabled ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-[var(--color-ink-muted)]">提前</span>
+              {([5, 10, 15] as ReminderMinutes[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center rounded-md border px-2.5 text-xs",
+                    config.reminderMinutesBefore === m
+                      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() => void setReminderMinutesBefore(m)}
+                >
+                  {m} 分钟
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="widget-opacity">悬浮窗透明度</Label>
+              <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+                {Math.round(config.widgetOpacity * 100)}%
+              </span>
+            </div>
+            <input
+              id="widget-opacity"
+              type="range"
+              min={40}
+              max={100}
+              step={1}
+              value={Math.round(config.widgetOpacity * 100)}
+              className="w-full accent-[var(--color-accent)]"
+              onChange={(e) =>
+                void setWidgetOpacity(Number(e.target.value) / 100)
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>悬浮窗尺寸</Label>
+            <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+              {(["S", "M", "L"] as WidgetSize[]).map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 min-w-10 items-center justify-center rounded-[5px] px-2.5 text-xs",
+                    config.widgetSize === size
+                      ? "bg-[var(--color-accent)] text-white"
+                      : "text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() => void setWidgetSize(size)}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

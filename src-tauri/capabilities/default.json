@@ -35,6 +35,14 @@
         { "path": "$HOME/**" }
       ]
     },
-    "dialog:default"
+    "dialog:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "notification:default",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-outer-position",
+    "core:window:allow-inner-size"
   ]
 }

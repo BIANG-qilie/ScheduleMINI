@@ -47,6 +47,25 @@ export type WidgetMode = z.infer<typeof WidgetModeSchema>;
 export const SettingsViewModeSchema = z.enum(["list", "week"]);
 export type SettingsViewMode = z.infer<typeof SettingsViewModeSchema>;
 
+export const ReminderMinutesSchema = z.union([
+  z.literal(5),
+  z.literal(10),
+  z.literal(15),
+]);
+export type ReminderMinutes = z.infer<typeof ReminderMinutesSchema>;
+
+export const WidgetSizeSchema = z.enum(["S", "M", "L"]);
+export type WidgetSize = z.infer<typeof WidgetSizeSchema>;
+
+export const WIDGET_SIZE_PX: Record<
+  WidgetSize,
+  { width: number; height: number }
+> = {
+  S: { width: 280, height: 360 },
+  M: { width: 320, height: 440 },
+  L: { width: 380, height: 520 },
+};
+
 export const AppConfigSchema = z.object({
   version: z.literal(1),
   showHolidays: z.boolean(),
@@ -55,6 +74,11 @@ export const AppConfigSchema = z.object({
   widgetMode: WidgetModeSchema.default("current"),
   /** 设置页日程展示：list=列表；week=周网格（默认） */
   settingsViewMode: SettingsViewModeSchema.default("week"),
+  autostart: z.boolean().default(false),
+  remindersEnabled: z.boolean().default(true),
+  reminderMinutesBefore: ReminderMinutesSchema.default(10),
+  widgetOpacity: z.number().min(0.4).max(1).default(0.92),
+  widgetSize: WidgetSizeSchema.default("M"),
   items: z.array(ScheduleItemSchema),
 });
 
@@ -78,6 +102,11 @@ export function defaultConfig(): AppConfig {
     widgetVisible: true,
     widgetMode: "current",
     settingsViewMode: "week",
+    autostart: false,
+    remindersEnabled: true,
+    reminderMinutesBefore: 10,
+    widgetOpacity: 0.92,
+    widgetSize: "M",
     items: [
       {
         id: "sample-morning",

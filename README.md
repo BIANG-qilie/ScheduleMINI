@@ -6,7 +6,9 @@ Tauri 2 + React + TypeScript 桌面应用：周视图管理日程，置顶悬浮
 
 - 日程 CRUD：每周重复或仅一次（指定日期）
 - 周视图（默认）：7 列时间轴
-- 悬浮窗 Now/Next
+- 悬浮窗 Now/Next：透明度、S/M/L 尺寸
+- 课前提醒：开始前 5/10/15 分钟系统通知
+- 开机自启
 - 系统托盘：打开设置 / 显示隐藏悬浮窗 / 退出
 - `chinese-days` 离线节假日
 - 导入导出 `AppConfig`
@@ -45,6 +47,11 @@ npm run tauri build
   "widgetVisible": true,
   "widgetMode": "current",
   "settingsViewMode": "week",
+  "autostart": false,
+  "remindersEnabled": true,
+  "reminderMinutesBefore": 10,
+  "widgetOpacity": 0.92,
+  "widgetSize": "M",
   "items": []
 }
 ```

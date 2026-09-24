@@ -28,6 +28,13 @@ type ConfigState = {
   setWidgetVisible: (value: boolean) => Promise<void>;
   setWidgetMode: (value: AppConfig["widgetMode"]) => Promise<void>;
   setSettingsViewMode: (value: AppConfig["settingsViewMode"]) => Promise<void>;
+  setAutostart: (value: boolean) => Promise<void>;
+  setRemindersEnabled: (value: boolean) => Promise<void>;
+  setReminderMinutesBefore: (
+    value: AppConfig["reminderMinutesBefore"],
+  ) => Promise<void>;
+  setWidgetOpacity: (value: number) => Promise<void>;
+  setWidgetSize: (value: AppConfig["widgetSize"]) => Promise<void>;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
 };
@@ -117,6 +124,31 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   setSettingsViewMode: async (value) => {
     const { config, setConfig } = get();
     await setConfig({ ...config, settingsViewMode: value });
+  },
+
+  setAutostart: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, autostart: value });
+  },
+
+  setRemindersEnabled: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, remindersEnabled: value });
+  },
+
+  setReminderMinutesBefore: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, reminderMinutesBefore: value });
+  },
+
+  setWidgetOpacity: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, widgetOpacity: value });
+  },
+
+  setWidgetSize: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, widgetSize: value });
   },
 
   exportConfig: async () => {

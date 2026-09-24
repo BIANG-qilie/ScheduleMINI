@@ -18,7 +18,15 @@ import {
   type ScheduleItem,
   type UpcomingRef,
 } from "@/lib/config";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getTodayLabel } from "@/lib/holidays";
+import { startReminderLoop } from "@/lib/reminders";
+import {
+  applyWidgetOpacity,
+  applyWidgetSize,
+  persistCurrentWidgetPosition,
+  restoreWidgetPosition,
+} from "@/lib/widget-chrome";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
 
 function FullModeItemCard({
@@ -206,6 +214,52 @@ export function WidgetPage() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    return startReminderLoop(() => useConfigStore.getState().config);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    applyWidgetOpacity(config.widgetOpacity);
+    void applyWidgetSize(config.widgetSize);
+  }, [hydrated, config.widgetOpacity, config.widgetSize]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void restoreWidgetPosition();
+  }, [hydrated]);
+
+  useEffect(() => {
+    let unlistenMoved: (() => void) | undefined;
+    let unlistenResized: (() => void) | undefined;
+    let timer: number | undefined;
+
+    const scheduleSave = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void persistCurrentWidgetPosition();
+      }, 400);
+    };
+
+    void (async () => {
+      try {
+        const win = getCurrentWindow();
+        if (win.label !== "widget") return;
+        unlistenMoved = await win.onMoved(() => scheduleSave());
+        unlistenResized = await win.onResized(() => scheduleSave());
+      } catch {
+        // browser preview
+      }
+    })();
+
+    return () => {
+      window.clearTimeout(timer);
+      unlistenMoved?.();
+      unlistenResized?.();
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1_000);

@@ -4,6 +4,11 @@
   "widgetVisible": true,
   "widgetMode": "current",
   "settingsViewMode": "week",
+  "autostart": false,
+  "remindersEnabled": true,
+  "reminderMinutesBefore": 10,
+  "widgetOpacity": 0.92,
+  "widgetSize": "M",
   "items": [
     {
       "id": "sample-morning",

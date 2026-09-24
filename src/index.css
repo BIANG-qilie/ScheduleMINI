@@ -48,6 +48,10 @@ body.widget-body {
   overflow: hidden;
 }
 
+body.widget-body #root {
+  opacity: var(--widget-opacity, 0.92);
+}
+
 ::-webkit-scrollbar {
   width: 8px;
 }
