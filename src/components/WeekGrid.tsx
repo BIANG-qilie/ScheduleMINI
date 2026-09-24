@@ -326,20 +326,27 @@ export function WeekGrid({
                   }
                   if (end <= start) return null;
                   const top = ((start - gridStartHour * 60) / 60) * DAY_PX;
-                  const height = Math.max(22, ((end - start) / 60) * DAY_PX - 2);
+                  // 严格按时长占位，不人为撑高以免压住下一段
+                  const height = Math.max(
+                    10,
+                    ((end - start) / 60) * DAY_PX - 1,
+                  );
                   const overlapOffset = (index % 3) * 4;
                   const once = itemRecurrence(item) === "once";
                   const commute = isCommuteItem(item);
                   const route = formatRoute(item);
                   const overnight =
                     segment.end === "24:00" || segment.start === "00:00";
+                  const showSub = height >= 28;
+                  const showOvernight = overnight && height >= 40;
                   return (
                     <button
                       key={`${item.id}-${col.dateKey}`}
                       type="button"
                       title={itemHoverText(item)}
                       className={cn(
-                        "group absolute z-10 overflow-visible rounded-md px-1.5 py-1 text-left shadow-sm transition hover:brightness-[0.97]",
+                        "group absolute z-10 overflow-hidden rounded-md text-left shadow-sm transition hover:brightness-[0.97]",
+                        height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
                         scheduleBlockClass(item),
                       )}
                       style={{
@@ -368,38 +375,39 @@ export function WeekGrid({
                         });
                       }}
                     >
-                      <div className="overflow-hidden">
-                        <p className="flex items-center gap-0.5 truncate text-[11px] font-semibold leading-tight">
+                      <div className="h-full overflow-hidden">
+                        <p
+                          className={cn(
+                            "flex items-center gap-0.5 truncate font-semibold leading-tight",
+                            height < 18 ? "text-[10px]" : "text-[11px]",
+                          )}
+                        >
                           {once ? (
                             <span
-                              className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
                               title="仅一次"
                               aria-label="仅一次"
                             />
                           ) : null}
                           <span className="truncate">{item.title}</span>
                         </p>
-                        {commute && route ? (
-                          <p className="truncate text-[10px] leading-tight opacity-80">
-                            {route}
+                        {showSub ? (
+                          commute && route ? (
+                            <p className="truncate text-[10px] leading-tight opacity-80">
+                              {route}
+                            </p>
+                          ) : (
+                            <p className="truncate font-mono text-[10px] leading-tight opacity-70">
+                              {item.start}–{item.end}
+                            </p>
+                          )
+                        ) : null}
+                        {showOvernight ? (
+                          <p className="truncate text-[9px] leading-tight opacity-55">
+                            跨日
                           </p>
-                        ) : (
-                          <p className="truncate font-mono text-[10px] opacity-70">
-                            {item.start}–{item.end}
-                          </p>
-                        )}
-                        {overnight ? (
-                          <p className="truncate text-[9px] opacity-55">跨日</p>
                         ) : null}
                       </div>
-                      {item.note?.trim() ? (
-                        <span
-                          role="tooltip"
-                          className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1 hidden w-max max-w-[180px] -translate-x-1/2 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1.5 text-left text-[11px] font-normal text-[var(--color-ink)] shadow-md group-hover:block"
-                        >
-                          {item.note.trim()}
-                        </span>
-                      ) : null}
                     </button>
                   );
                 })}
