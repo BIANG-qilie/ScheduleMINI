@@ -121,6 +121,22 @@ describe("holidays and work tag", () => {
     expect(itemOccursOnDate(item, "2026-09-25", 5, {})).toBe(false);
   });
 
+  it("keeps once work items on holiday", () => {
+    const item = {
+      id: "o",
+      start: "09:00",
+      end: "10:00",
+      title: "中秋家宴",
+      weekdays: [],
+      enabled: true,
+      recurrence: "once" as const,
+      date: "2026-09-25",
+      tag: "work" as const,
+      skippedDates: [],
+    };
+    expect(itemOccursOnDate(item, "2026-09-25", 5, {})).toBe(true);
+  });
+
   it("keeps commute and study on holiday", () => {
     const commute = {
       id: "c",

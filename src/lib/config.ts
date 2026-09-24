@@ -62,7 +62,7 @@ export const ScheduleItemSchema = z
     recurrence: RecurrenceSchema.default("weekly"),
     /** once 时必填，YYYY-MM-DD */
     date: DateSchema.optional(),
-    /** 标签；仅 work 放假日跳过周循环 */
+    /** 标签；仅 weekly + work 放假日跳过；once 不受放假影响 */
     tag: ScheduleTagSchema.default("work"),
     /** 周循环：取消单次出现的日期（YYYY-MM-DD，跨日记起始日） */
     skippedDates: z.array(DateSchema).default([]),
@@ -326,6 +326,7 @@ export function itemOccursOnDate(
   if (!item.enabled) return false;
 
   if (itemRecurrence(item) === "once") {
+    // 仅一次：按指定日期出现，不受放假/调休冲掉
     if (item.date === dateKey) return true;
     // 跨日仅一次：次日凌晨仍属该日程
     if (item.date && isOvernightItem(item)) {
