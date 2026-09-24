@@ -10,6 +10,9 @@ import {
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
+  ownerColor,
+  ownerIsSelf,
+  type CoupleIdentity,
   type DayOverride,
   type ScheduleItem,
 } from "@/lib/config";
@@ -18,7 +21,7 @@ import {
   formatRoute,
   isCommuteItem,
   itemHoverText,
-  scheduleBlockClass,
+  ownerSurfaceStyle,
 } from "@/lib/schedule-style";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +40,7 @@ function minutesToTime(total: number) {
 
 type WeekGridProps = {
   items: ScheduleItem[];
+  couple: CoupleIdentity;
   showHolidays: boolean;
   dayOverrides: Record<string, DayOverride>;
   gridStartHour: number;
@@ -64,6 +68,7 @@ type GridMenu =
 
 export function WeekGrid({
   items,
+  couple,
   showHolidays,
   dayOverrides,
   gridStartHour,
@@ -339,21 +344,24 @@ export function WeekGrid({
                     segment.end === "24:00" || segment.start === "00:00";
                   const showSub = height >= 28;
                   const showOvernight = overnight && height >= 40;
+                  const mine = ownerIsSelf(item, couple);
+                  const color = ownerColor(item, couple);
                   return (
                     <button
                       key={`${item.id}-${col.dateKey}`}
                       type="button"
                       title={itemHoverText(item)}
                       className={cn(
-                        "group absolute z-10 overflow-hidden rounded-md text-left shadow-sm transition hover:brightness-[0.97]",
+                        "group absolute z-10 overflow-hidden rounded-md border text-left shadow-sm transition hover:brightness-[0.97]",
                         height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
-                        scheduleBlockClass(item),
+                        once && "border-dashed",
                       )}
                       style={{
                         top,
                         height,
                         left: 4 + overlapOffset,
                         right: 4,
+                        ...ownerSurfaceStyle(color),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -362,7 +370,7 @@ export function WeekGrid({
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (once) {
+                        if (once || !mine) {
                           onEditItem(item, col.dateKey);
                           return;
                         }

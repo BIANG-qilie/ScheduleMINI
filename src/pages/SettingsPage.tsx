@@ -24,7 +24,11 @@ import {
   WEEKDAY_LABELS,
   formatDateKey,
   formatScheduleScope,
+  isPaired,
   itemSkippedDates,
+  ownerColor,
+  ownerIsSelf,
+  ownerLabel,
   tagRespectsHolidays,
   type Recurrence,
   type ReminderMinutes,
@@ -37,12 +41,18 @@ import {
   formatRoute,
   isCommuteItem,
   itemHoverText,
+  ownerChipStyle,
+  ownerSurfaceStyle,
   scheduleChipClass,
   TAG_SURFACE,
 } from "@/lib/schedule-style";
 import { syncAutostart } from "@/lib/widget-chrome";
 import { setWidgetVisible } from "@/lib/windows";
-import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
+import {
+  startCoupleSyncLoop,
+  subscribeConfigChanges,
+  useConfigStore,
+} from "@/store/config-store";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -120,6 +130,12 @@ export function SettingsPage() {
     setWidgetOpacity,
     setGridHours,
     setDayOverride,
+    setCoupleIdentity,
+    createInvite,
+    joinWithCode,
+    unpair,
+    syncNow,
+    syncStatus,
     exportConfig,
     importConfig,
     setConfig,
@@ -131,6 +147,7 @@ export function SettingsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState("");
 
   useEffect(() => {
     void init();
@@ -139,6 +156,11 @@ export function SettingsPage() {
   useEffect(() => {
     if (!hydrated) return;
     return startReminderLoop(() => useConfigStore.getState().config);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    return startCoupleSyncLoop(() => useConfigStore.getState().config);
   }, [hydrated]);
 
   useEffect(() => {
@@ -209,6 +231,10 @@ export function SettingsPage() {
   };
 
   const openEdit = (item: ScheduleItem, dateKey?: string) => {
+    if (!ownerIsSelf(item, config.couple)) {
+      setStatus(`这是「${ownerLabel(item, config.couple)}」的日程，只能查看`);
+      return;
+    }
     setDraft(itemToDraft(item));
     setOccurrenceDate(
       (item.recurrence ?? "weekly") === "weekly" ? (dateKey ?? null) : null,
@@ -330,7 +356,7 @@ export function SettingsPage() {
   if (!hydrated || loading) {
     return (
       <div className="flex h-full items-center justify-center bg-[linear-gradient(160deg,#f7f3ea_0%,#e9f3ef_55%,#efe8db_100%)]">
-        <p className="text-sm text-[var(--color-ink-muted)]">正在加载本地配置…</p>
+        <p className="text-sm text-[var(--color-ink-muted)]">正在加载…</p>
       </div>
     );
   }
@@ -343,7 +369,7 @@ export function SettingsPage() {
             {APP_DISPLAY_NAME}
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            周视图管日程，悬浮窗盯当前。配置保存在本机。
+            写好自己的安排，小窗里一眼看到对方现在在忙什么。少问一句「你现在干什么」。
           </p>
         </header>
 
@@ -369,9 +395,179 @@ export function SettingsPage() {
         <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
+              <h2 className="text-base font-semibold">我们</h2>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                显示名与颜色 · 邀请码配对（最多两人）
+              </p>
+            </div>
+            {config.couple.inviteCode ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void syncNow()}
+              >
+                立即同步
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+              <Label htmlFor="self-name">我的名字</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="self-name"
+                  value={config.couple.selfName}
+                  onChange={(e) =>
+                    void setCoupleIdentity({ selfName: e.target.value || "我" })
+                  }
+                />
+                <input
+                  type="color"
+                  aria-label="我的颜色"
+                  value={config.couple.selfColor}
+                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
+                  onChange={(e) =>
+                    void setCoupleIdentity({ selfColor: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+              <Label htmlFor="partner-name">对方怎么称呼</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="partner-name"
+                  value={config.couple.partnerName}
+                  onChange={(e) =>
+                    void setCoupleIdentity({
+                      partnerName: e.target.value || "对方",
+                    })
+                  }
+                />
+                <input
+                  type="color"
+                  aria-label="对方颜色"
+                  value={config.couple.partnerColor}
+                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
+                  onChange={(e) =>
+                    void setCoupleIdentity({ partnerColor: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {isPaired(config.couple) ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-sm">
+              <p>
+                已与「{config.couple.partnerName}」配对
+                {config.couple.inviteCode
+                  ? ` · 码 ${config.couple.inviteCode}`
+                  : ""}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (window.confirm("解除后将移除对方日程，确定？")) {
+                    void unpair();
+                  }
+                }}
+              >
+                解除配对
+              </Button>
+            </div>
+          ) : config.couple.inviteCode ? (
+            <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-3 text-sm">
+              <p className="font-medium">
+                邀请码{" "}
+                <span className="font-mono tracking-widest">
+                  {config.couple.inviteCode}
+                </span>
+              </p>
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                发给对方，在「加入」里输入。仍在等待对方上线同步。
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void unpair()}
+              >
+                取消邀请
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      const code = await createInvite();
+                      setStatus(`邀请码 ${code}，发给对方即可`);
+                    } catch (err) {
+                      setStatus(
+                        err instanceof Error ? err.message : String(err),
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                生成邀请码
+              </Button>
+              <div className="flex min-w-0 flex-1 gap-2">
+                <Input
+                  placeholder="输入对方的邀请码"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || !joinCode.trim()}
+                  onClick={() => {
+                    void (async () => {
+                      setBusy(true);
+                      try {
+                        await joinWithCode(joinCode);
+                        setJoinCode("");
+                        setStatus("已加入，正在同步");
+                      } catch (err) {
+                        setStatus(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  加入
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {syncStatus ? (
+            <p className="text-xs text-[var(--color-ink-muted)]">{syncStatus}</p>
+          ) : null}
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
               <h2 className="text-base font-semibold">日程</h2>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                共 {sortedItems.length} 条
+                共 {sortedItems.length} 条 · 只编自己的，对方的只读
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -413,6 +609,7 @@ export function SettingsPage() {
           {config.settingsViewMode === "week" ? (
             <WeekGrid
               items={config.items}
+              couple={config.couple}
               showHolidays={config.showHolidays}
               dayOverrides={config.dayOverrides}
               gridStartHour={config.gridStartHour}
@@ -431,7 +628,10 @@ export function SettingsPage() {
           ) : sortedItems.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-10 text-center">
               <p className="text-sm font-medium text-[var(--color-ink)]">
-                还没有日程
+                还没有安排
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                先写下你自己的一程；配对后，对方也能在小窗看到你在忙什么。
               </p>
             </div>
           ) : (
@@ -440,27 +640,28 @@ export function SettingsPage() {
                 const tag = item.tag ?? "work";
                 const route = formatRoute(item);
                 const once = (item.recurrence ?? "weekly") === "once";
+                const color = ownerColor(item, config.couple);
+                const mine = ownerIsSelf(item, config.couple);
                 return (
                   <li
                     key={item.id}
                     title={itemHoverText(item)}
                     className={cn(
                       "group relative flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:justify-between",
-                      TAG_SURFACE[tag].block,
-                      once && "ring-1 ring-dashed ring-amber-500/70",
+                      once && "border-dashed",
                     )}
+                    style={ownerSurfaceStyle(color)}
                   >
-                    <div
-                      className={cn(
-                        "absolute bottom-0 left-0 top-0 w-1 rounded-l-xl",
-                        TAG_SURFACE[tag].bar,
-                      )}
-                      aria-hidden
-                    />
                     <div className="min-w-0 space-y-1 pl-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-sm opacity-80">
                           {item.start}–{item.end}
+                        </span>
+                        <span
+                          className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium"
+                          style={ownerChipStyle(color)}
+                        >
+                          {ownerLabel(item, config.couple)}
                         </span>
                         <span className={scheduleChipClass(tag)}>
                           {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
@@ -488,28 +689,34 @@ export function SettingsPage() {
                       ) : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEdit(item)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        编辑
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="danger"
-                        size="sm"
-                        onClick={() => {
-                          if (window.confirm(`确定删除「${item.title}」？`)) {
-                            void deleteItem(item.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        删除
-                      </Button>
+                      {mine ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEdit(item)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            编辑
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            onClick={() => {
+                              if (window.confirm(`确定删除「${item.title}」？`)) {
+                                void deleteItem(item.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            删除
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="self-center text-xs opacity-55">只读</span>
+                      )}
                     </div>
                   </li>
                 );
@@ -540,9 +747,9 @@ export function SettingsPage() {
 
           <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="widget-focus">悬浮窗仅显示当前时段</Label>
+              <Label htmlFor="widget-focus">悬浮窗聚焦当前</Label>
               <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                当前日程居中，下一程收在底部。
+                双栏显示你与对方的 Now / Next。
               </p>
             </div>
             <Switch
@@ -567,9 +774,9 @@ export function SettingsPage() {
 
           <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="reminders">课前提醒</Label>
+              <Label htmlFor="reminders">开始前提醒</Label>
               <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                开始前 {config.reminderMinutesBefore} 分钟通知
+                自己的日程开始前 {config.reminderMinutesBefore} 分钟通知
               </p>
             </div>
             <Switch

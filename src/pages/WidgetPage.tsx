@@ -11,12 +11,14 @@ import {
   getCurrentItem,
   getUpcomingItem,
   isItemNow,
+  isPaired,
   itemRecurrence,
   itemTag,
   msUntilDate,
   msUntilTime,
   progressThroughItem,
   todaysItems,
+  type CoupleIdentity,
   type ScheduleItem,
   type UpcomingRef,
 } from "@/lib/config";
@@ -28,27 +30,35 @@ import {
   formatRoute,
   isCommuteItem,
 } from "@/lib/schedule-style";
+import { selfItems, partnerItems } from "@/lib/sync/couple";
 import {
   applyWidgetOpacity,
   persistCurrentWidgetGeometry,
   restoreWidgetGeometry,
 } from "@/lib/widget-chrome";
-import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
+import {
+  startCoupleSyncLoop,
+  subscribeConfigChanges,
+  useConfigStore,
+} from "@/store/config-store";
 import { cn } from "@/lib/utils";
 
 function FullModeItemCard({
   item,
   current,
   badge,
+  accent,
 }: {
   item: ScheduleItem;
   current: boolean;
   badge?: string;
+  accent?: string;
 }) {
   const once = itemRecurrence(item) === "once";
   const tag = itemTag(item);
   const style = TAG_WIDGET[tag];
   const route = formatRoute(item);
+  const line = accent || style.accent;
   return (
     <div
       className={cn(
@@ -57,11 +67,9 @@ function FullModeItemCard({
         current && "ring-1 ring-white/35",
         once && "border-dashed",
       )}
-      style={
-        current
-          ? { boxShadow: `inset 3px 0 0 ${style.accent}` }
-          : { boxShadow: `inset 3px 0 0 ${style.accent}55` }
-      }
+      style={{
+        boxShadow: `inset 3px 0 0 ${current ? line : `${line}55`}`,
+      }}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-white/70">
@@ -103,43 +111,143 @@ function upcomingLabel(ref: UpcomingRef, todayKey: string) {
   return `周${WEEKDAY_LABELS[d]} ${ref.item.start}`;
 }
 
-function FocusWidget({
+function PersonColumn({
+  name,
+  color,
   currentItem,
   upcoming,
   remainingCurrent,
   untilNext,
   progress,
   todayKey,
-  holidayName,
+  emptyHint,
 }: {
+  name: string;
+  color: string;
   currentItem: ScheduleItem | null;
   upcoming: UpcomingRef | null;
   remainingCurrent: number | null;
   untilNext: number | null;
   progress: number;
   todayKey: string;
-  holidayName?: string;
+  emptyHint?: string;
 }) {
-  const urgent =
-    remainingCurrent != null &&
-    remainingCurrent > 0 &&
-    remainingCurrent < 5 * 60_000;
-  const currentOnce =
-    currentItem != null && itemRecurrence(currentItem) === "once";
-  const nextOnce =
-    upcoming != null && itemRecurrence(upcoming.item) === "once";
-  const currentTag = currentItem ? itemTag(currentItem) : null;
-  const currentRoute = currentItem ? formatRoute(currentItem) : null;
+  const route = currentItem ? formatRoute(currentItem) : null;
   const nextRoute = upcoming ? formatRoute(upcoming.item) : null;
 
   return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex items-center gap-1.5 px-0.5">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="truncate text-[11px] font-medium text-white/70">
+          {name}
+        </span>
+      </div>
+
+      {currentItem ? (
+        <div
+          className="relative overflow-hidden rounded-xl px-2.5 py-3 text-[#041510]"
+          style={{
+            background: `linear-gradient(145deg, ${color}cc 0%, ${color} 55%, ${color}99 100%)`,
+          }}
+        >
+          <div className="flex items-center justify-between gap-1">
+            <span className="rounded bg-black/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-current/80">
+              NOW
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-current/70">
+              {remainingCurrent != null && remainingCurrent > 0
+                ? `剩 ${formatDurationCompact(remainingCurrent)}`
+                : "进行中"}
+            </span>
+          </div>
+          <p className="mt-1.5 text-base font-semibold leading-snug tracking-tight">
+            {currentItem.title}
+          </p>
+          {isCommuteItem(currentItem) && route ? (
+            <p className="mt-0.5 text-[11px] font-medium text-current/70">
+              {route}
+            </p>
+          ) : null}
+          <p className="mt-1 font-mono text-[10px] tabular-nums text-current/55">
+            {currentItem.start}–{currentItem.end}
+          </p>
+          <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-black/15">
+            <div
+              className="h-full rounded-full bg-black/35"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-2.5 py-3">
+          <span className="text-[9px] font-semibold tracking-[0.12em] text-white/35">
+            FREE
+          </span>
+          <p className="mt-1 text-sm text-white/55">空闲中</p>
+          {emptyHint ? (
+            <p className="mt-1 text-[10px] text-white/30">{emptyHint}</p>
+          ) : null}
+        </div>
+      )}
+
+      {upcoming && untilNext != null ? (
+        <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+          <p className="truncate text-[10px] text-white/35">
+            <span className="font-semibold tracking-wider text-white/25">
+              NEXT{" "}
+            </span>
+            <span className="font-mono text-white/40">
+              {upcomingLabel(upcoming, todayKey)}
+            </span>{" "}
+            {upcoming.item.title}
+            {nextRoute ? ` · ${nextRoute}` : ""}
+          </p>
+        </div>
+      ) : (
+        <p className="px-1 text-[10px] text-white/22">暂无下一程</p>
+      )}
+    </div>
+  );
+}
+
+function DualFocusWidget({
+  couple,
+  paired,
+  selfCurrent,
+  selfUpcoming,
+  partnerCurrent,
+  partnerUpcoming,
+  selfRemaining,
+  selfUntilNext,
+  partnerRemaining,
+  partnerUntilNext,
+  selfProgress,
+  partnerProgress,
+  todayKey,
+  holidayName,
+}: {
+  couple: CoupleIdentity;
+  paired: boolean;
+  selfCurrent: ScheduleItem | null;
+  selfUpcoming: UpcomingRef | null;
+  partnerCurrent: ScheduleItem | null;
+  partnerUpcoming: UpcomingRef | null;
+  selfRemaining: number | null;
+  selfUntilNext: number | null;
+  partnerRemaining: number | null;
+  partnerUntilNext: number | null;
+  selfProgress: number;
+  partnerProgress: number;
+  todayKey: string;
+  holidayName?: string;
+}) {
+  return (
     <div className="h-full p-1">
       <div className="relative flex h-full flex-col overflow-hidden rounded-[22px] border border-white/[0.08] bg-[rgba(8,14,16,0.72)] text-white shadow-[0_18px_48px_rgba(0,0,0,0.42)] backdrop-blur-xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
-        />
-
         <div
           data-tauri-drag-region
           className="absolute inset-x-0 top-0 z-10 flex h-6 cursor-grab items-center justify-center active:cursor-grabbing"
@@ -150,110 +258,44 @@ function FocusWidget({
           />
         </div>
 
-        <div className="flex flex-1 flex-col justify-center gap-3 px-3.5 pb-2 pt-6">
-          {currentItem ? (
-            <div
-              className={
-                urgent
-                  ? "widget-now-surface relative overflow-hidden rounded-2xl bg-[linear-gradient(145deg,#f0b35a_0%,#e07a3a_55%,#c45a28_100%)] px-3.5 py-4 text-[#1a0f08] shadow-[0_10px_28px_rgba(224,122,58,0.35)]"
-                  : "widget-now-surface relative overflow-hidden rounded-2xl bg-[linear-gradient(145deg,#2ae0b0_0%,#12a884_52%,#0c7a62_100%)] px-3.5 py-4 text-[#041510] shadow-[0_10px_28px_rgba(18,168,132,0.38)]"
-              }
-              style={
-                currentTag && !urgent
-                  ? {
-                      background: `linear-gradient(145deg, ${TAG_WIDGET[currentTag].accent}cc 0%, ${TAG_WIDGET[currentTag].accent} 55%, ${TAG_WIDGET[currentTag].accent}99 100%)`,
-                      color: "#041510",
-                    }
-                  : undefined
-              }
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-current/80">
-                    NOW
-                  </span>
-                  {currentTag ? (
-                    <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-[10px] font-medium text-current/70">
-                      {formatTagLabel(currentTag)}
-                    </span>
-                  ) : null}
-                  {currentOnce ? (
-                    <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-[10px] font-medium text-current/70">
-                      仅一次
-                    </span>
-                  ) : null}
-                </div>
-                <span className="font-mono text-[11px] font-semibold tabular-nums text-current/75">
-                  {remainingCurrent != null && remainingCurrent > 0
-                    ? `剩 ${formatDurationCompact(remainingCurrent)}`
-                    : "进行中"}
-                </span>
-              </div>
-
-              <p className="mt-2.5 font-[family-name:var(--font-display)] text-[1.7rem] leading-[1.15] font-semibold tracking-tight text-balance">
-                {currentItem.title}
-              </p>
-
-              {isCommuteItem(currentItem) && currentRoute ? (
-                <p className="mt-1 text-sm font-medium text-current/70">
-                  {currentRoute}
-                </p>
-              ) : null}
-
-              <p className="mt-1.5 font-mono text-[11px] tabular-nums text-current/55">
-                {currentItem.start} – {currentItem.end}
-              </p>
-
-              <div className="mt-3 h-1 overflow-hidden rounded-full bg-black/15">
-                <div
-                  className="h-full rounded-full bg-black/35 transition-[width] duration-700 ease-out"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
-                />
-              </div>
-            </div>
+        <div className="flex flex-1 gap-2 px-2.5 pb-2 pt-7">
+          <PersonColumn
+            name={couple.selfName}
+            color={couple.selfColor}
+            currentItem={selfCurrent}
+            upcoming={selfUpcoming}
+            remainingCurrent={selfRemaining}
+            untilNext={selfUntilNext}
+            progress={selfProgress}
+            todayKey={todayKey}
+          />
+          <div className="w-px shrink-0 bg-white/10" />
+          {paired ? (
+            <PersonColumn
+              name={couple.partnerName}
+              color={couple.partnerColor}
+              currentItem={partnerCurrent}
+              upcoming={partnerUpcoming}
+              remainingCurrent={partnerRemaining}
+              untilNext={partnerUntilNext}
+              progress={partnerProgress}
+              todayKey={todayKey}
+            />
           ) : (
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-5">
-              <span className="rounded-md bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-white/40">
-                FREE
-              </span>
-              <p className="mt-2.5 font-[family-name:var(--font-display)] text-xl font-medium tracking-tight text-white/70">
-                空闲中
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 rounded-xl border border-dashed border-white/15 px-2.5 py-3">
+              <p className="text-[11px] font-medium text-white/55">对方</p>
+              <p className="text-[11px] leading-relaxed text-white/35">
+                生成或输入邀请码，小窗就能并排看到彼此的 Now / Next。
               </p>
-              {holidayName ? (
-                <p className="mt-1 text-xs text-amber-200/50">{holidayName}</p>
-              ) : null}
-              {upcoming && untilNext != null ? (
-                <p className="mt-1 text-xs text-white/35">
-                  {formatDurationCompact(untilNext)}后进入下一程
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-white/30">暂无后续安排</p>
-              )}
+              <p className="text-[10px] text-white/25">打开设置页 → 我们</p>
             </div>
           )}
         </div>
 
-        {upcoming && untilNext != null ? (
-          <div className="mx-3 mb-3 flex items-center gap-2 rounded-xl bg-white/[0.03] px-2.5 py-2">
-            <span className="shrink-0 text-[9px] font-semibold tracking-[0.16em] text-white/25">
-              NEXT
-            </span>
-            <p className="min-w-0 flex-1 truncate text-[11px] text-white/32">
-              <span className="font-mono tabular-nums text-white/38">
-                {upcomingLabel(upcoming, todayKey)}
-              </span>{" "}
-              {upcoming.item.title}
-              {nextRoute ? (
-                <span className="text-white/28"> · {nextRoute}</span>
-              ) : null}
-              {nextOnce ? (
-                <span className="text-white/22"> · 仅一次</span>
-              ) : null}
-            </p>
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-white/22">
-              {formatDurationCompact(untilNext)}
-            </span>
-          </div>
+        {holidayName ? (
+          <p className="px-3 pb-2 text-center text-[10px] text-amber-200/40">
+            {holidayName}
+          </p>
         ) : null}
       </div>
     </div>
@@ -271,6 +313,11 @@ export function WidgetPage() {
   useEffect(() => {
     if (!hydrated) return;
     return startReminderLoop(() => useConfigStore.getState().config);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    return startCoupleSyncLoop(() => useConfigStore.getState().config);
   }, [hydrated]);
 
   useEffect(() => {
@@ -338,16 +385,37 @@ export function WidgetPage() {
 
   const todayKey = formatDateKey(now);
   const overrides = config.dayOverrides;
+  const couple = config.couple;
+  const paired = isPaired(couple);
+
+  const mine = useMemo(
+    () => selfItems(config.items, couple.memberId),
+    [config.items, couple.memberId],
+  );
+  const theirs = useMemo(
+    () => partnerItems(config.items, couple.memberId),
+    [config.items, couple.memberId],
+  );
+
+  const selfCurrent = useMemo(
+    () => getCurrentItem(mine, now, overrides),
+    [mine, now, overrides],
+  );
+  const selfUpcoming = useMemo(
+    () => getUpcomingItem(mine, now, 7, overrides),
+    [mine, now, overrides],
+  );
+  const partnerCurrent = useMemo(
+    () => getCurrentItem(theirs, now, overrides),
+    [theirs, now, overrides],
+  );
+  const partnerUpcoming = useMemo(
+    () => getUpcomingItem(theirs, now, 7, overrides),
+    [theirs, now, overrides],
+  );
+
   const items = useMemo(
     () => todaysItems(config.items, now, overrides),
-    [config.items, now, overrides],
-  );
-  const currentItem = useMemo(
-    () => getCurrentItem(config.items, now, overrides),
-    [config.items, now, overrides],
-  );
-  const upcoming = useMemo(
-    () => getUpcomingItem(config.items, now, 7, overrides),
     [config.items, now, overrides],
   );
   const holiday = useMemo(
@@ -357,10 +425,20 @@ export function WidgetPage() {
   const dateText = format(now, "M月d日 EEEE", { locale: zhCN });
   const focusMode = config.widgetMode === "current";
 
-  const remainingCurrent =
-    currentItem != null ? msUntilTime(currentItem.end, now) : null;
-  const untilNext = upcoming != null ? msUntilDate(upcoming.at, now) : null;
-  const progress = currentItem ? progressThroughItem(currentItem, now) : 0;
+  const selfRemaining =
+    selfCurrent != null ? msUntilTime(selfCurrent.end, now) : null;
+  const selfUntilNext =
+    selfUpcoming != null ? msUntilDate(selfUpcoming.at, now) : null;
+  const partnerRemaining =
+    partnerCurrent != null ? msUntilTime(partnerCurrent.end, now) : null;
+  const partnerUntilNext =
+    partnerUpcoming != null ? msUntilDate(partnerUpcoming.at, now) : null;
+  const selfProgress = selfCurrent
+    ? progressThroughItem(selfCurrent, now)
+    : 0;
+  const partnerProgress = partnerCurrent
+    ? progressThroughItem(partnerCurrent, now)
+    : 0;
 
   if (!hydrated || loading) {
     return (
@@ -374,15 +452,24 @@ export function WidgetPage() {
 
   if (focusMode) {
     return (
-      <FocusWidget
-        currentItem={currentItem}
-        upcoming={upcoming}
-        remainingCurrent={remainingCurrent}
-        untilNext={untilNext}
-        progress={progress}
+      <DualFocusWidget
+        couple={couple}
+        paired={paired}
+        selfCurrent={selfCurrent}
+        selfUpcoming={selfUpcoming}
+        partnerCurrent={partnerCurrent}
+        partnerUpcoming={partnerUpcoming}
+        selfRemaining={selfRemaining}
+        selfUntilNext={selfUntilNext}
+        partnerRemaining={partnerRemaining}
+        partnerUntilNext={partnerUntilNext}
+        selfProgress={selfProgress}
+        partnerProgress={partnerProgress}
         todayKey={todayKey}
         holidayName={
-          config.showHolidays && holiday.kind !== "none" ? holiday.name : undefined
+          config.showHolidays && holiday.kind !== "none"
+            ? holiday.name
+            : undefined
         }
       />
     );
@@ -395,10 +482,15 @@ export function WidgetPage() {
           data-tauri-drag-region
           className="flex cursor-grab items-center gap-2 border-b border-white/10 px-3 py-2 active:cursor-grabbing"
         >
-          <GripHorizontal className="h-4 w-4 text-white/55" data-tauri-drag-region />
+          <GripHorizontal
+            className="h-4 w-4 text-white/55"
+            data-tauri-drag-region
+          />
           <div data-tauri-drag-region className="min-w-0 flex-1">
             <p data-tauri-drag-region className="truncate text-xs text-white/60">
-              今日日程
+              {paired
+                ? `${couple.selfName} · ${couple.partnerName}`
+                : "今日安排"}
             </p>
             <p data-tauri-drag-region className="truncate text-sm font-medium">
               {dateText}
@@ -407,13 +499,7 @@ export function WidgetPage() {
         </div>
 
         {config.showHolidays && holiday.kind !== "none" ? (
-          <div
-            className={
-              holiday.kind === "work-on-weekend"
-                ? "border-b border-white/10 bg-amber-500/20 px-3 py-2 text-xs text-amber-100"
-                : "border-b border-white/10 bg-emerald-400/15 px-3 py-2 text-xs text-emerald-100"
-            }
-          >
+          <div className="border-b border-white/10 bg-emerald-400/15 px-3 py-2 text-xs text-emerald-100">
             {holiday.name}
           </div>
         ) : null}
@@ -421,20 +507,28 @@ export function WidgetPage() {
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/35 px-3 py-8 text-center">
-              <p className="text-sm font-medium text-white/90">今日暂无日程</p>
+              <p className="text-sm font-medium text-white/90">今天都空着</p>
+              <p className="mt-1 text-xs text-white/40">
+                去设置里写一程，或邀请对方同步
+              </p>
             </div>
           ) : (
             items.map((item) => {
               const current = isItemNow(item, now, overrides);
+              const accent =
+                (item.ownerId || couple.memberId) === couple.memberId
+                  ? couple.selfColor
+                  : couple.partnerColor;
               return (
                 <FullModeItemCard
                   key={item.id}
                   item={item}
                   current={current}
+                  accent={accent}
                   badge={
                     current
-                      ? remainingCurrent != null && remainingCurrent > 0
-                        ? `剩余 ${formatDurationZh(remainingCurrent)}`
+                      ? selfRemaining != null && selfRemaining > 0
+                        ? `剩余 ${formatDurationZh(selfRemaining)}`
                         : "进行中"
                       : undefined
                   }

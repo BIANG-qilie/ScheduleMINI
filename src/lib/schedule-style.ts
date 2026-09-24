@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import {
   formatTagLabel,
   itemRecurrence,
@@ -133,3 +134,21 @@ export function itemHoverText(item: ScheduleItem) {
   if (itemRecurrence(item) === "once") parts.push("仅一次");
   return parts.join("\n");
 }
+
+/** 按所属人着色（周视图 / 列表） */
+export function ownerSurfaceStyle(hex: string): CSSProperties {
+  return {
+    borderColor: `${hex}66`,
+    backgroundColor: `${hex}22`,
+    boxShadow: `inset 3px 0 0 ${hex}`,
+  };
+}
+
+export function ownerChipStyle(hex: string): CSSProperties {
+  return {
+    borderColor: `${hex}55`,
+    backgroundColor: `${hex}28`,
+    color: hex,
+  };
+}
+

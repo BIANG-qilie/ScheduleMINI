@@ -10,6 +10,7 @@ import {
   type AppConfig,
   type ScheduleItem,
 } from "@/lib/config";
+import { selfItems } from "@/lib/sync/couple";
 import { isTauriRuntime } from "@/lib/utils";
 
 const FIRED_KEY = "xiaoricheng-reminder-fired";
@@ -66,7 +67,11 @@ export async function tickReminders(config: AppConfig, now = new Date()) {
   const fired = loadFired();
   let dirty = false;
 
-  for (const item of todaysItems(config.items, now, config.dayOverrides)) {
+  for (const item of todaysItems(
+    selfItems(config.items, config.couple.memberId),
+    now,
+    config.dayOverrides,
+  )) {
     const startAt = itemStartDate(item, now);
     const delta = startAt.getTime() - now.getTime();
     if (delta <= 0 || delta > windowMs) continue;

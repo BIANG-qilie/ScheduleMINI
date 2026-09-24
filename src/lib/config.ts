@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isDayOff } from "@/lib/holidays";
+import { createId } from "@/lib/utils";
 
 const TimeSchema = z
   .string()
@@ -7,6 +8,41 @@ const TimeSchema = z
 const DateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式应为 YYYY-MM-DD");
+const HexColorSchema = z
+  .string()
+  .regex(/^#[0-9A-Fa-f]{6}$/, "颜色应为 #RRGGBB");
+
+export const DEFAULT_SELF_COLOR = "#0f766e";
+export const DEFAULT_PARTNER_COLOR = "#a21caf";
+
+export const CoupleIdentitySchema = z.object({
+  memberId: z.string().min(1),
+  selfName: z.string().trim().min(1).default("我"),
+  selfColor: HexColorSchema.default(DEFAULT_SELF_COLOR),
+  partnerName: z.string().trim().min(1).default("对方"),
+  partnerColor: HexColorSchema.default(DEFAULT_PARTNER_COLOR),
+  inviteCode: z.string().nullable().optional(),
+  partnerMemberId: z.string().nullable().optional(),
+  pairedAt: z.string().nullable().optional(),
+});
+export type CoupleIdentity = z.infer<typeof CoupleIdentitySchema>;
+
+export function defaultCouple(): CoupleIdentity {
+  return {
+    memberId: createId(),
+    selfName: "我",
+    selfColor: DEFAULT_SELF_COLOR,
+    partnerName: "对方",
+    partnerColor: DEFAULT_PARTNER_COLOR,
+    inviteCode: null,
+    partnerMemberId: null,
+    pairedAt: null,
+  };
+}
+
+export function isPaired(couple: CoupleIdentity) {
+  return Boolean(couple.inviteCode && couple.partnerMemberId);
+}
 
 export const RecurrenceSchema = z.enum(["weekly", "once"]);
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
@@ -71,6 +107,10 @@ export const ScheduleItemSchema = z
     /** 交通：出发地 / 目的地（可选） */
     origin: z.string().trim().optional(),
     destination: z.string().trim().optional(),
+    /** 所属成员；缺省视为本机 memberId */
+    ownerId: z.string().optional(),
+    /** ISO 时间；冲突时后写覆盖 */
+    updatedAt: z.string().optional(),
   })
   .superRefine((val, ctx) => {
     if (val.start === val.end) {
@@ -125,6 +165,7 @@ export const AppConfigSchema = z
     gridStartHour: z.number().int().min(5).max(12).default(7),
     gridEndHour: z.number().int().min(14).max(24).default(22),
     dayOverrides: z.record(z.string(), DayOverrideSchema).default({}),
+    couple: CoupleIdentitySchema.default(() => defaultCouple()),
     items: z.array(ScheduleItemSchema),
   })
   .superRefine((val, ctx) => {
@@ -140,6 +181,28 @@ export const AppConfigSchema = z
 export type ScheduleItem = z.infer<typeof ScheduleItemSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
+export function ownerIsSelf(
+  item: Pick<ScheduleItem, "ownerId">,
+  couple: CoupleIdentity,
+) {
+  const owner = item.ownerId || couple.memberId;
+  return owner === couple.memberId;
+}
+
+export function ownerColor(
+  item: Pick<ScheduleItem, "ownerId">,
+  couple: CoupleIdentity,
+) {
+  return ownerIsSelf(item, couple) ? couple.selfColor : couple.partnerColor;
+}
+
+export function ownerLabel(
+  item: Pick<ScheduleItem, "ownerId">,
+  couple: CoupleIdentity,
+) {
+  return ownerIsSelf(item, couple) ? couple.selfName : couple.partnerName;
+}
+
 export const CONFIG_VERSION = 1 as const;
 export const CONFIG_FILE_NAME = "config.json";
 export const CONFIG_CHANGED_EVENT = "config-changed";
@@ -151,6 +214,8 @@ export const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] 
 export const WEEK_COLUMN_DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
 
 export function defaultConfig(): AppConfig {
+  const couple = defaultCouple();
+  const now = new Date().toISOString();
   return {
     version: CONFIG_VERSION,
     showHolidays: true,
@@ -164,41 +229,48 @@ export function defaultConfig(): AppConfig {
     gridStartHour: 7,
     gridEndHour: 22,
     dayOverrides: {},
+    couple,
     items: [
       {
         id: "sample-morning",
         start: "09:00",
         end: "10:00",
-        title: "晨会",
-        note: "同步今日重点",
+        title: "一起吃早餐？或各自开工",
+        note: "写自己的安排，对方小窗也能看到",
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
         recurrence: "weekly",
-        tag: "work",
+        tag: "life",
         skippedDates: [],
+        ownerId: couple.memberId,
+        updatedAt: now,
       },
       {
         id: "sample-deepwork",
         start: "14:00",
         end: "16:00",
-        title: "深度工作",
-        note: "关闭通知",
+        title: "专注时段",
+        note: "对方会看到你在忙",
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
         recurrence: "weekly",
         tag: "work",
         skippedDates: [],
+        ownerId: couple.memberId,
+        updatedAt: now,
       },
       {
         id: "sample-review",
         start: "20:00",
         end: "20:30",
-        title: "复盘",
+        title: "晚点聊聊",
         weekdays: [0, 6],
         enabled: true,
         recurrence: "weekly",
         tag: "rest",
         skippedDates: [],
+        ownerId: couple.memberId,
+        updatedAt: now,
       },
     ],
   };
@@ -218,11 +290,20 @@ export function isOvernightItem(item: Pick<ScheduleItem, "start" | "end">) {
 }
 
 export function parseAppConfig(raw: unknown): AppConfig {
-  return AppConfigSchema.parse(raw);
+  const parsed = AppConfigSchema.parse(raw);
+  const couple = parsed.couple ?? defaultCouple();
+  const items = parsed.items.map((it) => ({
+    ...it,
+    ownerId: it.ownerId || couple.memberId,
+    updatedAt: it.updatedAt || new Date().toISOString(),
+  }));
+  return { ...parsed, couple, items };
 }
 
 export function safeParseAppConfig(raw: unknown) {
-  return AppConfigSchema.safeParse(raw);
+  const r = AppConfigSchema.safeParse(raw);
+  if (!r.success) return r;
+  return { success: true as const, data: parseAppConfig(r.data) };
 }
 
 export function compareTime(a: string, b: string) {
