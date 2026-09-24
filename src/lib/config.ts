@@ -584,23 +584,14 @@ export function formatWeekdays(weekdays: number[]) {
 }
 
 export function formatScheduleScope(item: ScheduleItem) {
-  const tagLabel = formatTagLabel(itemTag(item));
-  const route =
-    itemTag(item) === "commute"
-      ? (() => {
-          const from = item.origin?.trim();
-          const to = item.destination?.trim();
-          if (from && to) return `${from} → ${to}`;
-          return from || to || null;
-        })()
-      : null;
-  const routePart = route ? ` · ${route}` : "";
   if (itemRecurrence(item) === "once" && item.date) {
     const d = parseDateKey(item.date);
-    return `仅一次 · ${tagLabel}${routePart} · ${d.getMonth() + 1}月${d.getDate()}日`;
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
   }
-  const fromPart = item.activeFrom
-    ? ` · ${parseDateKey(item.activeFrom).getMonth() + 1}/${parseDateKey(item.activeFrom).getDate()}起`
-    : "";
-  return `${tagLabel}${routePart}${fromPart} · ${formatWeekdays(item.weekdays)}`;
+  const days = formatWeekdays(item.weekdays);
+  if (item.activeFrom) {
+    const d = parseDateKey(item.activeFrom);
+    return `${days} · ${d.getMonth() + 1}/${d.getDate()}起`;
+  }
+  return days;
 }
