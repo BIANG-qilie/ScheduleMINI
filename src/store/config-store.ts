@@ -6,9 +6,11 @@ import {
   type DayOverride,
   type ScheduleItem,
   defaultConfig,
+  emptyConfig,
   parseAppConfig,
 } from "@/lib/config";
 import {
+  ConfigLoadError,
   exportConfigToFile,
   importConfigFromFile,
   loadConfig,
@@ -64,13 +66,19 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const config = await loadConfig();
-      set({ config, loading: false, hydrated: true });
+      set({ config, loading: false, hydrated: true, error: null });
     } catch (error) {
+      const message =
+        error instanceof ConfigLoadError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : String(error);
       set({
         loading: false,
         hydrated: true,
-        error: error instanceof Error ? error.message : String(error),
-        config: defaultConfig(),
+        error: message,
+        config: emptyConfig(),
       });
     }
   },
@@ -173,13 +181,16 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   importConfig: async () => {
-    const imported = await importConfigFromFile();
-    if (!imported) return false;
+    const result = await importConfigFromFile();
+    if (!result.ok) {
+      if (result.cancelled) return false;
+      throw new Error(result.error);
+    }
     const confirmed = window.confirm(
       "导入将完整替换当前全部配置（日程、节假日开关、悬浮窗状态）。确定继续？",
     );
     if (!confirmed) return false;
-    await get().setConfig(imported);
+    await get().setConfig(result.config);
     return true;
   },
 }));

@@ -34,6 +34,13 @@ export const ScheduleItemSchema = z
     tag: ScheduleTagSchema.default("work"),
   })
   .superRefine((val, ctx) => {
+    if (val.start === val.end) {
+      ctx.addIssue({
+        code: "custom",
+        message: "结束时间不能与开始时间相同",
+        path: ["end"],
+      });
+    }
     if (val.recurrence === "weekly" && val.weekdays.length === 0) {
       ctx.addIssue({
         code: "custom",
@@ -155,6 +162,19 @@ export function defaultConfig(): AppConfig {
   };
 }
 
+/** 空配置：加载失败时用，不含样例日程 */
+export function emptyConfig(): AppConfig {
+  return {
+    ...defaultConfig(),
+    items: [],
+  };
+}
+
+/** end < start 表示跨日（过夜） */
+export function isOvernightItem(item: Pick<ScheduleItem, "start" | "end">) {
+  return compareTime(item.end, item.start) < 0;
+}
+
 export function parseAppConfig(raw: unknown): AppConfig {
   return AppConfigSchema.parse(raw);
 }
@@ -247,7 +267,16 @@ export function nowTimeString(now = new Date()) {
 
 export function isCurrentItem(item: ScheduleItem, now = new Date()) {
   const current = nowTimeString(now);
-  return compareTime(item.start, current) <= 0 && compareTime(current, item.end) < 0;
+  if (isOvernightItem(item)) {
+    // 跨日：从 start 到 24:00，或 00:00 到 end
+    return (
+      compareTime(item.start, current) <= 0 ||
+      compareTime(current, item.end) < 0
+    );
+  }
+  return (
+    compareTime(item.start, current) <= 0 && compareTime(current, item.end) < 0
+  );
 }
 
 export function todaysItems(
@@ -358,14 +387,27 @@ export function formatDurationCompact(ms: number) {
   return mins === 0 ? `${hours}时` : `${hours}时${String(mins).padStart(2, "0")}分`;
 }
 
-/** 当前时段进度 0–1 */
+/** 当前时段进度 0–1（含跨日：end < start） */
 export function progressThroughItem(item: ScheduleItem, now = new Date()) {
-  const startMs = msUntilTime(item.start, now);
-  const endMs = msUntilTime(item.end, now);
-  const total = endMs - startMs;
-  if (total <= 0) return 1;
-  const elapsed = -startMs;
-  return Math.min(1, Math.max(0, elapsed / total));
+  const [sh, sm] = item.start.split(":").map(Number);
+  const [eh, em] = item.end.split(":").map(Number);
+  const [ch, cm] = nowTimeString(now).split(":").map(Number);
+  const startMin = sh * 60 + sm;
+  const endMin = eh * 60 + em;
+  const curMin = ch * 60 + cm;
+
+  if (isOvernightItem(item)) {
+    const totalMin = 24 * 60 - startMin + endMin;
+    if (totalMin <= 0) return 1;
+    const elapsed =
+      curMin >= startMin ? curMin - startMin : 24 * 60 - startMin + curMin;
+    return Math.min(1, Math.max(0, elapsed / totalMin));
+  }
+
+  const totalMin = endMin - startMin;
+  if (totalMin <= 0) return 1;
+  const elapsed = curMin - startMin;
+  return Math.min(1, Math.max(0, elapsed / totalMin));
 }
 
 export function formatWeekdays(weekdays: number[]) {

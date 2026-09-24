@@ -39,7 +39,15 @@ npm run tauri build
 
 产物在 `src-tauri/target/release/bundle/`。
 
-## 配置格式
+## 测试
+
+```bash
+npm test              # Vitest
+npm run build && npm run test:e2e   # Playwright
+```
+
+验收基线见 [docs/acceptance.md](docs/acceptance.md)、[AGENTS.md](AGENTS.md)。
+
 
 ```json
 {

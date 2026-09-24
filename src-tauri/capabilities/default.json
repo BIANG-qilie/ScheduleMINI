@@ -31,8 +31,7 @@
         { "path": "$APPCONFIG/**" },
         { "path": "$DOWNLOAD/**" },
         { "path": "$DOCUMENT/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$HOME/**" }
+        { "path": "$DESKTOP/**" }
       ]
     },
     "dialog:default",

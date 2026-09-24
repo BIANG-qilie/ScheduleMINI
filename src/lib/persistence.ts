@@ -10,6 +10,7 @@ import {
   CONFIG_FILE_NAME,
   type AppConfig,
   defaultConfig,
+  emptyConfig,
   parseAppConfig,
   safeParseAppConfig,
 } from "@/lib/config";
@@ -17,44 +18,69 @@ import { isTauriRuntime } from "@/lib/utils";
 
 const LOCAL_STORAGE_KEY = "desktop-schedule-widget:config";
 
+export class ConfigLoadError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = "ConfigLoadError";
+    if (options?.cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
 async function ensureConfigDir() {
   try {
-    // 递归创建 AppConfig 根目录（含 ~/.config 等父路径）
     await mkdir("", { baseDir: BaseDirectory.AppConfig, recursive: true });
   } catch {
     // 目录已存在时忽略
   }
 }
 
+function parseConfigText(text: string): AppConfig {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw new ConfigLoadError(
+      `配置不是合法 JSON：${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  const parsed = safeParseAppConfig(raw);
+  if (!parsed.success) {
+    throw new ConfigLoadError(`配置校验失败：${parsed.error.message}`);
+  }
+  return parsed.data;
+}
+
+/**
+ * 加载配置。文件不存在时写入并返回默认样例；
+ * 文件损坏或校验失败时抛出 ConfigLoadError（不静默回退样例）。
+ */
 export async function loadConfig(): Promise<AppConfig> {
   if (!isTauriRuntime()) {
-    try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (!raw) return defaultConfig();
-      return parseAppConfig(JSON.parse(raw));
-    } catch {
-      return defaultConfig();
-    }
-  }
-
-  try {
-    await ensureConfigDir();
-    const fileExists = await exists(CONFIG_FILE_NAME, {
-      baseDir: BaseDirectory.AppConfig,
-    });
-    if (!fileExists) {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) {
       const initial = defaultConfig();
-      await saveConfig(initial);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initial, null, 2));
       return initial;
     }
-    const text = await readTextFile(CONFIG_FILE_NAME, {
-      baseDir: BaseDirectory.AppConfig,
-    });
-    return parseAppConfig(JSON.parse(text));
-  } catch (error) {
-    console.error("加载配置失败，使用默认配置", error);
-    return defaultConfig();
+    return parseConfigText(raw);
   }
+
+  await ensureConfigDir();
+  const fileExists = await exists(CONFIG_FILE_NAME, {
+    baseDir: BaseDirectory.AppConfig,
+  });
+  if (!fileExists) {
+    const initial = defaultConfig();
+    await saveConfig(initial);
+    return initial;
+  }
+  const text = await readTextFile(CONFIG_FILE_NAME, {
+    baseDir: BaseDirectory.AppConfig,
+  });
+  return parseConfigText(text);
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
@@ -93,7 +119,11 @@ export async function exportConfigToFile(config: AppConfig): Promise<boolean> {
   return true;
 }
 
-export async function importConfigFromFile(): Promise<AppConfig | null> {
+export type ImportResult =
+  | { ok: true; config: AppConfig }
+  | { ok: false; error: string; cancelled?: boolean };
+
+export async function importConfigFromFile(): Promise<ImportResult> {
   if (!isTauriRuntime()) {
     return new Promise((resolve) => {
       const input = document.createElement("input");
@@ -102,22 +132,22 @@ export async function importConfigFromFile(): Promise<AppConfig | null> {
       input.onchange = async () => {
         const file = input.files?.[0];
         if (!file) {
-          resolve(null);
+          resolve({ ok: false, error: "未选择文件", cancelled: true });
           return;
         }
         try {
           const text = await file.text();
-          const parsed = safeParseAppConfig(JSON.parse(text));
-          if (!parsed.success) {
-            alert(`导入失败：配置格式不正确\n${parsed.error.message}`);
-            resolve(null);
-            return;
-          }
-          resolve(parsed.data);
+          resolve({ ok: true, config: parseConfigText(text) });
         } catch (error) {
-          alert(`导入失败：${error instanceof Error ? error.message : String(error)}`);
-          resolve(null);
+          resolve({
+            ok: false,
+            error:
+              error instanceof Error ? error.message : String(error),
+          });
         }
+      };
+      input.oncancel = () => {
+        resolve({ ok: false, error: "已取消", cancelled: true });
       };
       input.click();
     });
@@ -127,17 +157,18 @@ export async function importConfigFromFile(): Promise<AppConfig | null> {
     multiple: false,
     filters: [{ name: "JSON", extensions: ["json"] }],
   });
-  if (!path || Array.isArray(path)) return null;
+  if (!path || Array.isArray(path)) {
+    return { ok: false, error: "已取消", cancelled: true };
+  }
   try {
     const text = await readTextFile(path);
-    const parsed = safeParseAppConfig(JSON.parse(text));
-    if (!parsed.success) {
-      throw new Error(parsed.error.message);
-    }
-    return parsed.data;
+    return { ok: true, config: parseConfigText(text) };
   } catch (error) {
-    throw new Error(
-      `导入失败：${error instanceof Error ? error.message : String(error)}`,
-    );
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
+
+export { emptyConfig };

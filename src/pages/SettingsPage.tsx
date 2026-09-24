@@ -206,8 +206,8 @@ export function SettingsPage() {
       setFormError("请选择日期");
       return;
     }
-    if (draft.start >= draft.end) {
-      setFormError("结束时间需晚于开始时间");
+    if (draft.start === draft.end) {
+      setFormError("结束时间不能与开始时间相同");
       return;
     }
     setBusy(true);
@@ -245,7 +245,9 @@ export function SettingsPage() {
         }
       }
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setStatus(
+        `导入失败：${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -288,9 +290,6 @@ export function SettingsPage() {
     <div className="min-h-full bg-[linear-gradient(160deg,#f7f3ea_0%,#e9f3ef_45%,#efe8db_100%)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-5 py-6">
         <header className="space-y-2">
-          <p className="text-xs font-medium tracking-[0.18em] text-[var(--color-accent)] uppercase">
-            ScheduleMINI
-          </p>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-ink)]">
             {APP_DISPLAY_NAME}
           </h1>
@@ -301,12 +300,19 @@ export function SettingsPage() {
 
         {error ? (
           <div className="rounded-lg border border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] px-4 py-3 text-sm text-[var(--color-danger)]">
-            加载出错：{error}。已回退到默认样例配置。
+            配置加载失败：{error}。已使用空日程，请修复配置文件或重新导入。
           </div>
         ) : null}
 
         {status ? (
-          <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-ink)]">
+          <div
+            className={cn(
+              "rounded-lg border px-4 py-3 text-sm",
+              status.startsWith("导入失败") || status.startsWith("配置加载")
+                ? "border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] text-[var(--color-danger)]"
+                : "border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)]",
+            )}
+          >
             {status}
           </div>
         ) : null}
@@ -369,8 +375,10 @@ export function SettingsPage() {
               }
             />
           ) : sortedItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--color-line)] px-4 py-10 text-center">
-              <p className="text-sm font-medium">还没有日程</p>
+            <div className="rounded-xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-10 text-center">
+              <p className="text-sm font-medium text-[var(--color-ink)]">
+                还没有日程
+              </p>
             </div>
           ) : (
             <ul className="space-y-3">
@@ -712,10 +720,11 @@ export function SettingsPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="start">开始</Label>
+            <Label htmlFor="start">开始（24 小时）</Label>
             <Input
               id="start"
               type="time"
+              step={60}
               value={draft.start}
               onChange={(e) =>
                 setDraft((prev) => ({ ...prev, start: e.target.value }))
@@ -723,10 +732,11 @@ export function SettingsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="end">结束</Label>
+            <Label htmlFor="end">结束（24 小时，早于开始表示跨日）</Label>
             <Input
               id="end"
               type="time"
+              step={60}
               value={draft.end}
               onChange={(e) =>
                 setDraft((prev) => ({ ...prev, end: e.target.value }))

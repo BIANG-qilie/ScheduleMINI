@@ -371,7 +371,7 @@ export function WidgetPage() {
 
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/20 px-3 py-8 text-center">
+            <div className="rounded-xl border border-dashed border-white/35 px-3 py-8 text-center">
               <p className="text-sm font-medium text-white/90">今日暂无日程</p>
             </div>
           ) : (
