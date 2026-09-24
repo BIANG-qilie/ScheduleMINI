@@ -33,6 +33,13 @@ import {
 } from "@/lib/config";
 import { HOLIDAY_DATA_YEARS, getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
+import {
+  formatRoute,
+  isCommuteItem,
+  itemHoverText,
+  scheduleChipClass,
+  TAG_SURFACE,
+} from "@/lib/schedule-style";
 import { syncAutostart } from "@/lib/widget-chrome";
 import { setWidgetVisible } from "@/lib/windows";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
@@ -49,6 +56,8 @@ type Draft = {
   recurrence: Recurrence;
   date: string;
   tag: ScheduleTag;
+  origin: string;
+  destination: string;
 };
 
 const emptyDraft = (): Draft => ({
@@ -61,6 +70,8 @@ const emptyDraft = (): Draft => ({
   recurrence: "weekly",
   date: formatDateKey(new Date()),
   tag: "work",
+  origin: "",
+  destination: "",
 });
 
 function itemToDraft(item: ScheduleItem): Draft {
@@ -75,6 +86,8 @@ function itemToDraft(item: ScheduleItem): Draft {
     recurrence: item.recurrence ?? "weekly",
     date: item.date ?? formatDateKey(new Date()),
     tag: item.tag ?? "work",
+    origin: item.origin ?? "",
+    destination: item.destination ?? "",
   };
 }
 
@@ -241,6 +254,8 @@ export function SettingsPage() {
           draft.recurrence === "weekly" && existing
             ? itemSkippedDates(existing)
             : [],
+        origin: draft.tag === "commute" ? draft.origin : undefined,
+        destination: draft.tag === "commute" ? draft.destination : undefined,
       });
       setEditorOpen(false);
       setOccurrenceDate(null);
@@ -406,58 +421,84 @@ export function SettingsPage() {
             </div>
           ) : (
             <ul className="space-y-3">
-              {sortedItems.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex flex-col gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4 sm:flex-row sm:items-start sm:justify-between"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm text-[var(--color-accent)]">
-                        {item.start}–{item.end}
-                      </span>
-                      {!item.enabled ? (
-                        <span className="text-xs text-[var(--color-ink-muted)]">
-                          已停用
+              {sortedItems.map((item) => {
+                const tag = item.tag ?? "work";
+                const route = formatRoute(item);
+                const once = (item.recurrence ?? "weekly") === "once";
+                return (
+                  <li
+                    key={item.id}
+                    title={itemHoverText(item)}
+                    className={cn(
+                      "group relative flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:justify-between",
+                      TAG_SURFACE[tag].block,
+                      once && "ring-1 ring-dashed ring-amber-500/70",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "absolute bottom-0 left-0 top-0 w-1 rounded-l-xl",
+                        TAG_SURFACE[tag].bar,
+                      )}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 space-y-1 pl-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm opacity-80">
+                          {item.start}–{item.end}
                         </span>
+                        <span className={scheduleChipClass(tag)}>
+                          {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
+                        </span>
+                        {once ? (
+                          <span className="rounded border border-amber-400/50 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                            仅一次
+                          </span>
+                        ) : null}
+                        {!item.enabled ? (
+                          <span className="text-xs opacity-60">已停用</span>
+                        ) : null}
+                      </div>
+                      <p className="truncate text-base font-medium">{item.title}</p>
+                      {isCommuteItem(item) && route ? (
+                        <p className="text-sm font-medium opacity-80">{route}</p>
+                      ) : null}
+                      <p className="text-xs opacity-60">
+                        {formatScheduleScope(item)}
+                      </p>
+                      {item.note?.trim() ? (
+                        <p className="hidden text-sm opacity-70 group-hover:block">
+                          {item.note.trim()}
+                        </p>
                       ) : null}
                     </div>
-                    <p className="truncate text-base font-medium">{item.title}</p>
-                    {item.note ? (
-                      <p className="text-sm text-[var(--color-ink-muted)]">
-                        {item.note}
-                      </p>
-                    ) : null}
-                    <p className="text-xs text-[var(--color-ink-muted)]">
-                      {formatScheduleScope(item)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEdit(item)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      编辑
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      size="sm"
-                      onClick={() => {
-                        if (window.confirm(`确定删除「${item.title}」？`)) {
-                          void deleteItem(item.id);
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      删除
-                    </Button>
-                  </div>
-                </li>
-              ))}
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEdit(item)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        编辑
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          if (window.confirm(`确定删除「${item.title}」？`)) {
+                            void deleteItem(item.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        删除
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -751,7 +792,7 @@ export function SettingsPage() {
                 className={cn(
                   "h-8 rounded-md border px-2.5 text-xs",
                   draft.tag === opt.id
-                    ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+                    ? cn(TAG_SURFACE[opt.id].chip, "ring-2 ring-offset-1")
                     : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
                 )}
                 onClick={() => setDraft((prev) => ({ ...prev, tag: opt.id }))}
@@ -764,6 +805,36 @@ export function SettingsPage() {
             <p className="text-xs text-[var(--color-ink-muted)]">放假日不出现</p>
           ) : null}
         </div>
+
+        {draft.tag === "commute" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="origin">出发地</Label>
+              <Input
+                id="origin"
+                value={draft.origin}
+                placeholder="例如：大旺"
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, origin: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="destination">目的地</Label>
+              <Input
+                id="destination"
+                value={draft.destination}
+                placeholder="例如：学校"
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    destination: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">

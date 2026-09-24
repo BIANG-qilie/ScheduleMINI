@@ -66,6 +66,9 @@ export const ScheduleItemSchema = z
     tag: ScheduleTagSchema.default("work"),
     /** 周循环：取消单次出现的日期（YYYY-MM-DD，跨日记起始日） */
     skippedDates: z.array(DateSchema).default([]),
+    /** 交通：出发地 / 目的地（可选） */
+    origin: z.string().trim().optional(),
+    destination: z.string().trim().optional(),
   })
   .superRefine((val, ctx) => {
     if (val.start === val.end) {
@@ -573,9 +576,19 @@ export function formatWeekdays(weekdays: number[]) {
 
 export function formatScheduleScope(item: ScheduleItem) {
   const tagLabel = formatTagLabel(itemTag(item));
+  const route =
+    itemTag(item) === "commute"
+      ? (() => {
+          const from = item.origin?.trim();
+          const to = item.destination?.trim();
+          if (from && to) return `${from} → ${to}`;
+          return from || to || null;
+        })()
+      : null;
+  const routePart = route ? ` · ${route}` : "";
   if (itemRecurrence(item) === "once" && item.date) {
     const d = parseDateKey(item.date);
-    return `仅一次 · ${tagLabel} · ${d.getMonth() + 1}月${d.getDate()}日`;
+    return `仅一次 · ${tagLabel}${routePart} · ${d.getMonth() + 1}月${d.getDate()}日`;
   }
-  return `${tagLabel} · ${formatWeekdays(item.weekdays)}`;
+  return `${tagLabel}${routePart} · ${formatWeekdays(item.weekdays)}`;
 }

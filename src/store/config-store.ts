@@ -110,6 +110,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       tag: item.tag ?? "work",
       skippedDates:
         recurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
+      origin:
+        (item.tag ?? "work") === "commute" && item.origin?.trim()
+          ? item.origin.trim()
+          : undefined,
+      destination:
+        (item.tag ?? "work") === "commute" && item.destination?.trim()
+          ? item.destination.trim()
+          : undefined,
     };
     const exists = config.items.some((it) => it.id === nextItem.id);
     const items = exists

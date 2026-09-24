@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
@@ -7,29 +7,22 @@ import {
   formatWeekRangeLabel,
   getCurrentWeekColumns,
   getWeekAnchor,
-  formatTagLabel,
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
-  itemTag,
   type DayOverride,
   type ScheduleItem,
-  type ScheduleTag,
 } from "@/lib/config";
 import { resolveDayState, type DayLabel } from "@/lib/holidays";
+import {
+  formatRoute,
+  isCommuteItem,
+  itemHoverText,
+  scheduleBlockClass,
+} from "@/lib/schedule-style";
 import { cn } from "@/lib/utils";
 
 const DAY_PX = 52;
-
-const TAG_BLOCK_CLASS: Record<ScheduleTag, string> = {
-  work: "border border-[color-mix(in_oklab,var(--color-accent)_35%,white)] bg-[var(--color-accent-soft)]",
-  commute:
-    "border border-violet-500/35 bg-violet-50",
-  study: "border border-sky-500/35 bg-sky-50",
-  rest: "border border-emerald-500/35 bg-emerald-50",
-  life: "border border-orange-500/35 bg-orange-50",
-  other: "border border-[var(--color-line)] bg-[var(--color-bg-deep)]",
-};
 
 function timeToMinutes(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
@@ -82,6 +75,12 @@ export function WeekGrid({
 }: WeekGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [menu, setMenu] = useState<GridMenu | null>(null);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const hours = useMemo(
     () =>
@@ -91,9 +90,9 @@ export function WeekGrid({
       ),
     [gridStartHour, gridEndHour],
   );
-  const todayKey = formatDateKey(new Date());
+  const todayKey = formatDateKey(now);
   const columns = useMemo(
-    () => getCurrentWeekColumns(getWeekAnchor(weekOffset)),
+    () => getCurrentWeekColumns(getWeekAnchor(weekOffset, now)),
     [weekOffset, todayKey],
   );
   const rangeLabel = formatWeekRangeLabel(columns);
@@ -101,6 +100,15 @@ export function WeekGrid({
   // 底边留白，避免贴底色块被圆角/滚动裁切
   const bottomPad = 12;
   const totalHeight = (gridEndHour - gridStartHour) * DAY_PX + bottomPad;
+
+  const nowLineTop = useMemo(() => {
+    if (!isCurrentWeek) return null;
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const start = gridStartHour * 60;
+    const end = gridEndHour * 60;
+    if (mins < start || mins > end) return null;
+    return ((mins - start) / 60) * DAY_PX;
+  }, [now, isCurrentWeek, gridStartHour, gridEndHour]);
 
   const enabledItems = useMemo(
     () => items.filter((it) => it.enabled).sort((a, b) => compareTime(a.start, b.start)),
@@ -321,19 +329,18 @@ export function WeekGrid({
                   const height = Math.max(22, ((end - start) / 60) * DAY_PX - 2);
                   const overlapOffset = (index % 3) * 4;
                   const once = itemRecurrence(item) === "once";
-                  const tag = itemTag(item);
+                  const commute = isCommuteItem(item);
+                  const route = formatRoute(item);
                   const overnight =
                     segment.end === "24:00" || segment.start === "00:00";
                   return (
                     <button
                       key={`${item.id}-${col.dateKey}`}
                       type="button"
-                      title={`${item.start}–${item.end} ${item.title} · ${formatTagLabel(tag)}${once ? "（仅一次）" : ""}${overnight ? "（跨日）" : ""}`}
+                      title={itemHoverText(item)}
                       className={cn(
-                        "absolute z-10 overflow-hidden rounded-md px-1.5 py-1 text-left shadow-sm transition hover:brightness-95",
-                        once
-                          ? "border border-amber-500/40 bg-amber-50"
-                          : TAG_BLOCK_CLASS[tag],
+                        "group absolute z-10 overflow-visible rounded-md px-1.5 py-1 text-left shadow-sm transition hover:brightness-[0.97]",
+                        scheduleBlockClass(item),
                       )}
                       style={{
                         top,
@@ -361,15 +368,52 @@ export function WeekGrid({
                         });
                       }}
                     >
-                      <p className="truncate text-[11px] font-semibold leading-tight text-[var(--color-ink)]">
-                        {once ? `单·${item.title}` : item.title}
-                      </p>
-                      <p className="truncate font-mono text-[10px] text-[var(--color-ink-muted)]">
-                        {item.start}–{item.end}
-                      </p>
+                      <div className="overflow-hidden">
+                        <p className="flex items-center gap-0.5 truncate text-[11px] font-semibold leading-tight">
+                          {once ? (
+                            <span
+                              className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                              title="仅一次"
+                              aria-label="仅一次"
+                            />
+                          ) : null}
+                          <span className="truncate">{item.title}</span>
+                        </p>
+                        {commute && route ? (
+                          <p className="truncate text-[10px] leading-tight opacity-80">
+                            {route}
+                          </p>
+                        ) : (
+                          <p className="truncate font-mono text-[10px] opacity-70">
+                            {item.start}–{item.end}
+                          </p>
+                        )}
+                        {overnight ? (
+                          <p className="truncate text-[9px] opacity-55">跨日</p>
+                        ) : null}
+                      </div>
+                      {item.note?.trim() ? (
+                        <span
+                          role="tooltip"
+                          className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1 hidden w-max max-w-[180px] -translate-x-1/2 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1.5 text-left text-[11px] font-normal text-[var(--color-ink)] shadow-md group-hover:block"
+                        >
+                          {item.note.trim()}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
+
+                {col.dateKey === todayKey && nowLineTop != null ? (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 z-30"
+                    style={{ top: nowLineTop }}
+                  >
+                    <div className="relative border-t-2 border-rose-500">
+                      <span className="absolute -left-1 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-rose-500 shadow" />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}

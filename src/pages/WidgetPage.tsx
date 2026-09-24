@@ -7,10 +7,12 @@ import {
   formatDateKey,
   formatDurationCompact,
   formatDurationZh,
+  formatTagLabel,
   getCurrentItem,
   getUpcomingItem,
   isItemNow,
   itemRecurrence,
+  itemTag,
   msUntilDate,
   msUntilTime,
   progressThroughItem,
@@ -22,11 +24,17 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
+  TAG_WIDGET,
+  formatRoute,
+  isCommuteItem,
+} from "@/lib/schedule-style";
+import {
   applyWidgetOpacity,
   persistCurrentWidgetGeometry,
   restoreWidgetGeometry,
 } from "@/lib/widget-chrome";
 import { subscribeConfigChanges, useConfigStore } from "@/store/config-store";
+import { cn } from "@/lib/utils";
 
 function FullModeItemCard({
   item,
@@ -38,36 +46,50 @@ function FullModeItemCard({
   badge?: string;
 }) {
   const once = itemRecurrence(item) === "once";
+  const tag = itemTag(item);
+  const style = TAG_WIDGET[tag];
+  const route = formatRoute(item);
   return (
     <div
-      className={
+      className={cn(
+        "rounded-xl border px-3 py-2.5",
+        style.card,
+        current && "ring-1 ring-white/35",
+        once && "border-dashed",
+      )}
+      style={
         current
-          ? "rounded-xl border border-emerald-300/50 bg-emerald-400/20 px-3 py-2.5"
-          : "rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
+          ? { boxShadow: `inset 3px 0 0 ${style.accent}` }
+          : { boxShadow: `inset 3px 0 0 ${style.accent}55` }
       }
     >
       <div className="flex items-center justify-between gap-2">
-        <span
-          className={
-            current
-              ? "font-mono text-xs text-emerald-100"
-              : "font-mono text-xs text-white/65"
-          }
-        >
+        <span className="font-mono text-xs text-white/70">
           {item.start}–{item.end}
         </span>
         <div className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] font-medium",
+              style.badge,
+            )}
+          >
+            {formatTagLabel(tag)}
+          </span>
           {once ? (
             <span className="text-[10px] text-amber-200/80">仅一次</span>
           ) : null}
           {badge ? (
-            <span className="text-[10px] tracking-wide text-emerald-100">
+            <span className="text-[10px] tracking-wide text-white/75">
               {badge}
             </span>
           ) : null}
         </div>
       </div>
       <p className="mt-1 text-sm font-medium leading-snug">{item.title}</p>
+      {isCommuteItem(item) && route ? (
+        <p className="mt-0.5 text-xs font-medium text-violet-100/90">{route}</p>
+      ) : null}
       {item.note ? (
         <p className="mt-0.5 text-xs text-white/55">{item.note}</p>
       ) : null}
@@ -106,6 +128,9 @@ function FocusWidget({
     currentItem != null && itemRecurrence(currentItem) === "once";
   const nextOnce =
     upcoming != null && itemRecurrence(upcoming.item) === "once";
+  const currentTag = currentItem ? itemTag(currentItem) : null;
+  const currentRoute = currentItem ? formatRoute(currentItem) : null;
+  const nextRoute = upcoming ? formatRoute(upcoming.item) : null;
 
   return (
     <div className="h-full p-1">
@@ -133,12 +158,25 @@ function FocusWidget({
                   ? "widget-now-surface relative overflow-hidden rounded-2xl bg-[linear-gradient(145deg,#f0b35a_0%,#e07a3a_55%,#c45a28_100%)] px-3.5 py-4 text-[#1a0f08] shadow-[0_10px_28px_rgba(224,122,58,0.35)]"
                   : "widget-now-surface relative overflow-hidden rounded-2xl bg-[linear-gradient(145deg,#2ae0b0_0%,#12a884_52%,#0c7a62_100%)] px-3.5 py-4 text-[#041510] shadow-[0_10px_28px_rgba(18,168,132,0.38)]"
               }
+              style={
+                currentTag && !urgent
+                  ? {
+                      background: `linear-gradient(145deg, ${TAG_WIDGET[currentTag].accent}cc 0%, ${TAG_WIDGET[currentTag].accent} 55%, ${TAG_WIDGET[currentTag].accent}99 100%)`,
+                      color: "#041510",
+                    }
+                  : undefined
+              }
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
                   <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-current/80">
                     NOW
                   </span>
+                  {currentTag ? (
+                    <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-[10px] font-medium text-current/70">
+                      {formatTagLabel(currentTag)}
+                    </span>
+                  ) : null}
                   {currentOnce ? (
                     <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-[10px] font-medium text-current/70">
                       仅一次
@@ -155,6 +193,12 @@ function FocusWidget({
               <p className="mt-2.5 font-[family-name:var(--font-display)] text-[1.7rem] leading-[1.15] font-semibold tracking-tight text-balance">
                 {currentItem.title}
               </p>
+
+              {isCommuteItem(currentItem) && currentRoute ? (
+                <p className="mt-1 text-sm font-medium text-current/70">
+                  {currentRoute}
+                </p>
+              ) : null}
 
               <p className="mt-1.5 font-mono text-[11px] tabular-nums text-current/55">
                 {currentItem.start} – {currentItem.end}
@@ -199,7 +243,12 @@ function FocusWidget({
                 {upcomingLabel(upcoming, todayKey)}
               </span>{" "}
               {upcoming.item.title}
-              {nextOnce ? <span className="text-white/22"> · 仅一次</span> : null}
+              {nextRoute ? (
+                <span className="text-white/28"> · {nextRoute}</span>
+              ) : null}
+              {nextOnce ? (
+                <span className="text-white/22"> · 仅一次</span>
+              ) : null}
             </p>
             <span className="shrink-0 font-mono text-[10px] tabular-nums text-white/22">
               {formatDurationCompact(untilNext)}
