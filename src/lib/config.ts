@@ -27,7 +27,7 @@ export const SCHEDULE_TAG_META: Record<
   { label: string; respectsHolidays: boolean }
 > = {
   work: { label: "工作", respectsHolidays: true },
-  commute: { label: "交通", respectsHolidays: true },
+  commute: { label: "交通", respectsHolidays: false },
   study: { label: "学习", respectsHolidays: false },
   rest: { label: "休息", respectsHolidays: false },
   life: { label: "生活", respectsHolidays: false },
@@ -62,7 +62,7 @@ export const ScheduleItemSchema = z
     recurrence: RecurrenceSchema.default("weekly"),
     /** once 时必填，YYYY-MM-DD */
     date: DateSchema.optional(),
-    /** 标签；work/commute 放假日跳过周循环 */
+    /** 标签；仅 work 放假日跳过周循环 */
     tag: ScheduleTagSchema.default("work"),
   })
   .superRefine((val, ctx) => {
