@@ -55,26 +55,33 @@ type Draft = {
   enabled: boolean;
   recurrence: Recurrence;
   date: string;
+  /** 周循环生效日起（含） */
+  activeFrom: string;
   tag: ScheduleTag;
   origin: string;
   destination: string;
 };
 
-const emptyDraft = (): Draft => ({
-  start: "09:00",
-  end: "10:00",
-  title: "",
-  note: "",
-  weekdays: [1, 2, 3, 4, 5],
-  enabled: true,
-  recurrence: "weekly",
-  date: formatDateKey(new Date()),
-  tag: "work",
-  origin: "",
-  destination: "",
-});
+const emptyDraft = (): Draft => {
+  const today = formatDateKey(new Date());
+  return {
+    start: "09:00",
+    end: "10:00",
+    title: "",
+    note: "",
+    weekdays: [1, 2, 3, 4, 5],
+    enabled: true,
+    recurrence: "weekly",
+    date: today,
+    activeFrom: today,
+    tag: "work",
+    origin: "",
+    destination: "",
+  };
+};
 
 function itemToDraft(item: ScheduleItem): Draft {
+  const today = formatDateKey(new Date());
   return {
     id: item.id,
     start: item.start,
@@ -84,7 +91,8 @@ function itemToDraft(item: ScheduleItem): Draft {
     weekdays: [...item.weekdays],
     enabled: item.enabled,
     recurrence: item.recurrence ?? "weekly",
-    date: item.date ?? formatDateKey(new Date()),
+    date: item.date ?? today,
+    activeFrom: item.activeFrom ?? today,
     tag: item.tag ?? "work",
     origin: item.origin ?? "",
     destination: item.destination ?? "",
@@ -183,12 +191,15 @@ export function SettingsPage() {
     start: string,
     end: string,
   ) => {
+    const today = formatDateKey(new Date());
+    const activeFrom = dateKey < today ? today : dateKey;
     setDraft({
       ...emptyDraft(),
       start,
       end,
       weekdays: [weekday],
       date: dateKey,
+      activeFrom,
       recurrence: "weekly",
       tag: "work",
     });
@@ -250,6 +261,10 @@ export function SettingsPage() {
         recurrence: draft.recurrence,
         date: draft.recurrence === "once" ? draft.date : undefined,
         tag: draft.tag,
+        activeFrom:
+          draft.recurrence === "weekly" && draft.activeFrom
+            ? draft.activeFrom
+            : undefined,
         skippedDates:
           draft.recurrence === "weekly" && existing
             ? itemSkippedDates(existing)
@@ -896,6 +911,23 @@ export function SettingsPage() {
                   </button>
                 );
               })}
+            </div>
+            <div className="space-y-2 pt-2">
+              <Label htmlFor="active-from">从此日起生效</Label>
+              <Input
+                id="active-from"
+                type="date"
+                value={draft.activeFrom}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    activeFrom: e.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                该日之前不出现
+              </p>
             </div>
           </div>
         )}

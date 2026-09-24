@@ -66,6 +66,8 @@ export const ScheduleItemSchema = z
     tag: ScheduleTagSchema.default("work"),
     /** 周循环：取消单次出现的日期（YYYY-MM-DD，跨日记起始日） */
     skippedDates: z.array(DateSchema).default([]),
+    /** 周循环：从此日（含）起才出现；缺省表示不限起点 */
+    activeFrom: DateSchema.optional(),
     /** 交通：出发地 / 目的地（可选） */
     origin: z.string().trim().optional(),
     destination: z.string().trim().optional(),
@@ -348,6 +350,13 @@ export function itemOccursOnDate(
 
   if (isOccurrenceSkipped(item, dateKey, weekday)) return false;
 
+  // 周循环生效日：以本次出现的起始日为锚，早于 activeFrom 不出现
+  const activeFrom = item.activeFrom;
+  if (activeFrom) {
+    const anchor = occurrenceAnchorDate(item, dateKey, weekday);
+    if (anchor < activeFrom) return false;
+  }
+
   if (tagRespectsHolidays(itemTag(item))) {
     if (isDayOff(dateKey, dayOverrides)) return false;
     // 跨日次日：若起始日放假则整段不生效
@@ -590,5 +599,8 @@ export function formatScheduleScope(item: ScheduleItem) {
     const d = parseDateKey(item.date);
     return `仅一次 · ${tagLabel}${routePart} · ${d.getMonth() + 1}月${d.getDate()}日`;
   }
-  return `${tagLabel}${routePart} · ${formatWeekdays(item.weekdays)}`;
+  const fromPart = item.activeFrom
+    ? ` · ${parseDateKey(item.activeFrom).getMonth() + 1}/${parseDateKey(item.activeFrom).getDate()}起`
+    : "";
+  return `${tagLabel}${routePart}${fromPart} · ${formatWeekdays(item.weekdays)}`;
 }

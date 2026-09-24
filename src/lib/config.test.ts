@@ -189,6 +189,24 @@ describe("holidays and work tag", () => {
     expect(itemOccursOnDate(item, "2026-09-22", 2, {})).toBe(false);
     expect(itemOccursOnDate(item, "2026-09-28", 1, {})).toBe(true);
   });
+
+  it("respects weekly activeFrom date", () => {
+    const item = {
+      id: "w",
+      start: "09:00",
+      end: "10:00",
+      title: "站会",
+      weekdays: [1, 2, 3, 4, 5],
+      enabled: true,
+      recurrence: "weekly" as const,
+      tag: "work" as const,
+      skippedDates: [],
+      activeFrom: "2026-09-24",
+    };
+    expect(itemOccursOnDate(item, "2026-09-23", 3, {})).toBe(false);
+    expect(itemOccursOnDate(item, "2026-09-24", 4, {})).toBe(true);
+    expect(itemOccursOnDate(item, "2026-09-28", 1, {})).toBe(true);
+  });
 });
 
 describe("emptyConfig", () => {
