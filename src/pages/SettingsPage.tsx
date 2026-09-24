@@ -290,7 +290,7 @@ export function SettingsPage() {
               <p className="text-sm text-[var(--color-ink-muted)]">
                 共 {sortedItems.length} 条 ·{" "}
                 {config.settingsViewMode === "week"
-                  ? "周视图 · 点空白新建、点色块编辑"
+                  ? "周视图 · 可翻周 · 点空白新建、点色块编辑"
                   : "列表 · 按开始时间排序"}
               </p>
             </div>

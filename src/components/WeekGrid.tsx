@@ -1,9 +1,12 @@
-import { useMemo, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
   compareTime,
   formatDateKey,
+  formatWeekRangeLabel,
   getCurrentWeekColumns,
+  getWeekAnchor,
   itemOccursOnDate,
   itemRecurrence,
   type ScheduleItem,
@@ -43,15 +46,18 @@ type WeekGridProps = {
 };
 
 export function WeekGrid({ items, onCreateAt, onEditItem }: WeekGridProps) {
+  const [weekOffset, setWeekOffset] = useState(0);
   const hours = useMemo(
     () => Array.from({ length: GRID_END - GRID_START }, (_, i) => GRID_START + i),
     [],
   );
   const todayKey = formatDateKey(new Date());
   const columns = useMemo(
-    () => getCurrentWeekColumns(new Date()),
-    [todayKey],
+    () => getCurrentWeekColumns(getWeekAnchor(weekOffset)),
+    [weekOffset, todayKey],
   );
+  const rangeLabel = formatWeekRangeLabel(columns);
+  const isCurrentWeek = weekOffset === 0;
   const totalHeight = (GRID_END - GRID_START) * DAY_PX;
 
   const enabledItems = useMemo(
@@ -75,7 +81,50 @@ export function WeekGrid({ items, onCreateAt, onEditItem }: WeekGridProps) {
   };
 
   return (
-    <div className="overflow-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]">
+    <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-line)] px-3 py-2">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="上一周"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
+            onClick={() => setWeekOffset((o) => o - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="下一周"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
+            onClick={() => setWeekOffset((o) => o + 1)}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          {!isCurrentWeek ? (
+            <button
+              type="button"
+              className="ml-1 inline-flex h-8 items-center rounded-md border border-[var(--color-line)] px-2.5 text-xs text-[var(--color-ink-muted)] transition hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-accent)]"
+              onClick={() => setWeekOffset(0)}
+            >
+              回到本周
+            </button>
+          ) : null}
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-medium text-[var(--color-ink)]">
+            {isCurrentWeek
+              ? "本周"
+              : weekOffset > 0
+                ? `往后第 ${weekOffset} 周`
+                : `往前第 ${-weekOffset} 周`}
+          </p>
+          <p className="font-mono text-[11px] text-[var(--color-ink-muted)]">
+            {rangeLabel}
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-auto">
       <div
         className="grid min-w-[720px]"
         style={{
@@ -184,8 +233,10 @@ export function WeekGrid({ items, onCreateAt, onEditItem }: WeekGridProps) {
           );
         })}
       </div>
+      </div>
       <p className="border-t border-[var(--color-line)] px-3 py-2 text-[11px] text-[var(--color-ink-muted)]">
-        本周视图 · 点空白新建 · 点色块编辑 · 琥珀色块为仅一次 · {GRID_START}:00–{GRID_END}:00
+        {isCurrentWeek ? "本周" : rangeLabel} · ← → 翻周 · 点空白新建 · 点色块编辑 · 琥珀色块为仅一次 ·{" "}
+        {GRID_START}:00–{GRID_END}:00
       </p>
     </div>
   );

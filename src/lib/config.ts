@@ -136,13 +136,13 @@ export function parseDateKey(dateKey: string) {
   return new Date(y, m - 1, d, 12, 0, 0, 0);
 }
 
-/** 以周一为一周起始的本周各列（含具体日期） */
-export function getCurrentWeekColumns(now = new Date()) {
-  const day = now.getDay();
+/** 以周一为一周起始：返回含 `anchor` 的那一周各列（含具体日期） */
+export function getCurrentWeekColumns(anchor = new Date()) {
+  const day = anchor.getDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
+  const monday = new Date(anchor);
   monday.setHours(12, 0, 0, 0);
-  monday.setDate(now.getDate() + mondayOffset);
+  monday.setDate(anchor.getDate() + mondayOffset);
 
   return WEEK_COLUMN_DAYS.map((weekday, index) => {
     const date = new Date(monday);
@@ -153,6 +153,22 @@ export function getCurrentWeekColumns(now = new Date()) {
       monthDay: `${date.getMonth() + 1}/${date.getDate()}`,
     };
   });
+}
+
+/** 相对「今天所在周」偏移 weekOffset 周后的锚点日期（正午） */
+export function getWeekAnchor(weekOffset = 0, now = new Date()) {
+  const anchor = new Date(now);
+  anchor.setHours(12, 0, 0, 0);
+  anchor.setDate(now.getDate() + weekOffset * 7);
+  return anchor;
+}
+
+/** 周范围文案，如「9/22 – 9/28」 */
+export function formatWeekRangeLabel(columns: ReturnType<typeof getCurrentWeekColumns>) {
+  if (columns.length === 0) return "";
+  const first = columns[0];
+  const last = columns[columns.length - 1];
+  return `${first.monthDay} – ${last.monthDay}`;
 }
 
 export function itemRecurrence(item: ScheduleItem): Recurrence {
