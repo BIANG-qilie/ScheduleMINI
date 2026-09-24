@@ -26,7 +26,9 @@ npm run test:all
 - `npm run build`
 - `npm run test:e2e`（Playwright Chromium，预览服）
 
-GitHub Actions 模板见 [docs/github-ci.yml](github-ci.yml)（需 `workflow` 权限后复制到 `.github/workflows/ci.yml`）。
+GitHub Actions 模板见 [docs/github-ci.yml](github-ci.yml)。仓库已包含 `.github/workflows/ci.yml`；若 push 因缺少 `workflow` scope 被拒，请在 GitHub 网页粘贴该模板或为 token 勾选 workflow 后再推。
+
+E2E 使用端口 **45331**（非开发 45231），默认不 `reuseExistingServer`，避免脏端口。需要复用时设 `E2E_REUSE=1`。
 
 ## 功能抽检（桌面）
 

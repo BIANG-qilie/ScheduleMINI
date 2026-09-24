@@ -249,14 +249,65 @@ export function itemOccursOnDate(
   dayOverrides: Record<string, DayOverride> = {},
 ) {
   if (!item.enabled) return false;
+
   if (itemRecurrence(item) === "once") {
-    return item.date === dateKey;
-  }
-  if (!item.weekdays.includes(weekday)) return false;
-  if (itemTag(item) === "work" && isDayOff(dateKey, dayOverrides)) {
+    if (item.date === dateKey) return true;
+    // 跨日仅一次：次日凌晨仍属该日程
+    if (item.date && isOvernightItem(item)) {
+      const next = parseDateKey(item.date);
+      next.setDate(next.getDate() + 1);
+      return formatDateKey(next) === dateKey;
+    }
     return false;
   }
+
+  const prevWeekday = (weekday + 6) % 7;
+  const onStartDay = item.weekdays.includes(weekday);
+  const onEndDay =
+    isOvernightItem(item) && item.weekdays.includes(prevWeekday);
+  if (!onStartDay && !onEndDay) return false;
+
+  if (itemTag(item) === "work") {
+    if (isDayOff(dateKey, dayOverrides)) return false;
+    // 跨日次日：若起始日放假则整段不生效
+    if (onEndDay && !onStartDay) {
+      const prev = parseDateKey(dateKey);
+      prev.setDate(prev.getDate() - 1);
+      if (isDayOff(formatDateKey(prev), dayOverrides)) return false;
+    }
+  }
   return true;
+}
+
+/**
+ * 跨日条目在某一列应渲染的时段（同一天内的片段）。
+ * 起始日：start→24:00；次日：00:00→end；非跨日：start→end。
+ */
+export function itemSegmentOnDate(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+): { start: string; end: string } | null {
+  if (!itemOccursOnDate(item, dateKey, weekday)) return null;
+  if (!isOvernightItem(item)) {
+    return { start: item.start, end: item.end };
+  }
+  const prevWeekday = (weekday + 6) % 7;
+  const onStartDay =
+    itemRecurrence(item) === "once"
+      ? item.date === dateKey
+      : item.weekdays.includes(weekday);
+  const onEndDay =
+    itemRecurrence(item) === "once"
+      ? item.date !== dateKey
+      : item.weekdays.includes(prevWeekday);
+  if (onStartDay && onEndDay) {
+    // 理论上同星期不会同时，once 不会；防御
+    return { start: item.start, end: "24:00" };
+  }
+  if (onStartDay) return { start: item.start, end: "24:00" };
+  if (onEndDay) return { start: "00:00", end: item.end };
+  return null;
 }
 
 export function nowTimeString(now = new Date()) {
@@ -265,18 +316,9 @@ export function nowTimeString(now = new Date()) {
   return `${hh}:${mm}`;
 }
 
+/** @deprecated 仅看钟点；跨日请用 isItemNow */
 export function isCurrentItem(item: ScheduleItem, now = new Date()) {
-  const current = nowTimeString(now);
-  if (isOvernightItem(item)) {
-    // 跨日：从 start 到 24:00，或 00:00 到 end
-    return (
-      compareTime(item.start, current) <= 0 ||
-      compareTime(current, item.end) < 0
-    );
-  }
-  return (
-    compareTime(item.start, current) <= 0 && compareTime(current, item.end) < 0
-  );
+  return isItemNow(item, now);
 }
 
 export function todaysItems(
@@ -298,9 +340,43 @@ export function getCurrentItem(
 ) {
   return (
     todaysItems(items, now, dayOverrides).find((item) =>
-      isCurrentItem(item, now),
+      isItemNow(item, now, dayOverrides),
     ) ?? null
   );
+}
+
+/**
+ * 是否正处于该日程发生中（含跨日：仅起始日 start 之后，或次日 end 之前）。
+ */
+export function isItemNow(
+  item: ScheduleItem,
+  now = new Date(),
+  dayOverrides: Record<string, DayOverride> = {},
+) {
+  const dateKey = formatDateKey(now);
+  const weekday = now.getDay();
+  if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return false;
+
+  const current = nowTimeString(now);
+  if (!isOvernightItem(item)) {
+    return (
+      compareTime(item.start, current) <= 0 &&
+      compareTime(current, item.end) < 0
+    );
+  }
+
+  const onStartDay =
+    itemRecurrence(item) === "once"
+      ? item.date === dateKey
+      : item.weekdays.includes(weekday);
+  const onEndDay =
+    itemRecurrence(item) === "once"
+      ? Boolean(item.date && item.date !== dateKey)
+      : item.weekdays.includes((weekday + 6) % 7);
+
+  if (onStartDay && compareTime(item.start, current) <= 0) return true;
+  if (onEndDay && compareTime(current, item.end) < 0) return true;
+  return false;
 }
 
 export type UpcomingRef = {

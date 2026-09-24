@@ -9,7 +9,7 @@ import {
   formatDurationZh,
   getCurrentItem,
   getUpcomingItem,
-  isCurrentItem,
+  isItemNow,
   itemRecurrence,
   msUntilDate,
   msUntilTime,
@@ -376,7 +376,7 @@ export function WidgetPage() {
             </div>
           ) : (
             items.map((item) => {
-              const current = isCurrentItem(item, now);
+              const current = isItemNow(item, now, overrides);
               return (
                 <FullModeItemCard
                   key={item.id}

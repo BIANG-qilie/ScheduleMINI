@@ -9,6 +9,7 @@ import {
   getWeekAnchor,
   itemOccursOnDate,
   itemRecurrence,
+  itemSegmentOnDate,
   itemTag,
   type DayOverride,
   type ScheduleItem,
@@ -77,7 +78,9 @@ export function WeekGrid({
   );
   const rangeLabel = formatWeekRangeLabel(columns);
   const isCurrentWeek = weekOffset === 0;
-  const totalHeight = (gridEndHour - gridStartHour) * DAY_PX;
+  // 底边留白，避免贴底色块被圆角/滚动裁切
+  const bottomPad = 12;
+  const totalHeight = (gridEndHour - gridStartHour) * DAY_PX + bottomPad;
 
   const enabledItems = useMemo(
     () => items.filter((it) => it.enabled).sort((a, b) => compareTime(a.start, b.start)),
@@ -96,6 +99,11 @@ export function WeekGrid({
     const min = gridStartHour * 60;
     const max = gridEndHour * 60;
     return Math.min(max, Math.max(min, mins));
+  };
+
+  const timeToClampedMinutes = (hhmm: string) => {
+    if (hhmm === "24:00") return gridEndHour * 60;
+    return clampMinutes(timeToMinutes(hhmm));
   };
 
   const handleLaneClick = (
@@ -262,19 +270,35 @@ export function WeekGrid({
                 ))}
 
                 {dayItems.map((item, index) => {
-                  const start = clampMinutes(timeToMinutes(item.start));
-                  const end = clampMinutes(timeToMinutes(item.end));
+                  const segment = itemSegmentOnDate(
+                    item,
+                    col.dateKey,
+                    col.weekday,
+                  );
+                  if (!segment) return null;
+                  let start = timeToClampedMinutes(segment.start);
+                  let end =
+                    segment.end === "24:00"
+                      ? gridEndHour * 60
+                      : timeToClampedMinutes(segment.end);
+                  // 贴网格下沿的跨日晚段（如 22:00–24:00 且网格止于 22）仍显示一小截
+                  if (end <= start && segment.end === "24:00") {
+                    end = gridEndHour * 60;
+                    start = Math.max(gridStartHour * 60, end - 40);
+                  }
                   if (end <= start) return null;
                   const top = ((start - gridStartHour * 60) / 60) * DAY_PX;
                   const height = Math.max(22, ((end - start) / 60) * DAY_PX - 2);
                   const overlapOffset = (index % 3) * 4;
                   const once = itemRecurrence(item) === "once";
                   const rest = itemTag(item) === "rest";
+                  const overnight =
+                    segment.end === "24:00" || segment.start === "00:00";
                   return (
                     <button
                       key={`${item.id}-${col.dateKey}`}
                       type="button"
-                      title={`${item.start}–${item.end} ${item.title}${once ? "（仅一次）" : ""}${rest ? "（休息）" : ""}`}
+                      title={`${item.start}–${item.end} ${item.title}${once ? "（仅一次）" : ""}${rest ? "（休息）" : ""}${overnight ? "（跨日）" : ""}`}
                       className={cn(
                         "absolute z-10 overflow-hidden rounded-md px-1.5 py-1 text-left shadow-sm transition hover:brightness-95",
                         once

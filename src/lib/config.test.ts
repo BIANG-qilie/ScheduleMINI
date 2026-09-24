@@ -2,13 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
   ScheduleItemSchema,
   emptyConfig,
-  isCurrentItem,
+  getCurrentItem,
+  isItemNow,
   isOvernightItem,
   itemOccursOnDate,
+  itemSegmentOnDate,
   progressThroughItem,
   safeParseAppConfig,
 } from "@/lib/config";
 import { resolveDayState } from "@/lib/holidays";
+
+const overnightWeekly = {
+  id: "night",
+  start: "22:00",
+  end: "06:00",
+  title: "值夜",
+  weekdays: [1], // 周一晚 → 周二晨
+  enabled: true,
+  recurrence: "weekly" as const,
+  tag: "work" as const,
+};
 
 describe("ScheduleItemSchema", () => {
   const base = {
@@ -38,36 +51,48 @@ describe("ScheduleItemSchema", () => {
   });
 });
 
-describe("isCurrentItem overnight", () => {
-  const overnight = {
-    id: "n",
-    start: "22:00",
-    end: "06:00",
-    title: "值夜",
-    weekdays: [1],
-    enabled: true,
-    recurrence: "weekly" as const,
-    tag: "work" as const,
-  };
-
-  it("is current late evening", () => {
-    const now = new Date(2026, 8, 24, 23, 0, 0);
-    expect(isCurrentItem(overnight, now)).toBe(true);
+describe("周循环跨日 22:00–06:00", () => {
+  it("周一 23:00 为 NOW", () => {
+    // 2026-09-21 周一
+    const now = new Date(2026, 8, 21, 23, 0, 0);
+    expect(itemOccursOnDate(overnightWeekly, "2026-09-21", 1, {})).toBe(true);
+    expect(isItemNow(overnightWeekly, now, {})).toBe(true);
+    expect(getCurrentItem([overnightWeekly], now, {})?.id).toBe("night");
   });
 
-  it("is current early morning", () => {
-    const now = new Date(2026, 8, 25, 3, 0, 0);
-    expect(isCurrentItem(overnight, now)).toBe(true);
+  it("周二 03:00 仍为 NOW", () => {
+    // 2026-09-22 周二
+    const now = new Date(2026, 8, 22, 3, 0, 0);
+    expect(itemOccursOnDate(overnightWeekly, "2026-09-22", 2, {})).toBe(true);
+    expect(isItemNow(overnightWeekly, now, {})).toBe(true);
+    expect(getCurrentItem([overnightWeekly], now, {})?.id).toBe("night");
   });
 
-  it("is not current midday", () => {
-    const now = new Date(2026, 8, 24, 12, 0, 0);
-    expect(isCurrentItem(overnight, now)).toBe(false);
+  it("周一 03:00 尚未开始", () => {
+    const now = new Date(2026, 8, 21, 3, 0, 0);
+    expect(isItemNow(overnightWeekly, now, {})).toBe(false);
+    expect(getCurrentItem([overnightWeekly], now, {})).toBeNull();
   });
 
-  it("progress stays in 0–1 for overnight", () => {
-    const now = new Date(2026, 8, 24, 23, 0, 0);
-    const p = progressThroughItem(overnight, now);
+  it("周二 12:00 已结束", () => {
+    const now = new Date(2026, 8, 22, 12, 0, 0);
+    expect(isItemNow(overnightWeekly, now, {})).toBe(false);
+  });
+
+  it("周视图片段：周一晚 + 周二晨", () => {
+    expect(itemSegmentOnDate(overnightWeekly, "2026-09-21", 1)).toEqual({
+      start: "22:00",
+      end: "24:00",
+    });
+    expect(itemSegmentOnDate(overnightWeekly, "2026-09-22", 2)).toEqual({
+      start: "00:00",
+      end: "06:00",
+    });
+  });
+
+  it("progress stays in 0–1", () => {
+    const now = new Date(2026, 8, 21, 23, 0, 0);
+    const p = progressThroughItem(overnightWeekly, now);
     expect(p).toBeGreaterThan(0);
     expect(p).toBeLessThan(1);
   });

@@ -36,19 +36,35 @@ async function ensureConfigDir() {
   }
 }
 
+function formatZodIssuesZh(error: {
+  issues: Array<{ path: PropertyKey[]; message: string }>;
+}): string {
+  const parts = error.issues.slice(0, 5).map((issue) => {
+    const path = issue.path.filter(Boolean).join(".");
+    const msg = issue.message;
+    if (path) return `${path}：${msg}`;
+    return msg;
+  });
+  const more =
+    error.issues.length > 5 ? `（另有 ${error.issues.length - 5} 项）` : "";
+  return parts.join("；") + more;
+}
+
 function parseConfigText(text: string): AppConfig {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (error) {
     throw new ConfigLoadError(
-      `配置不是合法 JSON：${error instanceof Error ? error.message : String(error)}`,
+      `配置不是合法 JSON${error instanceof Error ? `（${error.message}）` : ""}`,
       { cause: error },
     );
   }
   const parsed = safeParseAppConfig(raw);
   if (!parsed.success) {
-    throw new ConfigLoadError(`配置校验失败：${parsed.error.message}`);
+    throw new ConfigLoadError(
+      `配置内容无效：${formatZodIssuesZh(parsed.error)}`,
+    );
   }
   return parsed.data;
 }
