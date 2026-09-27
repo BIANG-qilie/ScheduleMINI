@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { mergeItemsLww } from "@/lib/sync/couple";
+import {
+  authoredItems,
+  flipOwnerForLocal,
+  lanePartnerItems,
+  laneSelfItems,
+  mergeItemsLww,
+} from "@/lib/sync/couple";
 import { generateInviteCode, normalizeInviteCode } from "@/lib/sync/crypto";
 import {
   BUILTIN_SYNC_RELAY_URL,
   resolveRelayBaseUrl,
 } from "@/lib/sync/relay";
-import type { ScheduleItem } from "@/lib/config";
+import { parseAppConfig, type ScheduleItem } from "@/lib/config";
 
 function item(
   id: string,
@@ -22,6 +28,7 @@ function item(
     recurrence: "weekly",
     tag: "work",
     skippedDates: [],
+    owner: "self",
     ownerId: "a",
     updatedAt,
   };
@@ -62,5 +69,69 @@ describe("resolveRelayBaseUrl", () => {
 
   it("empty uses builtin when vite unset", () => {
     expect(resolveRelayBaseUrl("")).toBe(BUILTIN_SYNC_RELAY_URL);
+  });
+});
+
+describe("owner lane", () => {
+  it("flips relative owner across devices", () => {
+    expect(flipOwnerForLocal("self")).toBe("partner");
+    expect(flipOwnerForLocal("partner")).toBe("self");
+    expect(flipOwnerForLocal(undefined)).toBe("partner");
+  });
+
+  it("authored vs lane filters", () => {
+    const items: ScheduleItem[] = [
+      { ...item("1", "2026-01-01T00:00:00.000Z"), owner: "self", ownerId: "me" },
+      {
+        ...item("2", "2026-01-01T00:00:00.000Z"),
+        owner: "partner",
+        ownerId: "me",
+      },
+      {
+        ...item("3", "2026-01-01T00:00:00.000Z"),
+        owner: "self",
+        ownerId: "them",
+      },
+    ];
+    expect(authoredItems(items, "me").map((i) => i.id)).toEqual(["1", "2"]);
+    expect(laneSelfItems(items).map((i) => i.id)).toEqual(["1", "3"]);
+    expect(lanePartnerItems(items).map((i) => i.id)).toEqual(["2"]);
+  });
+
+  it("migrates missing owner from foreign ownerId", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      couple: {
+        memberId: "me",
+        selfName: "我",
+        selfColor: "#0f766e",
+        partnerName: "对方",
+        partnerColor: "#a21caf",
+      },
+      items: [
+        {
+          id: "p",
+          start: "09:00",
+          end: "10:00",
+          title: "对方的",
+          weekdays: [1],
+          enabled: true,
+          ownerId: "them",
+        },
+        {
+          id: "s",
+          start: "11:00",
+          end: "12:00",
+          title: "自己的",
+          weekdays: [1],
+          enabled: true,
+        },
+      ],
+    });
+    expect(cfg.items.find((i) => i.id === "p")?.owner).toBe("partner");
+    expect(cfg.items.find((i) => i.id === "s")?.owner).toBe("self");
+    expect(cfg.soloMode).toBe(false);
   });
 });

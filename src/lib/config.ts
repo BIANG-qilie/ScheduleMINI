@@ -107,7 +107,12 @@ export const ScheduleItemSchema = z
     /** 交通：出发地 / 目的地（可选） */
     origin: z.string().trim().optional(),
     destination: z.string().trim().optional(),
-    /** 所属成员；缺省视为本机 memberId */
+    /**
+     * 展示车道：自己 / 对方（相对本机视角）。
+     * 缺省在 parseAppConfig 中补全；旧配置若仅有异机 ownerId 则解析为 partner。
+     */
+    owner: z.enum(["self", "partner"]).optional(),
+    /** 作者成员 id（可编辑权限与同步切片）；缺省视为本机 memberId */
     ownerId: z.string().optional(),
     /** ISO 时间；冲突时后写覆盖 */
     updatedAt: z.string().optional(),
@@ -166,6 +171,8 @@ export const AppConfigSchema = z
     gridEndHour: z.number().int().min(14).max(24).default(22),
     dayOverrides: z.record(z.string(), DayOverrideSchema).default({}),
     couple: CoupleIdentitySchema.default(() => defaultCouple()),
+    /** 单人模式：悬浮窗与编辑只看自己，不强调双栏互知 */
+    soloMode: z.boolean().default(false),
     /**
      * 同步中继基址。空字符串表示未自定义：
      * 解析顺序为 设置值 > VITE_SYNC_RELAY_URL > 内置 Railway 默认。
@@ -185,27 +192,34 @@ export const AppConfigSchema = z
 
 export type ScheduleItem = z.infer<typeof ScheduleItemSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
+export type ItemOwner = "self" | "partner";
 
+/** 展示车道：自己 */
+export function laneIsSelf(item: Pick<ScheduleItem, "owner">) {
+  return (item.owner ?? "self") === "self";
+}
+
+/** 作者是否为本机（可编辑 / 进本机同步切片） */
 export function ownerIsSelf(
   item: Pick<ScheduleItem, "ownerId">,
   couple: CoupleIdentity,
 ) {
-  const owner = item.ownerId || couple.memberId;
-  return owner === couple.memberId;
+  const author = item.ownerId || couple.memberId;
+  return author === couple.memberId;
 }
 
 export function ownerColor(
-  item: Pick<ScheduleItem, "ownerId">,
+  item: Pick<ScheduleItem, "owner">,
   couple: CoupleIdentity,
 ) {
-  return ownerIsSelf(item, couple) ? couple.selfColor : couple.partnerColor;
+  return laneIsSelf(item) ? couple.selfColor : couple.partnerColor;
 }
 
 export function ownerLabel(
-  item: Pick<ScheduleItem, "ownerId">,
+  item: Pick<ScheduleItem, "owner">,
   couple: CoupleIdentity,
 ) {
-  return ownerIsSelf(item, couple) ? couple.selfName : couple.partnerName;
+  return laneIsSelf(item) ? couple.selfName : couple.partnerName;
 }
 
 export const CONFIG_VERSION = 1 as const;
@@ -235,19 +249,21 @@ export function defaultConfig(): AppConfig {
     gridEndHour: 22,
     dayOverrides: {},
     couple,
+    soloMode: false,
     syncRelayUrl: "",
     items: [
       {
         id: "sample-morning",
         start: "09:00",
         end: "10:00",
-        title: "一起吃早餐？或各自开工",
-        note: "写自己的安排，对方小窗也能看到",
+        title: "早餐或开工",
+        note: "",
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
         recurrence: "weekly",
         tag: "life",
         skippedDates: [],
+        owner: "self",
         ownerId: couple.memberId,
         updatedAt: now,
       },
@@ -256,12 +272,12 @@ export function defaultConfig(): AppConfig {
         start: "14:00",
         end: "16:00",
         title: "专注时段",
-        note: "对方会看到你在忙",
         weekdays: [1, 2, 3, 4, 5],
         enabled: true,
         recurrence: "weekly",
         tag: "work",
         skippedDates: [],
+        owner: "self",
         ownerId: couple.memberId,
         updatedAt: now,
       },
@@ -269,12 +285,13 @@ export function defaultConfig(): AppConfig {
         id: "sample-review",
         start: "20:00",
         end: "20:30",
-        title: "晚点聊聊",
+        title: "收尾",
         weekdays: [0, 6],
         enabled: true,
         recurrence: "weekly",
         tag: "rest",
         skippedDates: [],
+        owner: "self",
         ownerId: couple.memberId,
         updatedAt: now,
       },
@@ -298,12 +315,19 @@ export function isOvernightItem(item: Pick<ScheduleItem, "start" | "end">) {
 export function parseAppConfig(raw: unknown): AppConfig {
   const parsed = AppConfigSchema.parse(raw);
   const couple = parsed.couple ?? defaultCouple();
-  const items = parsed.items.map((it) => ({
-    ...it,
-    ownerId: it.ownerId || couple.memberId,
-    updatedAt: it.updatedAt || new Date().toISOString(),
-  }));
-  return { ...parsed, couple, items };
+  const items = parsed.items.map((it) => {
+    const ownerId = it.ownerId || couple.memberId;
+    const owner: ItemOwner =
+      it.owner ??
+      (ownerId !== couple.memberId ? "partner" : "self");
+    return {
+      ...it,
+      owner,
+      ownerId,
+      updatedAt: it.updatedAt || new Date().toISOString(),
+    };
+  });
+  return { ...parsed, couple, soloMode: parsed.soloMode ?? false, items };
 }
 
 export function safeParseAppConfig(raw: unknown) {

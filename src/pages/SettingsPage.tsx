@@ -31,6 +31,7 @@ import {
   ownerIsSelf,
   ownerLabel,
   tagRespectsHolidays,
+  type ItemOwner,
   type Recurrence,
   type ReminderMinutes,
   type ScheduleItem,
@@ -72,6 +73,7 @@ type Draft = {
   tag: ScheduleTag;
   origin: string;
   destination: string;
+  owner: ItemOwner;
 };
 
 const emptyDraft = (): Draft => {
@@ -89,6 +91,7 @@ const emptyDraft = (): Draft => {
     tag: "work",
     origin: "",
     destination: "",
+    owner: "self",
   };
 };
 
@@ -108,6 +111,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     tag: item.tag ?? "work",
     origin: item.origin ?? "",
     destination: item.destination ?? "",
+    owner: item.owner ?? "self",
   };
 }
 
@@ -133,6 +137,7 @@ export function SettingsPage() {
     setGridHours,
     setDayOverride,
     setCoupleIdentity,
+    setSoloMode,
     setSyncRelayUrl,
     createInvite,
     joinWithCode,
@@ -239,7 +244,7 @@ export function SettingsPage() {
 
   const openEdit = (item: ScheduleItem, dateKey?: string) => {
     if (!ownerIsSelf(item, config.couple)) {
-      setStatus(`这是「${ownerLabel(item, config.couple)}」的日程，只能查看`);
+      setStatus("对方同步的日程只读");
       return;
     }
     setDraft(itemToDraft(item));
@@ -294,6 +299,7 @@ export function SettingsPage() {
         recurrence: draft.recurrence,
         date: draft.recurrence === "once" ? draft.date : undefined,
         tag: draft.tag,
+        owner: config.soloMode ? "self" : draft.owner,
         activeFrom:
           draft.recurrence === "weekly" && draft.activeFrom
             ? draft.activeFrom
@@ -410,7 +416,8 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold">日程</h2>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                共 {sortedItems.length} 条 · 只编自己的，对方的只读
+                共 {sortedItems.length} 条
+                {config.soloMode ? "" : " · 本机条目可编，对方同步的只读"}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -473,9 +480,6 @@ export function SettingsPage() {
               <p className="text-sm font-medium text-[var(--color-ink)]">
                 还没有安排
               </p>
-              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                先写下你自己的一程；配对后，对方也能在小窗看到你在忙什么。
-              </p>
             </div>
           ) : (
             <ul className="space-y-3">
@@ -500,12 +504,14 @@ export function SettingsPage() {
                         <span className="font-mono text-sm opacity-80">
                           {item.start}–{item.end}
                         </span>
-                        <span
-                          className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium"
-                          style={ownerChipStyle(color)}
-                        >
-                          {ownerLabel(item, config.couple)}
-                        </span>
+                        {!config.soloMode ? (
+                          <span
+                            className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium"
+                            style={ownerChipStyle(color)}
+                          >
+                            {ownerLabel(item, config.couple)}
+                          </span>
+                        ) : null}
                         <span className={scheduleChipClass(tag)}>
                           {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
                         </span>
@@ -590,6 +596,15 @@ export function SettingsPage() {
           ]}
         >
           <TabsContent value={prefsTab} when="couple">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="solo-mode">单人模式</Label>
+              <Switch
+                id="solo-mode"
+                checked={config.soloMode}
+                onCheckedChange={(v) => void setSoloMode(v)}
+              />
+            </div>
+
             {config.couple.inviteCode ? (
               <div className="flex justify-end">
                 <Button
@@ -1006,6 +1021,42 @@ export function SettingsPage() {
           </>
         }
       >
+        {!config.soloMode ? (
+          <div className="space-y-2">
+            <Label>归属</Label>
+            <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+              <button
+                type="button"
+                className={cn(
+                  "h-8 rounded-[5px] px-3 text-xs",
+                  draft.owner === "self"
+                    ? "bg-[var(--color-accent)] text-white"
+                    : "text-[var(--color-ink-muted)]",
+                )}
+                onClick={() =>
+                  setDraft((prev) => ({ ...prev, owner: "self" }))
+                }
+              >
+                自己
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "h-8 rounded-[5px] px-3 text-xs",
+                  draft.owner === "partner"
+                    ? "bg-[var(--color-accent)] text-white"
+                    : "text-[var(--color-ink-muted)]",
+                )}
+                onClick={() =>
+                  setDraft((prev) => ({ ...prev, owner: "partner" }))
+                }
+              >
+                对方
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <Label>重复方式</Label>
           <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">

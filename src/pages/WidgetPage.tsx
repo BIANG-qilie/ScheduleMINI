@@ -16,6 +16,7 @@ import {
   itemTag,
   msUntilDate,
   msUntilTime,
+  ownerColor,
   progressThroughItem,
   todaysItems,
   type CoupleIdentity,
@@ -30,7 +31,7 @@ import {
   formatRoute,
   isCommuteItem,
 } from "@/lib/schedule-style";
-import { selfItems, partnerItems } from "@/lib/sync/couple";
+import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import {
   applyWidgetOpacity,
   persistCurrentWidgetGeometry,
@@ -217,6 +218,7 @@ function PersonColumn({
 function DualFocusWidget({
   couple,
   paired,
+  soloMode,
   selfCurrent,
   selfUpcoming,
   partnerCurrent,
@@ -232,6 +234,7 @@ function DualFocusWidget({
 }: {
   couple: CoupleIdentity;
   paired: boolean;
+  soloMode: boolean;
   selfCurrent: ScheduleItem | null;
   selfUpcoming: UpcomingRef | null;
   partnerCurrent: ScheduleItem | null;
@@ -245,6 +248,9 @@ function DualFocusWidget({
   todayKey: string;
   holidayName?: string;
 }) {
+  const showPartner = !soloMode && paired;
+  const showPairCta = !soloMode && !paired;
+
   return (
     <div className="h-full p-1">
       <div className="relative flex h-full flex-col overflow-hidden rounded-[22px] border border-white/[0.08] bg-[rgba(8,14,16,0.72)] text-white shadow-[0_18px_48px_rgba(0,0,0,0.42)] backdrop-blur-xl">
@@ -260,7 +266,7 @@ function DualFocusWidget({
 
         <div className="flex flex-1 gap-2 px-2.5 pb-2 pt-7">
           <PersonColumn
-            name={couple.selfName}
+            name={soloMode ? "今日" : couple.selfName}
             color={couple.selfColor}
             currentItem={selfCurrent}
             upcoming={selfUpcoming}
@@ -269,27 +275,30 @@ function DualFocusWidget({
             progress={selfProgress}
             todayKey={todayKey}
           />
-          <div className="w-px shrink-0 bg-white/10" />
-          {paired ? (
-            <PersonColumn
-              name={couple.partnerName}
-              color={couple.partnerColor}
-              currentItem={partnerCurrent}
-              upcoming={partnerUpcoming}
-              remainingCurrent={partnerRemaining}
-              untilNext={partnerUntilNext}
-              progress={partnerProgress}
-              todayKey={todayKey}
-            />
-          ) : (
-            <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 rounded-xl border border-dashed border-white/15 px-2.5 py-3">
-              <p className="text-[11px] font-medium text-white/55">对方</p>
-              <p className="text-[11px] leading-relaxed text-white/35">
-                生成或输入邀请码，小窗就能并排看到彼此的 Now / Next。
-              </p>
-              <p className="text-[10px] text-white/25">打开设置 → 我们</p>
-            </div>
-          )}
+          {showPartner || showPairCta ? (
+            <>
+              <div className="w-px shrink-0 bg-white/10" />
+              {showPartner ? (
+                <PersonColumn
+                  name={couple.partnerName}
+                  color={couple.partnerColor}
+                  currentItem={partnerCurrent}
+                  upcoming={partnerUpcoming}
+                  remainingCurrent={partnerRemaining}
+                  untilNext={partnerUntilNext}
+                  progress={partnerProgress}
+                  todayKey={todayKey}
+                />
+              ) : (
+                <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 rounded-xl border border-dashed border-white/15 px-2.5 py-3">
+                  <p className="text-[11px] font-medium text-white/55">对方</p>
+                  <p className="text-[11px] leading-relaxed text-white/35">
+                    设置 → 我们，生成或输入邀请码
+                  </p>
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
 
         {holidayName ? (
@@ -387,14 +396,12 @@ export function WidgetPage() {
   const overrides = config.dayOverrides;
   const couple = config.couple;
   const paired = isPaired(couple);
+  const soloMode = config.soloMode;
 
-  const mine = useMemo(
-    () => selfItems(config.items, couple.memberId),
-    [config.items, couple.memberId],
-  );
+  const mine = useMemo(() => laneSelfItems(config.items), [config.items]);
   const theirs = useMemo(
-    () => partnerItems(config.items, couple.memberId),
-    [config.items, couple.memberId],
+    () => (soloMode ? [] : lanePartnerItems(config.items)),
+    [config.items, soloMode],
   );
 
   const selfCurrent = useMemo(
@@ -415,8 +422,13 @@ export function WidgetPage() {
   );
 
   const items = useMemo(
-    () => todaysItems(config.items, now, overrides),
-    [config.items, now, overrides],
+    () =>
+      todaysItems(
+        soloMode ? laneSelfItems(config.items) : config.items,
+        now,
+        overrides,
+      ),
+    [config.items, now, overrides, soloMode],
   );
   const holiday = useMemo(
     () => getTodayLabel(now, overrides),
@@ -455,6 +467,7 @@ export function WidgetPage() {
       <DualFocusWidget
         couple={couple}
         paired={paired}
+        soloMode={soloMode}
         selfCurrent={selfCurrent}
         selfUpcoming={selfUpcoming}
         partnerCurrent={partnerCurrent}
@@ -488,9 +501,11 @@ export function WidgetPage() {
           />
           <div data-tauri-drag-region className="min-w-0 flex-1">
             <p data-tauri-drag-region className="truncate text-xs text-white/60">
-              {paired
-                ? `${couple.selfName} · ${couple.partnerName}`
-                : "今日安排"}
+              {soloMode
+                ? "今日安排"
+                : paired
+                  ? `${couple.selfName} · ${couple.partnerName}`
+                  : "今日安排"}
             </p>
             <p data-tauri-drag-region className="truncate text-sm font-medium">
               {dateText}
@@ -508,17 +523,11 @@ export function WidgetPage() {
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/35 px-3 py-8 text-center">
               <p className="text-sm font-medium text-white/90">今天都空着</p>
-              <p className="mt-1 text-xs text-white/40">
-                去设置里写一程，或邀请对方同步
-              </p>
             </div>
           ) : (
             items.map((item) => {
               const current = isItemNow(item, now, overrides);
-              const accent =
-                (item.ownerId || couple.memberId) === couple.memberId
-                  ? couple.selfColor
-                  : couple.partnerColor;
+              const accent = ownerColor(item, couple);
               return (
                 <FullModeItemCard
                   key={item.id}

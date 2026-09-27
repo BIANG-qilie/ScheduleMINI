@@ -1,4 +1,4 @@
-import type { CoupleIdentity, ScheduleItem } from "@/lib/config";
+import type { CoupleIdentity, ItemOwner, ScheduleItem } from "@/lib/config";
 import { encryptPayload, decryptPayload, normalizeInviteCode } from "@/lib/sync/crypto";
 import { fetchRoom, pushMemberSlice } from "@/lib/sync/relay";
 
@@ -28,12 +28,39 @@ export function mergeItemsLww(
   return [...map.values()];
 }
 
-export function selfItems(items: ScheduleItem[], memberId: string) {
+/** 本机作者的条目（进同步上传切片） */
+export function authoredItems(items: ScheduleItem[], memberId: string) {
   return items.filter((it) => (it.ownerId || memberId) === memberId);
 }
 
-export function partnerItems(items: ScheduleItem[], memberId: string) {
+/** @deprecated 使用 authoredItems；历史名保留给作者过滤 */
+export function selfItems(items: ScheduleItem[], memberId: string) {
+  return authoredItems(items, memberId);
+}
+
+/** 对方作者的条目 */
+export function partnerAuthoredItems(items: ScheduleItem[], memberId: string) {
   return items.filter((it) => (it.ownerId || memberId) !== memberId);
+}
+
+/** @deprecated 展示请用 laneSelfItems / lanePartnerItems */
+export function partnerItems(items: ScheduleItem[], memberId: string) {
+  return partnerAuthoredItems(items, memberId);
+}
+
+/** 展示车道：自己 */
+export function laneSelfItems(items: ScheduleItem[]) {
+  return items.filter((it) => (it.owner ?? "self") === "self");
+}
+
+/** 展示车道：对方 */
+export function lanePartnerItems(items: ScheduleItem[]) {
+  return items.filter((it) => (it.owner ?? "self") === "partner");
+}
+
+/** 对方切片里的 owner 翻转到本机视角 */
+export function flipOwnerForLocal(owner: ItemOwner | undefined): ItemOwner {
+  return (owner ?? "self") === "self" ? "partner" : "self";
 }
 
 export function maxUpdatedAt(items: ScheduleItem[]) {
@@ -50,8 +77,9 @@ export async function buildEncryptedSelfSlice(
   couple: CoupleIdentity,
   items: ScheduleItem[],
 ) {
-  const mine = selfItems(items, couple.memberId).map((it) => ({
+  const mine = authoredItems(items, couple.memberId).map((it) => ({
     ...it,
+    owner: (it.owner ?? "self") as ItemOwner,
     ownerId: couple.memberId,
   }));
   const slice: PartnerSlice = {
@@ -119,9 +147,10 @@ export async function pullAndMergePartner(args: {
 
   const partnerOwned = (slice.items ?? []).map((it) => ({
     ...it,
+    owner: flipOwnerForLocal(it.owner),
     ownerId: partner.memberId,
   }));
-  const mine = selfItems(args.items, args.couple.memberId);
+  const mine = authoredItems(args.items, args.couple.memberId);
 
   return {
     items: [...mine, ...partnerOwned],

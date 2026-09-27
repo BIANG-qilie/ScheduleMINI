@@ -60,6 +60,7 @@ type ConfigState = {
       >
     >,
   ) => Promise<void>;
+  setSoloMode: (value: boolean) => Promise<void>;
   setSyncRelayUrl: (url: string) => Promise<void>;
   createInvite: () => Promise<string>;
   joinWithCode: (code: string) => Promise<void>;
@@ -152,6 +153,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         (item.tag ?? "work") === "commute" && item.destination?.trim()
           ? item.destination.trim()
           : undefined,
+      owner: config.soloMode ? "self" : (item.owner ?? "self"),
       ownerId: couple.memberId,
       updatedAt: new Date().toISOString(),
     };
@@ -265,6 +267,11 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       couple: { ...config.couple, ...patch },
     });
     if (get().config.couple.inviteCode) void syncNow();
+  },
+
+  setSoloMode: async (value) => {
+    const { config, setConfig } = get();
+    await setConfig({ ...config, soloMode: value });
   },
 
   setSyncRelayUrl: async (url) => {
