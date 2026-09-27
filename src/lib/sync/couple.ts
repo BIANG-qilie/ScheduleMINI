@@ -2,11 +2,14 @@ import type { CoupleIdentity, ItemOwner, ScheduleItem } from "@/lib/config";
 import { encryptPayload, decryptPayload, normalizeInviteCode } from "@/lib/sync/crypto";
 import { fetchRoom, pushMemberSlice } from "@/lib/sync/relay";
 
-export type PartnerSlice = {
+export type PersonSlice = {
   items: ScheduleItem[];
   selfName: string;
   selfColor: string;
 };
+
+/** @deprecated 用 PersonSlice */
+export type PartnerSlice = PersonSlice;
 
 export function itemUpdatedAt(item: ScheduleItem) {
   return item.updatedAt || "1970-01-01T00:00:00.000Z";
@@ -33,27 +36,24 @@ export function authoredItems(items: ScheduleItem[], memberId: string) {
   return items.filter((it) => (it.ownerId || memberId) === memberId);
 }
 
-/** @deprecated 使用 authoredItems；历史名保留给作者过滤 */
+/** @deprecated 使用 authoredItems */
 export function selfItems(items: ScheduleItem[], memberId: string) {
   return authoredItems(items, memberId);
 }
 
-/** 对方作者的条目 */
 export function partnerAuthoredItems(items: ScheduleItem[], memberId: string) {
   return items.filter((it) => (it.ownerId || memberId) !== memberId);
 }
 
-/** @deprecated 展示请用 laneSelfItems / lanePartnerItems */
+/** @deprecated */
 export function partnerItems(items: ScheduleItem[], memberId: string) {
   return partnerAuthoredItems(items, memberId);
 }
 
-/** 展示车道：自己 */
 export function laneSelfItems(items: ScheduleItem[]) {
   return items.filter((it) => (it.owner ?? "self") === "self");
 }
 
-/** 展示车道：对方 */
 export function lanePartnerItems(items: ScheduleItem[]) {
   return items.filter((it) => (it.owner ?? "self") === "partner");
 }
@@ -72,6 +72,20 @@ export function maxUpdatedAt(items: ScheduleItem[]) {
   return max;
 }
 
+/** 把本机作者 id 改写为共享 personId（多端接入时） */
+export function rekeyAuthoredItems(
+  items: ScheduleItem[],
+  fromPersonId: string,
+  toPersonId: string,
+): ScheduleItem[] {
+  if (fromPersonId === toPersonId) return items;
+  return items.map((it) => {
+    const author = it.ownerId || fromPersonId;
+    if (author !== fromPersonId) return it;
+    return { ...it, ownerId: toPersonId };
+  });
+}
+
 export async function buildEncryptedSelfSlice(
   inviteCode: string,
   couple: CoupleIdentity,
@@ -82,7 +96,7 @@ export async function buildEncryptedSelfSlice(
     owner: (it.owner ?? "self") as ItemOwner,
     ownerId: couple.memberId,
   }));
-  const slice: PartnerSlice = {
+  const slice: PersonSlice = {
     items: mine,
     selfName: couple.selfName,
     selfColor: couple.selfColor,
@@ -91,9 +105,15 @@ export async function buildEncryptedSelfSlice(
   return {
     payload,
     updatedAt: maxUpdatedAt(mine) || new Date().toISOString(),
+    itemCount: mine.length,
   };
 }
 
+/**
+ * 拉取房间并合并：
+ * - 本人 personId 切片：不翻转归属，与本机作者条目 LWW
+ * - 另一 personId：翻转归属后作为对方日程
+ */
 export async function pullAndMergePartner(args: {
   inviteCode: string;
   couple: CoupleIdentity;
@@ -103,44 +123,70 @@ export async function pullAndMergePartner(args: {
   items: ScheduleItem[];
   couple: CoupleIdentity;
   partnerOnline: boolean;
+  selfSliceMerged: boolean;
   error?: string;
 }> {
   const code = normalizeInviteCode(args.inviteCode);
+  const selfId = args.couple.memberId;
   const room = await fetchRoom(code, args.baseUrl);
   if (!room.ok) {
     return {
       items: args.items,
       couple: args.couple,
       partnerOnline: false,
+      selfSliceMerged: false,
       error: room.error,
     };
   }
 
-  const others = room.data.members.filter(
-    (m) => m.memberId !== args.couple.memberId,
-  );
+  const selfEntry = room.data.members.find((m) => m.memberId === selfId);
+  const others = room.data.members.filter((m) => m.memberId !== selfId);
+
+  let mine = authoredItems(args.items, selfId);
+  let selfSliceMerged = false;
+  let nextCouple: CoupleIdentity = {
+    ...args.couple,
+    inviteCode: code,
+  };
+
+  if (selfEntry?.payload) {
+    try {
+      const slice = await decryptPayload<PersonSlice>(code, selfEntry.payload);
+      const remoteMine = (slice.items ?? []).map((it) => ({
+        ...it,
+        owner: (it.owner ?? "self") as ItemOwner,
+        ownerId: selfId,
+      }));
+      mine = mergeItemsLww(mine, remoteMine);
+      selfSliceMerged = remoteMine.length > 0;
+    } catch {
+      // 本人切片解密失败时保留本机条目，不中断对方合并
+    }
+  }
+
   if (others.length === 0) {
     return {
-      items: args.items,
+      items: mine,
       couple: {
-        ...args.couple,
-        inviteCode: code,
+        ...nextCouple,
         partnerMemberId: null,
         pairedAt: args.couple.pairedAt,
       },
       partnerOnline: false,
+      selfSliceMerged,
     };
   }
 
   const partner = others[0];
-  let slice: PartnerSlice;
+  let slice: PersonSlice;
   try {
-    slice = await decryptPayload<PartnerSlice>(code, partner.payload);
+    slice = await decryptPayload<PersonSlice>(code, partner.payload);
   } catch {
     return {
-      items: args.items,
-      couple: args.couple,
+      items: mine,
+      couple: nextCouple,
       partnerOnline: false,
+      selfSliceMerged,
       error: "解密对方日程失败，请确认邀请码一致",
     };
   }
@@ -150,19 +196,18 @@ export async function pullAndMergePartner(args: {
     owner: flipOwnerForLocal(it.owner),
     ownerId: partner.memberId,
   }));
-  const mine = authoredItems(args.items, args.couple.memberId);
 
   return {
     items: [...mine, ...partnerOwned],
     couple: {
-      ...args.couple,
-      inviteCode: code,
+      ...nextCouple,
       partnerMemberId: partner.memberId,
       partnerName: slice.selfName || partner.name || args.couple.partnerName,
       partnerColor: slice.selfColor || partner.color || args.couple.partnerColor,
       pairedAt: args.couple.pairedAt || new Date().toISOString(),
     },
     partnerOnline: true,
+    selfSliceMerged,
   };
 }
 

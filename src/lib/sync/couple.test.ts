@@ -5,8 +5,14 @@ import {
   lanePartnerItems,
   laneSelfItems,
   mergeItemsLww,
+  rekeyAuthoredItems,
 } from "@/lib/sync/couple";
-import { generateInviteCode, normalizeInviteCode } from "@/lib/sync/crypto";
+import {
+  encodeDeviceSyncCode,
+  generateInviteCode,
+  normalizeInviteCode,
+  parseDeviceSyncCode,
+} from "@/lib/sync/crypto";
 import {
   BUILTIN_SYNC_RELAY_URL,
   resolveRelayBaseUrl,
@@ -69,6 +75,34 @@ describe("resolveRelayBaseUrl", () => {
 
   it("empty uses builtin when vite unset", () => {
     expect(resolveRelayBaseUrl("")).toBe(BUILTIN_SYNC_RELAY_URL);
+  });
+});
+
+describe("device sync code", () => {
+  it("round-trips room + personId", () => {
+    const code = encodeDeviceSyncCode("ab12cd", "550e8400-e29b-41d4-a716-446655440000");
+    expect(code.startsWith("D1.")).toBe(true);
+    expect(parseDeviceSyncCode(code)).toEqual({
+      inviteCode: "AB12CD",
+      personId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+  });
+
+  it("rejects short invite codes as device codes", () => {
+    expect(parseDeviceSyncCode("AB12CD")).toBeNull();
+  });
+
+  it("rekeys authored items to shared personId", () => {
+    const items = [
+      item("1", "2026-01-01T00:00:00.000Z"),
+      {
+        ...item("2", "2026-01-01T00:00:00.000Z"),
+        ownerId: "other",
+      },
+    ];
+    const next = rekeyAuthoredItems(items, "a", "shared");
+    expect(next.find((i) => i.id === "1")?.ownerId).toBe("shared");
+    expect(next.find((i) => i.id === "2")?.ownerId).toBe("other");
   });
 });
 

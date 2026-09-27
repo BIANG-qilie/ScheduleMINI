@@ -1,20 +1,18 @@
 /**
- * ScheduleMINI couple sync relay — free-to-run, no account.
- * In-memory room store; max 2 members per invite code.
+ * ScheduleMINI sync relay — free-to-run, no account.
+ * Room = map of personId → encrypted slice.
+ * Max 2 distinct personIds (couple); same personId may be written by many devices (LWW by updatedAt).
  *
  * Run: node sync-relay/server.mjs
  * Default: http://127.0.0.1:8787
- *
- * Deploy anywhere Node runs (Fly.io / Railway free tier), then set
- * VITE_SYNC_RELAY_URL to that origin.
  */
 import http from "node:http";
 import { URL } from "node:url";
 
 const PORT = Number(process.env.PORT || 8787);
-const MAX_MEMBERS = 2;
+const MAX_PERSONS = 2;
 
-/** @type {Map<string, { members: Map<string, object>, updatedAt: string }>} */
+/** @type {Map<string, { persons: Map<string, object>, updatedAt: string }>} */
 const rooms = new Map();
 
 function json(res, status, body) {
@@ -52,6 +50,17 @@ function normalizeCode(code) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
+function roomMembers(room) {
+  return [...room.persons.values()].map((m) => ({
+    memberId: m.memberId,
+    personId: m.memberId,
+    name: m.name,
+    color: m.color,
+    updatedAt: m.updatedAt,
+    payload: m.payload,
+  }));
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -66,24 +75,27 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
   if (req.method === "GET" && url.pathname === "/health") {
-    json(res, 200, { ok: true, rooms: rooms.size });
+    json(res, 200, { ok: true, rooms: rooms.size, maxPersons: MAX_PERSONS });
     return;
   }
 
-  const match = url.pathname.match(/^\/v1\/rooms\/([^/]+)(?:\/members\/([^/]+))?$/);
+  // /v1/rooms/:code and /v1/rooms/:code/members/:personId (memberId = personId)
+  const match = url.pathname.match(
+    /^\/v1\/rooms\/([^/]+)(?:\/members\/([^/]+))?$/,
+  );
   if (!match) {
     json(res, 404, { error: "not_found" });
     return;
   }
 
   const code = normalizeCode(decodeURIComponent(match[1]));
-  const memberId = match[2] ? decodeURIComponent(match[2]) : null;
+  const personId = match[2] ? decodeURIComponent(match[2]) : null;
   if (!code || code.length < 4) {
     json(res, 400, { error: "bad_code" });
     return;
   }
 
-  if (req.method === "GET" && !memberId) {
+  if (req.method === "GET" && !personId) {
     const room = rooms.get(code);
     if (!room) {
       json(res, 200, { code, members: [], updatedAt: null });
@@ -92,12 +104,12 @@ const server = http.createServer(async (req, res) => {
     json(res, 200, {
       code,
       updatedAt: room.updatedAt,
-      members: [...room.members.values()],
+      members: roomMembers(room),
     });
     return;
   }
 
-  if (req.method === "PUT" && memberId) {
+  if (req.method === "PUT" && personId) {
     try {
       const body = await readBody(req);
       const name = String(body.name || "").trim().slice(0, 32) || "对方";
@@ -111,17 +123,32 @@ const server = http.createServer(async (req, res) => {
 
       let room = rooms.get(code);
       if (!room) {
-        room = { members: new Map(), updatedAt };
+        room = { persons: new Map(), updatedAt };
         rooms.set(code, room);
       }
 
-      if (!room.members.has(memberId) && room.members.size >= MAX_MEMBERS) {
-        json(res, 403, { error: "room_full", message: "配对空间最多两人" });
+      const existing = room.persons.get(personId);
+      if (!existing && room.persons.size >= MAX_PERSONS) {
+        json(res, 403, {
+          error: "room_full",
+          message: "配对空间最多两个身份",
+        });
         return;
       }
 
-      room.members.set(memberId, {
-        memberId,
+      // Same personId: keep newer slice (multi-device LWW)
+      if (existing && existing.updatedAt > updatedAt) {
+        json(res, 200, {
+          code,
+          updatedAt: room.updatedAt,
+          rejected: true,
+          members: roomMembers(room),
+        });
+        return;
+      }
+
+      room.persons.set(personId, {
+        memberId: personId,
         name,
         color,
         payload,
@@ -131,13 +158,7 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, {
         code,
         updatedAt: room.updatedAt,
-        members: [...room.members.values()].map((m) => ({
-          memberId: m.memberId,
-          name: m.name,
-          color: m.color,
-          updatedAt: m.updatedAt,
-          payload: m.payload,
-        })),
+        members: roomMembers(room),
       });
       return;
     } catch {

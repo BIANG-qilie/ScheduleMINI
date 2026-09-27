@@ -8,7 +8,6 @@ import {
   type ScheduleItem,
   defaultConfig,
   emptyConfig,
-  isPaired,
   itemSkippedDates,
   occurrenceAnchorDate,
   ownerIsSelf,
@@ -21,8 +20,18 @@ import {
   loadConfig,
   saveConfig,
 } from "@/lib/persistence";
-import { generateInviteCode, normalizeInviteCode } from "@/lib/sync/crypto";
-import { pullAndMergePartner, pushSelfSlice } from "@/lib/sync/couple";
+import {
+  encodeDeviceSyncCode,
+  generateInviteCode,
+  looksLikeDeviceSyncCode,
+  normalizeInviteCode,
+  parseDeviceSyncCode,
+} from "@/lib/sync/crypto";
+import {
+  pullAndMergePartner,
+  pushSelfSlice,
+  rekeyAuthoredItems,
+} from "@/lib/sync/couple";
 import { createId, isTauriRuntime } from "@/lib/utils";
 
 type ConfigState = {
@@ -64,7 +73,13 @@ type ConfigState = {
   setSyncRelayUrl: (url: string) => Promise<void>;
   createInvite: () => Promise<string>;
   joinWithCode: (code: string) => Promise<void>;
+  /** 确保有同步房间并返回设备同步码（同一人多端） */
+  ensureDeviceSyncCode: () => Promise<string>;
+  joinWithDeviceCode: (raw: string) => Promise<void>;
+  /** 解除对方配对；保留房间供多端同步 */
   unpair: () => Promise<void>;
+  /** 停止房间同步（多端 + 对方） */
+  stopRoomSync: () => Promise<void>;
   syncNow: () => Promise<void>;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
@@ -300,6 +315,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   joinWithCode: async (raw) => {
+    if (looksLikeDeviceSyncCode(raw)) {
+      throw new Error("这是设备同步码，请用「同步到其他设备」");
+    }
     const code = normalizeInviteCode(raw);
     if (code.length < 4) throw new Error("邀请码太短");
     const { config, setConfig, syncNow } = get();
@@ -313,13 +331,71 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       },
     });
     await syncNow();
-    const next = get().config;
-    if (!isPaired(next.couple) && !next.couple.partnerMemberId) {
-      // still ok — waiting for the other to push
+  },
+
+  ensureDeviceSyncCode: async () => {
+    const { config, setConfig, syncNow } = get();
+    let code = config.couple.inviteCode;
+    if (!code) {
+      code = generateInviteCode(6);
+      await setConfig({
+        ...config,
+        couple: {
+          ...config.couple,
+          inviteCode: code,
+        },
+      });
     }
+    await syncNow();
+    const next = get().config;
+    if (!next.couple.inviteCode) throw new Error("无法建立同步房间");
+    return encodeDeviceSyncCode(
+      next.couple.inviteCode,
+      next.couple.memberId,
+    );
+  },
+
+  joinWithDeviceCode: async (raw) => {
+    const parsed = parseDeviceSyncCode(raw);
+    if (!parsed) throw new Error("设备同步码无效");
+    const { config, setConfig, syncNow } = get();
+    const fromId = config.couple.memberId;
+    const toId = parsed.personId;
+    const items = rekeyAuthoredItems(config.items, fromId, toId);
+    await setConfig({
+      ...config,
+      couple: {
+        ...config.couple,
+        memberId: toId,
+        inviteCode: parsed.inviteCode,
+        // 多端接入不假装成对方；对方信息由后续拉取填充
+        partnerMemberId: config.couple.partnerMemberId,
+        pairedAt: config.couple.pairedAt,
+      },
+      items,
+    });
+    await syncNow();
   },
 
   unpair: async () => {
+    const { config, setConfig } = get();
+    const selfId = config.couple.memberId;
+    await setConfig({
+      ...config,
+      couple: {
+        ...config.couple,
+        partnerMemberId: null,
+        pairedAt: null,
+        // 保留 inviteCode，多端同步继续
+      },
+      items: config.items.filter(
+        (it) => (it.ownerId || selfId) === selfId,
+      ),
+    });
+    set({ syncStatus: "已解除对方配对" });
+  },
+
+  stopRoomSync: async () => {
     const { config, setConfig } = get();
     const selfId = config.couple.memberId;
     await setConfig({
@@ -334,7 +410,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         (it) => (it.ownerId || selfId) === selfId,
       ),
     });
-    set({ syncStatus: "已解除配对" });
+    set({ syncStatus: "已停止同步" });
   },
 
   syncNow: async () => {
@@ -345,35 +421,47 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       return;
     }
     set({ syncStatus: "同步中…" });
-    const pushed = await pushSelfSlice({
+
+    // 先拉合并再推，避免他端较新切片被本机旧数据盖掉
+    const pulled = await pullAndMergePartner({
       inviteCode: code,
       couple: config.couple,
       items: config.items,
       baseUrl: config.syncRelayUrl,
     });
-    if (!pushed.ok) {
-      set({ syncStatus: pushed.error });
-      return;
-    }
-    const pulled = await pullAndMergePartner({
-      inviteCode: code,
-      couple: get().config.couple,
-      items: get().config.items,
-      baseUrl: get().config.syncRelayUrl,
-    });
-    if (pulled.error) {
+    if (pulled.error && !pulled.selfSliceMerged && !pulled.partnerOnline) {
       set({ syncStatus: pulled.error });
       return;
     }
+
     await setConfig({
       ...get().config,
       couple: pulled.couple,
       items: pulled.items,
     });
+
+    const pushed = await pushSelfSlice({
+      inviteCode: code,
+      couple: get().config.couple,
+      items: get().config.items,
+      baseUrl: get().config.syncRelayUrl,
+    });
+    if (!pushed.ok) {
+      set({ syncStatus: pushed.error });
+      return;
+    }
+
+    if (pulled.error) {
+      set({ syncStatus: pulled.error });
+      return;
+    }
+
     set({
       syncStatus: pulled.partnerOnline
         ? `已同步 · 与「${pulled.couple.partnerName}」互知`
-        : "已上传，等待对方加入",
+        : pulled.selfSliceMerged
+          ? "已同步 · 多端"
+          : "已同步",
     });
   },
 

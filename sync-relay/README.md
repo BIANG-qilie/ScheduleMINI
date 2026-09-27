@@ -1,6 +1,7 @@
 # ScheduleMINI sync relay
 
-轻量 HTTP 中继：邀请码房间、最多 2 人、存加密日程切片（服务端不读明文）。
+轻量 HTTP 中继：邀请码房间、**最多 2 个身份（personId）**、每身份一份加密日程切片。  
+同一 personId 可被多台设备写入（按 `updatedAt` LWW）；服务端不读明文。
 
 ## 本地
 
@@ -22,6 +23,10 @@ docker build -t schedulemini-sync .
 docker run --rm -p 8787:8787 -e PORT=8787 schedulemini-sync
 ```
 
-Railway：Builder 选 Dockerfile；若容器里 `node: command not found`，说明没用到带 Node 的镜像——改用该 Dockerfile，不要空镜像。
+Railway：Builder 选 Dockerfile；部署后客户端默认已指向  
+`https://schedulemini-production.up.railway.app`（需重新部署以启用多端 person 模型）。
 
-完整步骤见团队文档 `docs/sync-relay-deploy.md`（agent store）或本目录说明。
+## API
+
+- `GET /v1/rooms/:code` → `{ members: [{ memberId/personId, payload, updatedAt, … }] }`
+- `PUT /v1/rooms/:code/members/:personId` → 写入/覆盖该身份切片；第 3 个不同 personId 返回 `room_full`

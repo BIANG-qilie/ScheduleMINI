@@ -16,6 +16,7 @@ export const DEFAULT_SELF_COLOR = "#0f766e";
 export const DEFAULT_PARTNER_COLOR = "#a21caf";
 
 export const CoupleIdentitySchema = z.object({
+  /** 稳定个人身份（selfId / personId）；多端须相同，与对方不同 */
   memberId: z.string().min(1),
   selfName: z.string().trim().min(1).default("我"),
   selfColor: HexColorSchema.default(DEFAULT_SELF_COLOR),
@@ -26,6 +27,11 @@ export const CoupleIdentitySchema = z.object({
   pairedAt: z.string().nullable().optional(),
 });
 export type CoupleIdentity = z.infer<typeof CoupleIdentitySchema>;
+
+/** 本机个人身份 id（多端共享） */
+export function selfPersonId(couple: CoupleIdentity) {
+  return couple.memberId;
+}
 
 export function defaultCouple(): CoupleIdentity {
   return {

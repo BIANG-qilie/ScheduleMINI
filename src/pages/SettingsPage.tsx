@@ -141,7 +141,10 @@ export function SettingsPage() {
     setSyncRelayUrl,
     createInvite,
     joinWithCode,
+    ensureDeviceSyncCode,
+    joinWithDeviceCode,
     unpair,
+    stopRoomSync,
     syncNow,
     syncStatus,
     exportConfig,
@@ -156,6 +159,8 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
+  const [deviceJoinCode, setDeviceJoinCode] = useState("");
+  const [deviceSyncCode, setDeviceSyncCode] = useState<string | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [prefsTab, setPrefsTab] = useState<"couple" | "display" | "data">(
     "couple",
@@ -698,54 +703,117 @@ export function SettingsPage() {
               </p>
             </div>
 
-            {isPaired(config.couple) ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg-deep)] px-3 py-2.5 text-sm">
-                <p>
-                  已与「{config.couple.partnerName}」配对
-                  {config.couple.inviteCode
-                    ? ` · ${config.couple.inviteCode}`
-                    : ""}
-                </p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-line)] p-4">
+              <h3 className="text-sm font-semibold">邀请对方</h3>
+              {isPaired(config.couple) ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <p>
+                    已与「{config.couple.partnerName}」配对
+                    {config.couple.inviteCode
+                      ? ` · ${config.couple.inviteCode}`
+                      : ""}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm("解除后将移除对方日程，多端同步保留。确定？")) {
+                        void unpair();
+                      }
+                    }}
+                  >
+                    解除配对
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {config.couple.inviteCode ? (
+                    <p className="text-sm">
+                      邀请码{" "}
+                      <span className="font-mono tracking-widest">
+                        {config.couple.inviteCode}
+                      </span>
+                    </p>
+                  ) : null}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <Button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        void (async () => {
+                          setBusy(true);
+                          try {
+                            await createInvite();
+                          } catch (err) {
+                            setStatus(
+                              err instanceof Error ? err.message : String(err),
+                            );
+                          } finally {
+                            setBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      {config.couple.inviteCode ? "重新生成邀请码" : "生成邀请码"}
+                    </Button>
+                    <div className="flex min-w-0 flex-1 gap-2">
+                      <Input
+                        placeholder="输入对方的邀请码"
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy || !joinCode.trim()}
+                        onClick={() => {
+                          void (async () => {
+                            setBusy(true);
+                            try {
+                              await joinWithCode(joinCode);
+                              setJoinCode("");
+                              setStatus("已加入对方房间");
+                            } catch (err) {
+                              setStatus(
+                                err instanceof Error
+                                  ? err.message
+                                  : String(err),
+                              );
+                            } finally {
+                              setBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        加入
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-[var(--color-line)] p-4">
+              <h3 className="text-sm font-semibold">多端同步</h3>
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    if (window.confirm("解除后将移除对方日程，确定？")) {
-                      void unpair();
-                    }
-                  }}
-                >
-                  解除配对
-                </Button>
-              </div>
-            ) : config.couple.inviteCode ? (
-              <div className="space-y-3 rounded-lg border border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-3 text-sm">
-                <p className="font-medium">
-                  邀请码{" "}
-                  <span className="font-mono tracking-widest">
-                    {config.couple.inviteCode}
-                  </span>
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void unpair()}
-                >
-                  取消邀请
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <Button
-                  type="button"
                   disabled={busy}
                   onClick={() => {
                     void (async () => {
                       setBusy(true);
                       try {
-                        await createInvite();
+                        const code = await ensureDeviceSyncCode();
+                        setDeviceSyncCode(code);
+                        try {
+                          await navigator.clipboard.writeText(code);
+                          setStatus("设备同步码已复制");
+                        } catch {
+                          setStatus("已生成设备同步码");
+                        }
                       } catch (err) {
                         setStatus(
                           err instanceof Error ? err.message : String(err),
@@ -756,40 +824,69 @@ export function SettingsPage() {
                     })();
                   }}
                 >
-                  生成邀请码
+                  复制设备同步码
                 </Button>
-                <div className="flex min-w-0 flex-1 gap-2">
-                  <Input
-                    placeholder="输入对方的邀请码"
-                    value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value)}
-                  />
+                {config.couple.inviteCode ? (
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={busy || !joinCode.trim()}
+                    size="sm"
+                    disabled={busy}
                     onClick={() => {
-                      void (async () => {
-                        setBusy(true);
-                        try {
-                          await joinWithCode(joinCode);
-                          setJoinCode("");
-                          setStatus("已加入，正在同步");
-                        } catch (err) {
-                          setStatus(
-                            err instanceof Error ? err.message : String(err),
-                          );
-                        } finally {
-                          setBusy(false);
-                        }
-                      })();
+                      if (
+                        window.confirm(
+                          "将停止多端与对方同步，本机日程保留。确定？",
+                        )
+                      ) {
+                        void stopRoomSync().then(() => {
+                          setDeviceSyncCode(null);
+                        });
+                      }
                     }}
                   >
-                    加入
+                    停止同步
                   </Button>
-                </div>
+                ) : null}
               </div>
-            )}
+              {deviceSyncCode ? (
+                <p className="break-all font-mono text-xs text-[var(--color-ink-muted)]">
+                  {deviceSyncCode}
+                </p>
+              ) : null}
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+                <Input
+                  className="font-mono text-xs"
+                  placeholder="粘贴设备同步码"
+                  value={deviceJoinCode}
+                  onChange={(e) => setDeviceJoinCode(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={busy || !deviceJoinCode.trim()}
+                  onClick={() => {
+                    void (async () => {
+                      setBusy(true);
+                      try {
+                        await joinWithDeviceCode(deviceJoinCode);
+                        setDeviceJoinCode("");
+                        setStatus("已接入多端同步");
+                      } catch (err) {
+                        setStatus(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  在此设备接入
+                </Button>
+              </div>
+            </div>
 
             {syncStatus ? (
               <p className="text-xs text-[var(--color-ink-muted)]">

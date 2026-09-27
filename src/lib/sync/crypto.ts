@@ -72,3 +72,32 @@ export function generateInviteCode(length = 6): string {
 export function normalizeInviteCode(code: string) {
   return code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
+
+/** 设备同步码：房间邀请码 + 同一人 personId（memberId） */
+const DEVICE_CODE_PREFIX = "D1";
+
+export function encodeDeviceSyncCode(inviteCode: string, personId: string) {
+  const room = normalizeInviteCode(inviteCode);
+  const id = personId.trim();
+  if (!room || !id) throw new Error("无法生成设备同步码");
+  return `${DEVICE_CODE_PREFIX}.${room}.${id}`;
+}
+
+export function parseDeviceSyncCode(
+  raw: string,
+): { inviteCode: string; personId: string } | null {
+  const s = raw.trim().replace(/\s+/g, "");
+  const m = new RegExp(
+    `^${DEVICE_CODE_PREFIX}\\.([A-Za-z0-9]{4,16})\\.(.+)$`,
+    "i",
+  ).exec(s);
+  if (!m) return null;
+  const inviteCode = normalizeInviteCode(m[1]);
+  const personId = m[2].trim();
+  if (!inviteCode || inviteCode.length < 4 || personId.length < 8) return null;
+  return { inviteCode, personId };
+}
+
+export function looksLikeDeviceSyncCode(raw: string) {
+  return parseDeviceSyncCode(raw) != null;
+}
