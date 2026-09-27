@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays,
   CalendarRange,
   Download,
   Eye,
@@ -14,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -36,7 +36,7 @@ import {
   type ScheduleItem,
   type ScheduleTag,
 } from "@/lib/config";
-import { HOLIDAY_DATA_YEARS, getTodayLabel } from "@/lib/holidays";
+import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
   formatRoute,
@@ -152,6 +152,9 @@ export function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [prefsTab, setPrefsTab] = useState<"couple" | "display" | "data">(
+    "couple",
+  );
 
   useEffect(() => {
     void init();
@@ -568,188 +571,166 @@ export function SettingsPage() {
 
       <Dialog
         open={prefsOpen}
-        onOpenChange={setPrefsOpen}
+        onOpenChange={(open) => {
+          setPrefsOpen(open);
+          if (open) setPrefsTab("couple");
+        }}
         title="设置"
         className="max-h-[min(90vh,780px)] max-w-2xl overflow-y-auto"
       >
-        <section className="space-y-4 rounded-xl border border-[var(--color-line)] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold">我们</h3>
-              <p className="text-xs text-[var(--color-ink-muted)]">
-                显示名与颜色 · 邀请码配对（最多两人）
-              </p>
-            </div>
+        <Tabs
+          value={prefsTab}
+          onValueChange={(v) =>
+            setPrefsTab(v as "couple" | "display" | "data")
+          }
+          items={[
+            { value: "couple", label: "我们" },
+            { value: "display", label: "显示" },
+            { value: "data", label: "数据" },
+          ]}
+        >
+          <TabsContent value={prefsTab} when="couple">
             {config.couple.inviteCode ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => void syncNow()}
-              >
-                立即同步
-              </Button>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void syncNow()}
+                >
+                  立即同步
+                </Button>
+              </div>
             ) : null}
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
-              <Label htmlFor="self-name">我的名字</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="self-name"
-                  value={config.couple.selfName}
-                  onChange={(e) =>
-                    void setCoupleIdentity({ selfName: e.target.value || "我" })
-                  }
-                />
-                <input
-                  type="color"
-                  aria-label="我的颜色"
-                  value={config.couple.selfColor}
-                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
-                  onChange={(e) =>
-                    void setCoupleIdentity({ selfColor: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
-              <Label htmlFor="partner-name">对方怎么称呼</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="partner-name"
-                  value={config.couple.partnerName}
-                  onChange={(e) =>
-                    void setCoupleIdentity({
-                      partnerName: e.target.value || "对方",
-                    })
-                  }
-                />
-                <input
-                  type="color"
-                  aria-label="对方颜色"
-                  value={config.couple.partnerColor}
-                  className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
-                  onChange={(e) =>
-                    void setCoupleIdentity({ partnerColor: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="sync-relay-url">同步中继</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id="sync-relay-url"
-                className="font-mono text-xs"
-                placeholder={resolveRelayBaseUrl(null)}
-                value={
-                  config.syncRelayUrl ||
-                  resolveRelayBaseUrl(config.syncRelayUrl)
-                }
-                onChange={(e) => {
-                  void setSyncRelayUrl(e.target.value);
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => void setSyncRelayUrl("")}
-              >
-                恢复默认
-              </Button>
-            </div>
-            <p className="text-xs text-[var(--color-ink-muted)]">
-              生效中：{resolveRelayBaseUrl(config.syncRelayUrl)}
-            </p>
-          </div>
-
-          {isPaired(config.couple) ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-sm">
-              <p>
-                已与「{config.couple.partnerName}」配对
-                {config.couple.inviteCode
-                  ? ` · 码 ${config.couple.inviteCode}`
-                  : ""}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (window.confirm("解除后将移除对方日程，确定？")) {
-                    void unpair();
-                  }
-                }}
-              >
-                解除配对
-              </Button>
-            </div>
-          ) : config.couple.inviteCode ? (
-            <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-3 text-sm">
-              <p className="font-medium">
-                邀请码{" "}
-                <span className="font-mono tracking-widest">
-                  {config.couple.inviteCode}
-                </span>
-              </p>
-              <p className="text-xs text-[var(--color-ink-muted)]">
-                发给对方，在「加入」里输入。仍在等待对方上线同步。
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void unpair()}
-              >
-                取消邀请
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  void (async () => {
-                    setBusy(true);
-                    try {
-                      await createInvite();
-                    } catch (err) {
-                      setStatus(
-                        err instanceof Error ? err.message : String(err),
-                      );
-                    } finally {
-                      setBusy(false);
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+                <Label htmlFor="self-name">我的名字</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="self-name"
+                    value={config.couple.selfName}
+                    onChange={(e) =>
+                      void setCoupleIdentity({
+                        selfName: e.target.value || "我",
+                      })
                     }
-                  })();
-                }}
-              >
-                生成邀请码
-              </Button>
-              <div className="flex min-w-0 flex-1 gap-2">
+                  />
+                  <input
+                    type="color"
+                    aria-label="我的颜色"
+                    value={config.couple.selfColor}
+                    className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
+                    onChange={(e) =>
+                      void setCoupleIdentity({ selfColor: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+                <Label htmlFor="partner-name">对方怎么称呼</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="partner-name"
+                    value={config.couple.partnerName}
+                    onChange={(e) =>
+                      void setCoupleIdentity({
+                        partnerName: e.target.value || "对方",
+                      })
+                    }
+                  />
+                  <input
+                    type="color"
+                    aria-label="对方颜色"
+                    value={config.couple.partnerColor}
+                    className="h-9 w-12 cursor-pointer rounded border border-[var(--color-line)] bg-transparent"
+                    onChange={(e) =>
+                      void setCoupleIdentity({ partnerColor: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sync-relay-url">同步中继</Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
-                  placeholder="输入对方的邀请码"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
+                  id="sync-relay-url"
+                  className="font-mono text-xs"
+                  placeholder={resolveRelayBaseUrl(null)}
+                  value={
+                    config.syncRelayUrl ||
+                    resolveRelayBaseUrl(config.syncRelayUrl)
+                  }
+                  onChange={(e) => {
+                    void setSyncRelayUrl(e.target.value);
+                  }}
                 />
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={busy || !joinCode.trim()}
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => void setSyncRelayUrl("")}
+                >
+                  恢复默认
+                </Button>
+              </div>
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                {resolveRelayBaseUrl(config.syncRelayUrl)}
+              </p>
+            </div>
+
+            {isPaired(config.couple) ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg-deep)] px-3 py-2.5 text-sm">
+                <p>
+                  已与「{config.couple.partnerName}」配对
+                  {config.couple.inviteCode
+                    ? ` · ${config.couple.inviteCode}`
+                    : ""}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (window.confirm("解除后将移除对方日程，确定？")) {
+                      void unpair();
+                    }
+                  }}
+                >
+                  解除配对
+                </Button>
+              </div>
+            ) : config.couple.inviteCode ? (
+              <div className="space-y-3 rounded-lg border border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-3 text-sm">
+                <p className="font-medium">
+                  邀请码{" "}
+                  <span className="font-mono tracking-widest">
+                    {config.couple.inviteCode}
+                  </span>
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void unpair()}
+                >
+                  取消邀请
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <Button
+                  type="button"
+                  disabled={busy}
                   onClick={() => {
                     void (async () => {
                       setBusy(true);
                       try {
-                        await joinWithCode(joinCode);
-                        setJoinCode("");
-                        setStatus("已加入，正在同步");
+                        await createInvite();
                       } catch (err) {
                         setStatus(
                           err instanceof Error ? err.message : String(err),
@@ -760,209 +741,218 @@ export function SettingsPage() {
                     })();
                   }}
                 >
-                  加入
+                  生成邀请码
                 </Button>
+                <div className="flex min-w-0 flex-1 gap-2">
+                  <Input
+                    placeholder="输入对方的邀请码"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || !joinCode.trim()}
+                    onClick={() => {
+                      void (async () => {
+                        setBusy(true);
+                        try {
+                          await joinWithCode(joinCode);
+                          setJoinCode("");
+                          setStatus("已加入，正在同步");
+                        } catch (err) {
+                          setStatus(
+                            err instanceof Error ? err.message : String(err),
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    加入
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {syncStatus ? (
-            <p className="text-xs text-[var(--color-ink-muted)]">{syncStatus}</p>
-          ) : null}
-        </section>
-
-        <section className="space-y-4 rounded-xl border border-[var(--color-line)] p-4">
-          <h3 className="text-sm font-semibold">显示与悬浮窗</h3>
-
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label htmlFor="show-holidays">显示中国大陆节假日</Label>
-              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                数据来源 chinese-days，覆盖约 {HOLIDAY_DATA_YEARS}
-                {todayLabel.kind !== "none"
-                  ? ` · 今日：${todayLabel.name}`
-                  : ""}
+            {syncStatus ? (
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                {syncStatus}
               </p>
-            </div>
-            <Switch
-              id="show-holidays"
-              checked={config.showHolidays}
-              onCheckedChange={(v) => void setShowHolidays(v)}
-            />
-          </div>
+            ) : null}
+          </TabsContent>
 
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <TabsContent value={prefsTab} when="display">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label htmlFor="show-holidays">显示中国大陆节假日</Label>
+                {todayLabel.kind !== "none" ? (
+                  <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                    今日：{todayLabel.name}
+                  </p>
+                ) : null}
+              </div>
+              <Switch
+                id="show-holidays"
+                checked={config.showHolidays}
+                onCheckedChange={(v) => void setShowHolidays(v)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
               <Label htmlFor="widget-focus">悬浮窗聚焦当前</Label>
-              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                双栏显示你与对方的 Now / Next。
-              </p>
+              <Switch
+                id="widget-focus"
+                checked={config.widgetMode === "current"}
+                onCheckedChange={(v) =>
+                  void setWidgetMode(v ? "current" : "full")
+                }
+              />
             </div>
-            <Switch
-              id="widget-focus"
-              checked={config.widgetMode === "current"}
-              onCheckedChange={(v) =>
-                void setWidgetMode(v ? "current" : "full")
-              }
-            />
-          </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <div>
+            <div className="flex items-center justify-between gap-4">
               <Label htmlFor="autostart">开机自启</Label>
+              <Switch
+                id="autostart"
+                checked={config.autostart}
+                onCheckedChange={(v) => void setAutostart(v)}
+              />
             </div>
-            <Switch
-              id="autostart"
-              checked={config.autostart}
-              onCheckedChange={(v) => void setAutostart(v)}
-            />
-          </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label htmlFor="reminders">开始前提醒</Label>
-              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                自己的日程开始前 {config.reminderMinutesBefore} 分钟通知
-              </p>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label htmlFor="reminders">开始前提醒</Label>
+                <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                  提前 {config.reminderMinutesBefore} 分钟
+                </p>
+              </div>
+              <Switch
+                id="reminders"
+                checked={config.remindersEnabled}
+                onCheckedChange={(v) => void setRemindersEnabled(v)}
+              />
             </div>
-            <Switch
-              id="reminders"
-              checked={config.remindersEnabled}
-              onCheckedChange={(v) => void setRemindersEnabled(v)}
-            />
-          </div>
 
-          {config.remindersEnabled ? (
+            {config.remindersEnabled ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {([5, 10, 15] as ReminderMinutes[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={cn(
+                      "inline-flex h-8 items-center rounded-md border px-2.5 text-xs",
+                      config.reminderMinutesBefore === m
+                        ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+                        : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
+                    )}
+                    onClick={() => void setReminderMinutesBefore(m)}
+                  >
+                    {m} 分钟
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Label htmlFor="widget-opacity">悬浮窗透明度</Label>
+              <input
+                id="widget-opacity"
+                type="range"
+                min={40}
+                max={100}
+                step={1}
+                value={Math.round(config.widgetOpacity * 100)}
+                className="h-2 w-48 max-w-full accent-[var(--color-accent)]"
+                onChange={(e) =>
+                  void setWidgetOpacity(Number(e.target.value) / 100)
+                }
+              />
+              <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+                {Math.round(config.widgetOpacity * 100)}%
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Label>周视图时段</Label>
+              <select
+                className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
+                value={config.gridStartHour}
+                onChange={(e) => {
+                  const start = Number(e.target.value);
+                  const end = Math.max(config.gridEndHour, start + 1);
+                  void setGridHours(start, end);
+                }}
+              >
+                {Array.from({ length: 8 }, (_, i) => 5 + i).map((h) => (
+                  <option key={`s-${h}`} value={h}>
+                    {String(h).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
+              <span className="text-sm text-[var(--color-ink-muted)]">至</span>
+              <select
+                className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
+                value={config.gridEndHour}
+                onChange={(e) => {
+                  const end = Number(e.target.value);
+                  const start = Math.min(config.gridStartHour, end - 1);
+                  void setGridHours(start, end);
+                }}
+              >
+                {Array.from({ length: 11 }, (_, i) => 14 + i).map((h) => (
+                  <option key={`e-${h}`} value={h}>
+                    {String(h).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-[var(--color-ink-muted)]">提前</span>
-              {([5, 10, 15] as ReminderMinutes[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 items-center rounded-md border px-2.5 text-xs",
-                    config.reminderMinutesBefore === m
-                      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
-                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() => void setReminderMinutesBefore(m)}
-                >
-                  {m} 分钟
-                </button>
-              ))}
+              <Button
+                type="button"
+                variant={config.widgetVisible ? "secondary" : "default"}
+                disabled={busy}
+                onClick={() => void handleToggleWidget(!config.widgetVisible)}
+              >
+                {config.widgetVisible ? (
+                  <>
+                    <EyeOff className="h-4 w-4" />
+                    关闭悬浮窗
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4" />
+                    打开悬浮窗
+                  </>
+                )}
+              </Button>
             </div>
-          ) : null}
+          </TabsContent>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Label htmlFor="widget-opacity">悬浮窗透明度</Label>
-            <input
-              id="widget-opacity"
-              type="range"
-              min={40}
-              max={100}
-              step={1}
-              value={Math.round(config.widgetOpacity * 100)}
-              className="h-2 w-48 max-w-full accent-[var(--color-accent)]"
-              onChange={(e) =>
-                void setWidgetOpacity(Number(e.target.value) / 100)
-              }
-            />
-            <span className="font-mono text-xs text-[var(--color-ink-muted)]">
-              {Math.round(config.widgetOpacity * 100)}%
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Label>周视图时段</Label>
-            <select
-              className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
-              value={config.gridStartHour}
-              onChange={(e) => {
-                const start = Number(e.target.value);
-                const end = Math.max(config.gridEndHour, start + 1);
-                void setGridHours(start, end);
-              }}
-            >
-              {Array.from({ length: 8 }, (_, i) => 5 + i).map((h) => (
-                <option key={`s-${h}`} value={h}>
-                  {String(h).padStart(2, "0")}:00
-                </option>
-              ))}
-            </select>
-            <span className="text-sm text-[var(--color-ink-muted)]">至</span>
-            <select
-              className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
-              value={config.gridEndHour}
-              onChange={(e) => {
-                const end = Number(e.target.value);
-                const start = Math.min(config.gridStartHour, end - 1);
-                void setGridHours(start, end);
-              }}
-            >
-              {Array.from({ length: 11 }, (_, i) => 14 + i).map((h) => (
-                <option key={`e-${h}`} value={h}>
-                  {String(h).padStart(2, "0")}:00
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant={config.widgetVisible ? "secondary" : "default"}
-              disabled={busy}
-              onClick={() => void handleToggleWidget(!config.widgetVisible)}
-            >
-              {config.widgetVisible ? (
-                <>
-                  <EyeOff className="h-4 w-4" />
-                  关闭悬浮窗
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4" />
-                  打开悬浮窗
-                </>
-              )}
-            </Button>
-            <p className="text-xs text-[var(--color-ink-muted)]">
-              从系统托盘退出。
-            </p>
-          </div>
-        </section>
-
-        <section className="space-y-4 rounded-xl border border-[var(--color-line)] p-4">
-          <div className="flex items-start gap-3">
-            <CalendarDays className="mt-0.5 h-5 w-5 text-[var(--color-accent)]" />
-            <div>
-              <h3 className="text-sm font-semibold">导入 / 导出</h3>
-              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                整份 JSON 配置。
-              </p>
+          <TabsContent value={prefsTab} when="data">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void handleExport()}
+              >
+                <Download className="h-4 w-4" />
+                导出 JSON
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void handleImport()}
+              >
+                <Upload className="h-4 w-4" />
+                导入 JSON
+              </Button>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void handleExport()}
-            >
-              <Download className="h-4 w-4" />
-              导出 JSON
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void handleImport()}
-            >
-              <Upload className="h-4 w-4" />
-              导入 JSON
-            </Button>
-          </div>
-        </section>
+          </TabsContent>
+        </Tabs>
       </Dialog>
 
       <Dialog
