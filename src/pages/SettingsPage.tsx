@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { WeekGrid } from "@/components/WeekGrid";
+import { CoexistenceBar } from "@/components/CoexistenceBar";
 import {
   APP_DISPLAY_NAME,
   SCHEDULE_TAG_OPTIONS,
@@ -28,7 +29,6 @@ import {
   isPaired,
   itemSkippedDates,
   ownerColor,
-  ownerIsSelf,
   ownerLabel,
   tagRespectsHolidays,
   type ItemOwner,
@@ -89,7 +89,7 @@ const emptyDraft = (): Draft => {
     enabled: true,
     recurrence: "weekly",
     date: today,
-    activeFrom: today,
+    activeFrom: "",
     activeUntil: "",
     tag: "work",
     origin: "",
@@ -110,7 +110,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     enabled: item.enabled,
     recurrence: item.recurrence ?? "weekly",
     date: item.date ?? today,
-    activeFrom: item.activeFrom ?? today,
+    activeFrom: item.activeFrom ?? "",
     activeUntil: item.activeUntil ?? "",
     tag: item.tag ?? "work",
     origin: item.origin ?? "",
@@ -128,6 +128,8 @@ export function SettingsPage() {
     init,
     upsertItem,
     deleteItem,
+    deleteItems,
+    patchItems,
     skipOccurrence,
     unskipOccurrence,
     setShowHolidays,
@@ -165,6 +167,16 @@ export function SettingsPage() {
   const [joinCode, setJoinCode] = useState("");
   const [deviceJoinCode, setDeviceJoinCode] = useState("");
   const [deviceSyncCode, setDeviceSyncCode] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [prefsTab, setPrefsTab] = useState<"couple" | "display" | "data">(
     "couple",
@@ -234,15 +246,12 @@ export function SettingsPage() {
     start: string,
     end: string,
   ) => {
-    const today = formatDateKey(new Date());
-    const activeFrom = dateKey < today ? today : dateKey;
     setDraft({
       ...emptyDraft(),
       start,
       end,
       weekdays: [weekday],
       date: dateKey,
-      activeFrom,
       recurrence: "weekly",
       tag: "work",
     });
@@ -252,10 +261,6 @@ export function SettingsPage() {
   };
 
   const openEdit = (item: ScheduleItem, dateKey?: string) => {
-    if (!ownerIsSelf(item, config.couple)) {
-      setStatus("对方同步的日程只读");
-      return;
-    }
     setDraft(itemToDraft(item));
     setOccurrenceDate(
       (item.recurrence ?? "weekly") === "weekly" ? (dateKey ?? null) : null,
@@ -403,15 +408,18 @@ export function SettingsPage() {
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-ink)]">
             {APP_DISPLAY_NAME}
           </h1>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setPrefsOpen(true)}
-          >
-            <Settings className="h-4 w-4" />
-            设置
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <CoexistenceBar />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPrefsOpen(true)}
+            >
+              <Settings className="h-4 w-4" />
+              设置
+            </Button>
+          </div>
         </header>
 
         {error ? (
@@ -439,7 +447,6 @@ export function SettingsPage() {
               <h2 className="text-base font-semibold">日程</h2>
               <p className="text-sm text-[var(--color-ink-muted)]">
                 共 {sortedItems.length} 条
-                {config.soloMode ? "" : " · 本机条目可编，对方同步的只读"}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -478,6 +485,65 @@ export function SettingsPage() {
             </div>
           </div>
 
+          {selectedIds.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg-deep)] px-3 py-2 text-sm">
+              <span>已选 {selectedIds.size}</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  if (window.confirm(`删除选中的 ${selectedIds.size} 条？`)) {
+                    void deleteItems([...selectedIds]).then(clearSelection);
+                  }
+                }}
+              >
+                删除
+              </Button>
+              <select
+                className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+                defaultValue=""
+                onChange={(e) => {
+                  const tag = e.target.value as ScheduleTag;
+                  if (!tag) return;
+                  void patchItems([...selectedIds], { tag }).then(clearSelection);
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  改标签
+                </option>
+                {SCHEDULE_TAG_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+                defaultValue=""
+                onChange={(e) => {
+                  const owner = e.target.value as ItemOwner;
+                  if (!owner) return;
+                  void patchItems([...selectedIds], { owner }).then(
+                    clearSelection,
+                  );
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  改归属
+                </option>
+                <option value="self">自己</option>
+                <option value="partner">对方</option>
+                <option value="shared">共同</option>
+              </select>
+              <Button type="button" size="sm" variant="ghost" onClick={clearSelection}>
+                取消选择
+              </Button>
+            </div>
+          ) : null}
+
           {config.settingsViewMode === "week" ? (
             <WeekGrid
               items={config.items}
@@ -486,6 +552,8 @@ export function SettingsPage() {
               dayOverrides={config.dayOverrides}
               gridStartHour={config.gridStartHour}
               gridEndHour={config.gridEndHour}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
               onCreateAt={openCreateAt}
               onEditItem={openEdit}
               onSkipOccurrence={(item, dateKey) => {
@@ -510,7 +578,6 @@ export function SettingsPage() {
                 const route = formatRoute(item);
                 const once = (item.recurrence ?? "weekly") === "once";
                 const color = ownerColor(item, config.couple);
-                const mine = ownerIsSelf(item, config.couple);
                 return (
                   <li
                     key={item.id}
@@ -518,22 +585,29 @@ export function SettingsPage() {
                     className={cn(
                       "group relative flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:justify-between",
                       once && "border-dashed",
+                      selectedIds.has(item.id) && "ring-2 ring-[var(--color-accent)]",
                     )}
                     style={ownerSurfaceStyle(color)}
                   >
-                    <div className="min-w-0 space-y-1 pl-2">
+                    <label className="absolute left-2 top-4 flex items-center">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={selectedIds.has(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                      />
+                    </label>
+                    <div className="min-w-0 space-y-1 pl-7">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-sm opacity-80">
                           {item.start}–{item.end}
                         </span>
-                        {!config.soloMode ? (
-                          <span
-                            className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium"
-                            style={ownerChipStyle(color)}
-                          >
-                            {ownerLabel(item, config.couple)}
-                          </span>
-                        ) : null}
+                        <span
+                          className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium"
+                          style={ownerChipStyle(color)}
+                        >
+                          {ownerLabel(item, config.couple)}
+                        </span>
                         <span className={scheduleChipClass(tag)}>
                           {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
                         </span>
@@ -560,34 +634,28 @@ export function SettingsPage() {
                       ) : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      {mine ? (
-                        <>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEdit(item)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            编辑
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            size="sm"
-                            onClick={() => {
-                              if (window.confirm(`确定删除「${item.title}」？`)) {
-                                void deleteItem(item.id);
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
-                          </Button>
-                        </>
-                      ) : (
-                        <span className="self-center text-xs opacity-55">只读</span>
-                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEdit(item)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        编辑
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          if (window.confirm(`确定删除「${item.title}」？`)) {
+                            void deleteItem(item.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        删除
+                      </Button>
                     </div>
                   </li>
                 );
@@ -1135,41 +1203,34 @@ export function SettingsPage() {
           </>
         }
       >
-        {!config.soloMode ? (
-          <div className="space-y-2">
-            <Label>归属</Label>
-            <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+        <div className="space-y-2">
+          <Label>归属</Label>
+          <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+            {(
+              [
+                ["self", "自己"],
+                ["partner", "对方"],
+                ["shared", "共同"],
+              ] as const
+            ).map(([value, label]) => (
               <button
+                key={value}
                 type="button"
                 className={cn(
                   "h-8 rounded-[5px] px-3 text-xs",
-                  draft.owner === "self"
+                  draft.owner === value
                     ? "bg-[var(--color-accent)] text-white"
                     : "text-[var(--color-ink-muted)]",
                 )}
                 onClick={() =>
-                  setDraft((prev) => ({ ...prev, owner: "self" }))
+                  setDraft((prev) => ({ ...prev, owner: value }))
                 }
               >
-                自己
+                {label}
               </button>
-              <button
-                type="button"
-                className={cn(
-                  "h-8 rounded-[5px] px-3 text-xs",
-                  draft.owner === "partner"
-                    ? "bg-[var(--color-accent)] text-white"
-                    : "text-[var(--color-ink-muted)]",
-                )}
-                onClick={() =>
-                  setDraft((prev) => ({ ...prev, owner: "partner" }))
-                }
-              >
-                对方
-              </button>
-            </div>
+            ))}
           </div>
-        ) : null}
+        </div>
 
         <div className="space-y-2">
           <Label>重复方式</Label>

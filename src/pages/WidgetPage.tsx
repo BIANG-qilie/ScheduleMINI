@@ -31,6 +31,7 @@ import {
   formatRoute,
   isCommuteItem,
 } from "@/lib/schedule-style";
+import { CoexistenceBar } from "@/components/CoexistenceBar";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import {
   applyWidgetOpacity,
@@ -217,7 +218,6 @@ function PersonColumn({
 
 function DualFocusWidget({
   couple,
-  paired,
   soloMode,
   selfCurrent,
   selfUpcoming,
@@ -233,7 +233,6 @@ function DualFocusWidget({
   holidayName,
 }: {
   couple: CoupleIdentity;
-  paired: boolean;
   soloMode: boolean;
   selfCurrent: ScheduleItem | null;
   selfUpcoming: UpcomingRef | null;
@@ -248,8 +247,7 @@ function DualFocusWidget({
   todayKey: string;
   holidayName?: string;
 }) {
-  const showPartner = !soloMode && paired;
-  const showPairCta = !soloMode && !paired;
+  const showPartner = !soloMode;
 
   return (
     <div className="h-full p-1">
@@ -275,30 +273,25 @@ function DualFocusWidget({
             progress={selfProgress}
             todayKey={todayKey}
           />
-          {showPartner || showPairCta ? (
+          {showPartner ? (
             <>
               <div className="w-px shrink-0 bg-white/10" />
-              {showPartner ? (
-                <PersonColumn
-                  name={couple.partnerName}
-                  color={couple.partnerColor}
-                  currentItem={partnerCurrent}
-                  upcoming={partnerUpcoming}
-                  remainingCurrent={partnerRemaining}
-                  untilNext={partnerUntilNext}
-                  progress={partnerProgress}
-                  todayKey={todayKey}
-                />
-              ) : (
-                <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 rounded-xl border border-dashed border-white/15 px-2.5 py-3">
-                  <p className="text-[11px] font-medium text-white/55">对方</p>
-                  <p className="text-[11px] leading-relaxed text-white/35">
-                    设置 → 我们，生成或输入邀请码
-                  </p>
-                </div>
-              )}
+              <PersonColumn
+                name={couple.partnerName}
+                color={couple.partnerColor}
+                currentItem={partnerCurrent}
+                upcoming={partnerUpcoming}
+                remainingCurrent={partnerRemaining}
+                untilNext={partnerUntilNext}
+                progress={partnerProgress}
+                todayKey={todayKey}
+              />
             </>
           ) : null}
+        </div>
+
+        <div className="px-2.5 pb-2">
+          <CoexistenceBar compact className="border-white/10 bg-white/[0.04]" />
         </div>
 
         {holidayName ? (
@@ -466,7 +459,6 @@ export function WidgetPage() {
     return (
       <DualFocusWidget
         couple={couple}
-        paired={paired}
         soloMode={soloMode}
         selfCurrent={selfCurrent}
         selfUpcoming={selfUpcoming}

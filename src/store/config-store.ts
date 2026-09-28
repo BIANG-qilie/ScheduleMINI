@@ -2,15 +2,20 @@ import { create } from "zustand";
 import { emit, listen } from "@tauri-apps/api/event";
 import {
   CONFIG_CHANGED_EVENT,
+  coexistenceElapsedMs,
+  coexistenceIsPaused,
+  formatDateKey,
+  formatDurationZh,
   type AppConfig,
   type CoupleIdentity,
   type DayOverride,
+  type ItemOwner,
   type ScheduleItem,
+  type ScheduleTag,
   defaultConfig,
   emptyConfig,
   itemSkippedDates,
   occurrenceAnchorDate,
-  ownerIsSelf,
   parseAppConfig,
 } from "@/lib/config";
 import {
@@ -42,8 +47,18 @@ type ConfigState = {
   syncStatus: string | null;
   init: () => Promise<void>;
   setConfig: (config: AppConfig, persist?: boolean) => Promise<void>;
-  upsertItem: (item: Omit<ScheduleItem, "id"> & { id?: string }) => Promise<void>;
+  upsertItem: (
+    item: Omit<ScheduleItem, "id" | "skippedDates"> & {
+      id?: string;
+      skippedDates?: string[];
+    },
+  ) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
+  deleteItems: (ids: string[]) => Promise<void>;
+  patchItems: (
+    ids: string[],
+    patch: Partial<Pick<ScheduleItem, "tag" | "owner">>,
+  ) => Promise<void>;
   skipOccurrence: (id: string, dateKey: string) => Promise<void>;
   unskipOccurrence: (id: string, dateKey: string) => Promise<void>;
   setShowHolidays: (value: boolean) => Promise<void>;
@@ -73,14 +88,18 @@ type ConfigState = {
   setSyncRelayUrl: (url: string) => Promise<void>;
   createInvite: () => Promise<string>;
   joinWithCode: (code: string) => Promise<void>;
-  /** 确保有同步房间并返回设备同步码（同一人多端） */
   ensureDeviceSyncCode: () => Promise<string>;
   joinWithDeviceCode: (raw: string) => Promise<void>;
-  /** 解除对方配对；保留房间供多端同步 */
   unpair: () => Promise<void>;
-  /** 停止房间同步（多端 + 对方） */
   stopRoomSync: () => Promise<void>;
   syncNow: () => Promise<void>;
+  startCoexistence: () => Promise<void>;
+  pauseCoexistence: () => Promise<void>;
+  resumeCoexistence: () => Promise<void>;
+  /** 结束共处；createSharedItem 时写入壁钟 once 共同日程 */
+  stopCoexistence: (opts?: {
+    createSharedItem?: boolean;
+  }) => Promise<{ createdItemId?: string } | null>;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
 };
@@ -93,6 +112,10 @@ async function broadcastConfig(config: AppConfig) {
       new CustomEvent(CONFIG_CHANGED_EVENT, { detail: config }),
     );
   }
+}
+
+function hhmm(d: Date) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -138,13 +161,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   upsertItem: async (item) => {
     const { config, setConfig, syncNow } = get();
     const couple = config.couple;
-    if (item.id) {
-      const existing = config.items.find((it) => it.id === item.id);
-      if (existing && !ownerIsSelf(existing, couple)) {
-        throw new Error("只能改自己的日程");
-      }
-    }
     const recurrence = item.recurrence ?? "weekly";
+    const owner = (item.owner ?? "self") as ItemOwner;
     const nextItem: ScheduleItem = {
       ...item,
       id: item.id ?? createId(),
@@ -172,7 +190,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         (item.tag ?? "work") === "commute" && item.destination?.trim()
           ? item.destination.trim()
           : undefined,
-      owner: config.soloMode ? "self" : (item.owner ?? "self"),
+      owner,
       ownerId: couple.memberId,
       updatedAt: new Date().toISOString(),
     };
@@ -185,15 +203,36 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   deleteItem: async (id) => {
+    await get().deleteItems([id]);
+  },
+
+  deleteItems: async (ids) => {
+    if (ids.length === 0) return;
     const { config, setConfig, syncNow } = get();
-    const item = config.items.find((it) => it.id === id);
-    if (item && !ownerIsSelf(item, config.couple)) {
-      throw new Error("只能删自己的日程");
-    }
+    const drop = new Set(ids);
     await setConfig({
       ...config,
-      items: config.items.filter((it) => it.id !== id),
+      items: config.items.filter((it) => !drop.has(it.id)),
     });
+    if (config.couple.inviteCode) void syncNow();
+  },
+
+  patchItems: async (ids, patch) => {
+    if (ids.length === 0) return;
+    const { config, setConfig, syncNow } = get();
+    const idSet = new Set(ids);
+    const now = new Date().toISOString();
+    const items = config.items.map((it) => {
+      if (!idSet.has(it.id)) return it;
+      return {
+        ...it,
+        ...(patch.tag ? { tag: patch.tag as ScheduleTag } : {}),
+        ...(patch.owner ? { owner: patch.owner as ItemOwner } : {}),
+        ownerId: config.couple.memberId,
+        updatedAt: now,
+      };
+    });
+    await setConfig({ ...config, items });
     if (config.couple.inviteCode) void syncNow();
   },
 
@@ -201,7 +240,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     const { config, upsertItem } = get();
     const item = config.items.find((it) => it.id === id);
     if (!item || (item.recurrence ?? "weekly") !== "weekly") return;
-    if (!ownerIsSelf(item, config.couple)) return;
     const anchor = occurrenceAnchorDate(item, dateKey);
     const skipped = itemSkippedDates(item);
     if (skipped.includes(anchor)) return;
@@ -214,7 +252,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   unskipOccurrence: async (id, dateKey) => {
     const { config, upsertItem } = get();
     const item = config.items.find((it) => it.id === id);
-    if (!item || !ownerIsSelf(item, config.couple)) return;
+    if (!item) return;
     const skipped = itemSkippedDates(item);
     if (!skipped.includes(dateKey)) return;
     await upsertItem({
@@ -372,7 +410,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         ...config.couple,
         memberId: toId,
         inviteCode: parsed.inviteCode,
-        // 多端接入不假装成对方；对方信息由后续拉取填充
         partnerMemberId: config.couple.partnerMemberId,
         pairedAt: config.couple.pairedAt,
       },
@@ -383,25 +420,19 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   unpair: async () => {
     const { config, setConfig } = get();
-    const selfId = config.couple.memberId;
     await setConfig({
       ...config,
       couple: {
         ...config.couple,
         partnerMemberId: null,
         pairedAt: null,
-        // 保留 inviteCode，多端同步继续
       },
-      items: config.items.filter(
-        (it) => (it.ownerId || selfId) === selfId,
-      ),
     });
     set({ syncStatus: "已解除对方配对" });
   },
 
   stopRoomSync: async () => {
     const { config, setConfig } = get();
-    const selfId = config.couple.memberId;
     await setConfig({
       ...config,
       couple: {
@@ -410,9 +441,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         partnerMemberId: null,
         pairedAt: null,
       },
-      items: config.items.filter(
-        (it) => (it.ownerId || selfId) === selfId,
-      ),
     });
     set({ syncStatus: "已停止同步" });
   },
@@ -426,7 +454,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     }
     set({ syncStatus: "同步中…" });
 
-    // 先拉合并再推，避免他端较新切片被本机旧数据盖掉
     const pulled = await pullAndMergePartner({
       inviteCode: code,
       couple: config.couple,
@@ -467,6 +494,109 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           ? "已同步 · 多端"
           : "已同步",
     });
+  },
+
+  startCoexistence: async () => {
+    const { config, setConfig } = get();
+    if (config.coexistence.current) return;
+    await setConfig({
+      ...config,
+      coexistence: {
+        ...config.coexistence,
+        current: {
+          id: createId(),
+          startedAt: new Date().toISOString(),
+          pauses: [],
+        },
+      },
+    });
+  },
+
+  pauseCoexistence: async () => {
+    const { config, setConfig } = get();
+    const cur = config.coexistence.current;
+    if (!cur || coexistenceIsPaused(cur)) return;
+    await setConfig({
+      ...config,
+      coexistence: {
+        ...config.coexistence,
+        current: {
+          ...cur,
+          pauses: [
+            ...cur.pauses,
+            { pausedAt: new Date().toISOString() },
+          ],
+        },
+      },
+    });
+  },
+
+  resumeCoexistence: async () => {
+    const { config, setConfig } = get();
+    const cur = config.coexistence.current;
+    if (!cur || !coexistenceIsPaused(cur)) return;
+    const pauses = cur.pauses.map((p, i) =>
+      i === cur.pauses.length - 1 && !p.resumedAt
+        ? { ...p, resumedAt: new Date().toISOString() }
+        : p,
+    );
+    await setConfig({
+      ...config,
+      coexistence: {
+        ...config.coexistence,
+        current: { ...cur, pauses },
+      },
+    });
+  },
+
+  stopCoexistence: async (opts) => {
+    const { config, setConfig, upsertItem } = get();
+    const cur = config.coexistence.current;
+    if (!cur) return null;
+    const endedAt = new Date().toISOString();
+    const pauses = cur.pauses.map((p, i) =>
+      i === cur.pauses.length - 1 && !p.resumedAt
+        ? { ...p, resumedAt: endedAt }
+        : p,
+    );
+    const finished = {
+      id: cur.id,
+      startedAt: cur.startedAt,
+      endedAt,
+      pauses,
+    };
+    await setConfig({
+      ...config,
+      coexistence: {
+        current: null,
+        log: [finished, ...config.coexistence.log].slice(0, 40),
+      },
+    });
+
+    if (!opts?.createSharedItem) return {};
+
+    const start = new Date(finished.startedAt);
+    const end = new Date(endedAt);
+    // 壁钟块：若不足 1 分钟则撑到 +1 分钟，避免 start===end
+    if (end.getTime() - start.getTime() < 60_000) {
+      end.setTime(start.getTime() + 60_000);
+    }
+    const net = coexistenceElapsedMs(finished, end);
+    const id = createId();
+    await upsertItem({
+      id,
+      start: hhmm(start),
+      end: hhmm(end),
+      title: "共处",
+      note: `净时长 ${formatDurationZh(net)}`,
+      weekdays: [],
+      enabled: true,
+      recurrence: "once",
+      date: formatDateKey(start),
+      tag: "life",
+      owner: "shared",
+    });
+    return { createdItemId: id };
   },
 
   exportConfig: async () => {

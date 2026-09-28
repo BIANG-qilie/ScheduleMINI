@@ -135,11 +135,11 @@ export function itemHoverText(item: ScheduleItem) {
   return parts.join("\n");
 }
 
-/** 按所属人着色（周视图 / 列表） */
+/** 按所属人着色（周视图 / 列表）；左侧色条强化归属 */
 export function ownerSurfaceStyle(hex: string): CSSProperties {
   return {
-    borderColor: `${hex}66`,
-    backgroundColor: `${hex}22`,
+    borderColor: `${hex}55`,
+    backgroundColor: `${hex}18`,
     boxShadow: `inset 3px 0 0 ${hex}`,
   };
 }

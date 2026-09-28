@@ -11,7 +11,6 @@ import {
   itemRecurrence,
   itemSegmentOnDate,
   ownerColor,
-  ownerIsSelf,
   type CoupleIdentity,
   type DayOverride,
   type ScheduleItem,
@@ -45,6 +44,8 @@ type WeekGridProps = {
   dayOverrides: Record<string, DayOverride>;
   gridStartHour: number;
   gridEndHour: number;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
   onCreateAt: (
     weekday: number,
     dateKey: string,
@@ -73,6 +74,8 @@ export function WeekGrid({
   dayOverrides,
   gridStartHour,
   gridEndHour,
+  selectedIds,
+  onToggleSelect,
   onCreateAt,
   onEditItem,
   onSkipOccurrence,
@@ -336,7 +339,6 @@ export function WeekGrid({
                     10,
                     ((end - start) / 60) * DAY_PX - 1,
                   );
-                  const overlapOffset = (index % 3) * 4;
                   const once = itemRecurrence(item) === "once";
                   const commute = isCommuteItem(item);
                   const route = formatRoute(item);
@@ -344,33 +346,41 @@ export function WeekGrid({
                     segment.end === "24:00" || segment.start === "00:00";
                   const showSub = height >= 28;
                   const showOvernight = overnight && height >= 40;
-                  const mine = ownerIsSelf(item, couple);
                   const color = ownerColor(item, couple);
+                  // 左对齐：固定小边距，重叠时仅抬 z-index，不再右移 inset
+                  const z = 10 + (index % 5);
                   return (
                     <button
                       key={`${item.id}-${col.dateKey}`}
                       type="button"
                       title={itemHoverText(item)}
                       className={cn(
-                        "group absolute z-10 overflow-hidden rounded-md border text-left shadow-sm transition hover:brightness-[0.97]",
+                        "group absolute overflow-hidden rounded border text-left transition hover:brightness-[0.97]",
                         height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
                         once && "border-dashed",
+                        selectedIds?.has(item.id) &&
+                          "ring-2 ring-[var(--color-accent)] ring-offset-1",
                       )}
                       style={{
                         top,
                         height,
-                        left: 4 + overlapOffset,
-                        right: 4,
+                        left: 2,
+                        right: 2,
+                        zIndex: z,
                         ...ownerSurfaceStyle(color),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (e.shiftKey && onToggleSelect) {
+                          onToggleSelect(item.id);
+                          return;
+                        }
                         onEditItem(item, col.dateKey);
                       }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (once || !mine) {
+                        if (once) {
                           onEditItem(item, col.dateKey);
                           return;
                         }

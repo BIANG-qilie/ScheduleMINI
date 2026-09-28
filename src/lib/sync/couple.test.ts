@@ -110,6 +110,7 @@ describe("owner lane", () => {
   it("flips relative owner across devices", () => {
     expect(flipOwnerForLocal("self")).toBe("partner");
     expect(flipOwnerForLocal("partner")).toBe("self");
+    expect(flipOwnerForLocal("shared")).toBe("shared");
     expect(flipOwnerForLocal(undefined)).toBe("partner");
   });
 
@@ -126,10 +127,19 @@ describe("owner lane", () => {
         owner: "self",
         ownerId: "them",
       },
+      {
+        ...item("4", "2026-01-01T00:00:00.000Z"),
+        owner: "shared",
+        ownerId: "me",
+      },
     ];
-    expect(authoredItems(items, "me").map((i) => i.id)).toEqual(["1", "2"]);
-    expect(laneSelfItems(items).map((i) => i.id)).toEqual(["1", "3"]);
-    expect(lanePartnerItems(items).map((i) => i.id)).toEqual(["2"]);
+    expect(authoredItems(items, "me").map((i) => i.id)).toEqual([
+      "1",
+      "2",
+      "4",
+    ]);
+    expect(laneSelfItems(items).map((i) => i.id)).toEqual(["1", "3", "4"]);
+    expect(lanePartnerItems(items).map((i) => i.id)).toEqual(["2", "4"]);
   });
 
   it("migrates missing owner from foreign ownerId", () => {

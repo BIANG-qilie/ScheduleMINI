@@ -14,6 +14,8 @@ const HexColorSchema = z
 
 export const DEFAULT_SELF_COLOR = "#0f766e";
 export const DEFAULT_PARTNER_COLOR = "#a21caf";
+/** 共同日程强调色（琥珀） */
+export const DEFAULT_SHARED_COLOR = "#b45309";
 
 export const CoupleIdentitySchema = z.object({
   /** 稳定个人身份（selfId / personId）；多端须相同，与对方不同 */
@@ -116,11 +118,11 @@ export const ScheduleItemSchema = z
     origin: z.string().trim().optional(),
     destination: z.string().trim().optional(),
     /**
-     * 展示车道：自己 / 对方（相对本机视角）。
+     * 展示归属：自己 / 对方 / 共同（相对本机视角）。
      * 缺省在 parseAppConfig 中补全；旧配置若仅有异机 ownerId 则解析为 partner。
      */
-    owner: z.enum(["self", "partner"]).optional(),
-    /** 作者成员 id（可编辑权限与同步切片）；缺省视为本机 memberId */
+    owner: z.enum(["self", "partner", "shared"]).optional(),
+    /** 最近写入者 memberId；联合维护下各方均可编辑 */
     ownerId: z.string().optional(),
     /** ISO 时间；冲突时后写覆盖 */
     updatedAt: z.string().optional(),
@@ -191,13 +193,50 @@ export const AppConfigSchema = z
     gridEndHour: z.number().int().min(14).max(24).default(22),
     dayOverrides: z.record(z.string(), DayOverrideSchema).default({}),
     couple: CoupleIdentitySchema.default(() => defaultCouple()),
-    /** 单人模式：悬浮窗与编辑只看自己，不强调双栏互知 */
+    /** 单人模式：悬浮窗不强调对方栏；本地仍可编双方/共同日程 */
     soloMode: z.boolean().default(false),
     /**
      * 同步中继基址。空字符串表示未自定义：
      * 解析顺序为 设置值 > VITE_SYNC_RELAY_URL > 内置 Railway 默认。
      */
     syncRelayUrl: z.string().default(""),
+    /** 共处模式：当前会话 + 本地日志 */
+    coexistence: z
+      .object({
+        current: z
+          .object({
+            id: z.string(),
+            startedAt: z.string(),
+            pauses: z
+              .array(
+                z.object({
+                  pausedAt: z.string(),
+                  resumedAt: z.string().optional(),
+                }),
+              )
+              .default([]),
+          })
+          .nullable()
+          .default(null),
+        log: z
+          .array(
+            z.object({
+              id: z.string(),
+              startedAt: z.string(),
+              endedAt: z.string(),
+              pauses: z
+                .array(
+                  z.object({
+                    pausedAt: z.string(),
+                    resumedAt: z.string().optional(),
+                  }),
+                )
+                .default([]),
+            }),
+          )
+          .default([]),
+      })
+      .default({ current: null, log: [] }),
     items: z.array(ScheduleItemSchema),
   })
   .superRefine((val, ctx) => {
@@ -212,14 +251,24 @@ export const AppConfigSchema = z
 
 export type ScheduleItem = z.infer<typeof ScheduleItemSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
-export type ItemOwner = "self" | "partner";
+export type ItemOwner = "self" | "partner" | "shared";
+export type CoexistenceState = AppConfig["coexistence"];
+export type CoexistenceSession = NonNullable<CoexistenceState["current"]>;
 
-/** 展示车道：自己 */
-export function laneIsSelf(item: Pick<ScheduleItem, "owner">) {
-  return (item.owner ?? "self") === "self";
+export function itemOwner(item: Pick<ScheduleItem, "owner">): ItemOwner {
+  return item.owner ?? "self";
 }
 
-/** 作者是否为本机（可编辑 / 进本机同步切片） */
+/** 展示车道：自己（不含共同） */
+export function laneIsSelf(item: Pick<ScheduleItem, "owner">) {
+  return itemOwner(item) === "self";
+}
+
+export function laneIsShared(item: Pick<ScheduleItem, "owner">) {
+  return itemOwner(item) === "shared";
+}
+
+/** @deprecated 联合维护后各方可编；仅表示最近写入者是否为本机 */
 export function ownerIsSelf(
   item: Pick<ScheduleItem, "ownerId">,
   couple: CoupleIdentity,
@@ -232,14 +281,53 @@ export function ownerColor(
   item: Pick<ScheduleItem, "owner">,
   couple: CoupleIdentity,
 ) {
-  return laneIsSelf(item) ? couple.selfColor : couple.partnerColor;
+  const o = itemOwner(item);
+  if (o === "shared") return DEFAULT_SHARED_COLOR;
+  if (o === "partner") return couple.partnerColor;
+  return couple.selfColor;
 }
 
 export function ownerLabel(
   item: Pick<ScheduleItem, "owner">,
   couple: CoupleIdentity,
 ) {
-  return laneIsSelf(item) ? couple.selfName : couple.partnerName;
+  const o = itemOwner(item);
+  if (o === "shared") return "共同";
+  if (o === "partner") return couple.partnerName;
+  return couple.selfName;
+}
+
+/** 共处已进行时长（毫秒，已扣暂停） */
+export function coexistenceElapsedMs(
+  session: {
+    startedAt: string;
+    endedAt?: string;
+    pauses: { pausedAt: string; resumedAt?: string }[];
+  },
+  now = new Date(),
+) {
+  const end = session.endedAt
+    ? new Date(session.endedAt).getTime()
+    : now.getTime();
+  let ms = end - new Date(session.startedAt).getTime();
+  for (const p of session.pauses) {
+    const pauseStart = new Date(p.pausedAt).getTime();
+    const pauseEnd = p.resumedAt
+      ? new Date(p.resumedAt).getTime()
+      : session.endedAt
+        ? new Date(session.endedAt).getTime()
+        : now.getTime();
+    if (pauseEnd > pauseStart) ms -= pauseEnd - pauseStart;
+  }
+  return Math.max(0, ms);
+}
+
+export function coexistenceIsPaused(
+  session: NonNullable<CoexistenceState["current"]> | null | undefined,
+) {
+  if (!session) return false;
+  const last = session.pauses[session.pauses.length - 1];
+  return Boolean(last && !last.resumedAt);
 }
 
 export const CONFIG_VERSION = 1 as const;
@@ -271,6 +359,7 @@ export function defaultConfig(): AppConfig {
     couple,
     soloMode: false,
     syncRelayUrl: "",
+    coexistence: { current: null, log: [] },
     items: [
       {
         id: "sample-morning",
@@ -347,7 +436,13 @@ export function parseAppConfig(raw: unknown): AppConfig {
       updatedAt: it.updatedAt || new Date().toISOString(),
     };
   });
-  return { ...parsed, couple, soloMode: parsed.soloMode ?? false, items };
+  return {
+    ...parsed,
+    couple,
+    soloMode: parsed.soloMode ?? false,
+    coexistence: parsed.coexistence ?? { current: null, log: [] },
+    items,
+  };
 }
 
 export function safeParseAppConfig(raw: unknown) {
