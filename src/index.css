@@ -15,6 +15,9 @@
   --color-surface: #fffcf6;
   --color-line: #d4cdc0;
   --color-current: #0b4f44;
+  --color-coex: #e891a6;
+  --color-coex-deep: #c45a78;
+  --color-coex-ink: #5a2438;
 }
 
 @font-face {
@@ -79,9 +82,99 @@ body.widget-body #root {
   animation: widget-current-pulse 3.2s ease-in-out infinite;
 }
 
+@keyframes coex-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes coex-start-glow-main {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 6px 16px -6px rgba(196, 84, 120, 0.45);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      0 8px 20px -4px rgba(196, 84, 120, 0.62);
+  }
+}
+
+@keyframes coex-start-glow-compact {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 190, 210, 0.28),
+      0 6px 18px -8px rgba(255, 120, 160, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(255, 200, 220, 0.4),
+      0 8px 22px -6px rgba(255, 120, 160, 0.75);
+  }
+}
+
+.coex-pulse {
+  animation: coex-pulse 1.6s ease-in-out infinite;
+}
+
+.coex-start-main:not(:hover):not(:active) {
+  animation: coex-start-glow-main 2.8s ease-in-out infinite;
+}
+
+.coex-start-compact:not(:hover):not(:active) {
+  animation: coex-start-glow-compact 2.8s ease-in-out infinite;
+}
+
+.coex-chip {
+  display: inline-flex;
+  height: 1.65rem;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.coex-chip-light {
+  border: 1px solid color-mix(in oklab, var(--color-coex) 45%, white);
+  background: color-mix(in oklab, #fff 82%, var(--color-coex));
+  color: var(--color-coex-ink);
+}
+
+.coex-chip-light:hover {
+  background: color-mix(in oklab, #fff 60%, var(--color-coex));
+}
+
+.coex-chip-compact {
+  border: 1px solid rgba(255, 190, 210, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffe4ec;
+}
+
+.coex-chip-compact:hover {
+  background: rgba(255, 190, 210, 0.18);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .widget-current-pulse,
-  .widget-now-surface {
+  .widget-now-surface,
+  .coex-pulse,
+  .coex-start-main:not(:hover):not(:active),
+  .coex-start-compact:not(:hover):not(:active) {
     animation: none;
   }
 }

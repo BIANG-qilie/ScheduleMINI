@@ -291,7 +291,7 @@ function DualFocusWidget({
         </div>
 
         <div className="px-2.5 pb-2">
-          <CoexistenceBar compact className="border-white/10 bg-white/[0.04]" />
+          <CoexistenceBar compact />
         </div>
 
         {holidayName ? (
