@@ -28,8 +28,7 @@ import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
   TAG_WIDGET,
-  formatRoute,
-  isCommuteItem,
+  formatItemSubline,
 } from "@/lib/schedule-style";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
@@ -59,7 +58,7 @@ function FullModeItemCard({
   const once = itemRecurrence(item) === "once";
   const tag = itemTag(item);
   const style = TAG_WIDGET[tag];
-  const route = formatRoute(item);
+  const subline = formatItemSubline(item);
   const line = accent || style.accent;
   return (
     <div
@@ -97,8 +96,8 @@ function FullModeItemCard({
         </div>
       </div>
       <p className="mt-1 text-sm font-medium leading-snug">{item.title}</p>
-      {isCommuteItem(item) && route ? (
-        <p className="mt-0.5 text-xs font-medium text-violet-100/90">{route}</p>
+      {subline ? (
+        <p className="mt-0.5 text-xs font-medium text-white/80">{subline}</p>
       ) : null}
       {item.note ? (
         <p className="mt-0.5 text-xs text-white/55">{item.note}</p>
@@ -134,8 +133,8 @@ function PersonColumn({
   todayKey: string;
   emptyHint?: string;
 }) {
-  const route = currentItem ? formatRoute(currentItem) : null;
-  const nextRoute = upcoming ? formatRoute(upcoming.item) : null;
+  const subline = currentItem ? formatItemSubline(currentItem) : null;
+  const nextSubline = upcoming ? formatItemSubline(upcoming.item) : null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -169,9 +168,9 @@ function PersonColumn({
           <p className="mt-1.5 text-base font-semibold leading-snug tracking-tight">
             {currentItem.title}
           </p>
-          {isCommuteItem(currentItem) && route ? (
+          {subline ? (
             <p className="mt-0.5 text-[11px] font-medium text-current/70">
-              {route}
+              {subline}
             </p>
           ) : null}
           <p className="mt-1 font-mono text-[10px] tabular-nums text-current/55">
@@ -206,7 +205,7 @@ function PersonColumn({
               {upcomingLabel(upcoming, todayKey)}
             </span>{" "}
             {upcoming.item.title}
-            {nextRoute ? ` · ${nextRoute}` : ""}
+            {nextSubline ? ` · ${nextSubline}` : ""}
           </p>
         </div>
       ) : (

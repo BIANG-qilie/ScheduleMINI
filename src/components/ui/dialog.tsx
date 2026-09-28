@@ -36,11 +36,11 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-lg",
+          "relative z-10 flex max-h-[min(90vh,780px)] w-full max-w-lg flex-col rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-lg",
           className,
         )}
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
             {description ? (
@@ -58,9 +58,9 @@ export function Dialog({
             关闭
           </Button>
         </div>
-        <div className="space-y-4">{children}</div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">{children}</div>
         {footer ? (
-          <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          <div className="mt-5 flex shrink-0 flex-wrap items-center justify-end gap-2">
             {footer}
           </div>
         ) : null}

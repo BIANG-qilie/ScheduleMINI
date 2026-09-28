@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   ScheduleItemSchema,
   emptyConfig,
+  formatCallChannelLabel,
   getCurrentItem,
   isItemNow,
   isOvernightItem,
+  itemCallChannel,
   itemOccursOnDate,
   itemSegmentOnDate,
+  parseAppConfig,
   progressThroughItem,
   safeParseAppConfig,
 } from "@/lib/config";
+import { formatItemSubline } from "@/lib/schedule-style";
 import { resolveDayState } from "@/lib/holidays";
 
 const overnightWeekly = {
@@ -49,6 +53,90 @@ describe("ScheduleItemSchema", () => {
     });
     expect(r.success).toBe(true);
     if (r.success) expect(isOvernightItem(r.data)).toBe(true);
+  });
+
+  it("accepts call tag with callChannel", () => {
+    const r = ScheduleItemSchema.safeParse({
+      ...base,
+      tag: "call",
+      callChannel: "wechat",
+      title: "晚间通话",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.tag).toBe("call");
+      expect(r.data.callChannel).toBe("wechat");
+    }
+  });
+});
+
+describe("call tag migrate", () => {
+  it("defaults missing callChannel to phone", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [
+        {
+          id: "c1",
+          start: "20:00",
+          end: "21:00",
+          title: "通话",
+          weekdays: [1],
+          enabled: true,
+          tag: "call",
+        },
+      ],
+    });
+    expect(cfg.items[0].callChannel).toBe("phone");
+    expect(itemCallChannel(cfg.items[0])).toBe("phone");
+    expect(formatCallChannelLabel("phone")).toBe("手机通话");
+    expect(formatItemSubline(cfg.items[0])).toBe("手机通话");
+  });
+
+  it("strips callChannel when tag is not call", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [
+        {
+          id: "w1",
+          start: "09:00",
+          end: "10:00",
+          title: "站会",
+          weekdays: [1],
+          enabled: true,
+          tag: "work",
+          callChannel: "wechat",
+        },
+      ],
+    });
+    expect(cfg.items[0].callChannel).toBeUndefined();
+  });
+
+  it("keeps optional gamePlatform on game tag", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [
+        {
+          id: "g1",
+          start: "21:00",
+          end: "23:00",
+          title: "开黑",
+          weekdays: [5],
+          enabled: true,
+          tag: "game",
+          gamePlatform: "steam",
+          owner: "shared",
+        },
+      ],
+    });
+    expect(cfg.items[0].tag).toBe("game");
+    expect(cfg.items[0].gamePlatform).toBe("steam");
+    expect(formatItemSubline(cfg.items[0])).toBe("Steam");
   });
 });
 

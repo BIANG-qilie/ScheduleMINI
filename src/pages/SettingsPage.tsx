@@ -22,15 +22,22 @@ import { WeekGrid } from "@/components/WeekGrid";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 import {
   APP_DISPLAY_NAME,
+  CALL_CHANNEL_OPTIONS,
+  DEFAULT_CALL_CHANNEL,
+  GAME_PLATFORM_OPTIONS,
   SCHEDULE_TAG_OPTIONS,
   WEEKDAY_LABELS,
   formatDateKey,
   formatScheduleScope,
   isPaired,
+  itemCallChannel,
+  itemGamePlatform,
   itemSkippedDates,
   ownerColor,
   ownerLabel,
   tagRespectsHolidays,
+  type CallChannel,
+  type GamePlatform,
   type ItemOwner,
   type Recurrence,
   type ReminderMinutes,
@@ -40,8 +47,7 @@ import {
 import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
-  formatRoute,
-  isCommuteItem,
+  formatItemSubline,
   itemHoverText,
   ownerChipStyle,
   ownerSurfaceStyle,
@@ -75,6 +81,8 @@ type Draft = {
   tag: ScheduleTag;
   origin: string;
   destination: string;
+  callChannel: CallChannel;
+  gamePlatform: GamePlatform | "";
   owner: ItemOwner;
 };
 
@@ -94,6 +102,8 @@ const emptyDraft = (): Draft => {
     tag: "work",
     origin: "",
     destination: "",
+    callChannel: DEFAULT_CALL_CHANNEL,
+    gamePlatform: "",
     owner: "self",
   };
 };
@@ -115,6 +125,8 @@ function itemToDraft(item: ScheduleItem): Draft {
     tag: item.tag ?? "work",
     origin: item.origin ?? "",
     destination: item.destination ?? "",
+    callChannel: itemCallChannel(item) ?? DEFAULT_CALL_CHANNEL,
+    gamePlatform: itemGamePlatform(item) ?? "",
     owner: item.owner ?? "self",
   };
 }
@@ -337,6 +349,14 @@ export function SettingsPage() {
             : [],
         origin: draft.tag === "commute" ? draft.origin : undefined,
         destination: draft.tag === "commute" ? draft.destination : undefined,
+        callChannel:
+          draft.tag === "call"
+            ? draft.callChannel || DEFAULT_CALL_CHANNEL
+            : undefined,
+        gamePlatform:
+          draft.tag === "game" && draft.gamePlatform
+            ? draft.gamePlatform
+            : undefined,
       });
       setEditorOpen(false);
       setOccurrenceDate(null);
@@ -582,7 +602,7 @@ export function SettingsPage() {
             <ul className="space-y-3">
               {sortedItems.map((item) => {
                 const tag = item.tag ?? "work";
-                const route = formatRoute(item);
+                const subline = formatItemSubline(item);
                 const once = (item.recurrence ?? "weekly") === "once";
                 const color = ownerColor(item, config.couple);
                 return (
@@ -628,8 +648,8 @@ export function SettingsPage() {
                         ) : null}
                       </div>
                       <p className="truncate text-base font-medium">{item.title}</p>
-                      {isCommuteItem(item) && route ? (
-                        <p className="text-sm font-medium opacity-80">{route}</p>
+                      {subline ? (
+                        <p className="text-sm font-medium opacity-80">{subline}</p>
                       ) : null}
                       <p className="text-xs opacity-60">
                         {formatScheduleScope(item)}
@@ -679,7 +699,7 @@ export function SettingsPage() {
           if (open) setPrefsTab("couple");
         }}
         title="设置"
-        className="max-h-[min(90vh,780px)] max-w-2xl overflow-y-auto"
+        className="max-w-2xl"
       >
         <Tabs
           value={prefsTab}
@@ -1286,7 +1306,20 @@ export function SettingsPage() {
                     ? cn(TAG_SURFACE[opt.id].chip, "ring-2 ring-offset-1")
                     : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
                 )}
-                onClick={() => setDraft((prev) => ({ ...prev, tag: opt.id }))}
+                onClick={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    tag: opt.id,
+                    callChannel:
+                      opt.id === "call"
+                        ? prev.callChannel || DEFAULT_CALL_CHANNEL
+                        : prev.callChannel,
+                    owner:
+                      opt.id === "game" && prev.tag !== "game"
+                        ? "shared"
+                        : prev.owner,
+                  }))
+                }
               >
                 {opt.label}
               </button>
@@ -1296,6 +1329,60 @@ export function SettingsPage() {
             <p className="text-xs text-[var(--color-ink-muted)]">放假日不出现</p>
           ) : null}
         </div>
+
+        {draft.tag === "call" ? (
+          <div className="space-y-2">
+            <Label>通话渠道</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {CALL_CHANNEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={cn(
+                    "h-8 rounded-md border px-2.5 text-xs",
+                    draft.callChannel === opt.id
+                      ? cn(TAG_SURFACE.call.chip, "ring-2 ring-offset-1")
+                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() =>
+                    setDraft((prev) => ({ ...prev, callChannel: opt.id }))
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {draft.tag === "game" ? (
+          <div className="space-y-2">
+            <Label>平台</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {GAME_PLATFORM_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={cn(
+                    "h-8 rounded-md border px-2.5 text-xs",
+                    draft.gamePlatform === opt.id
+                      ? cn(TAG_SURFACE.game.chip, "ring-2 ring-offset-1")
+                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      gamePlatform:
+                        prev.gamePlatform === opt.id ? "" : opt.id,
+                    }))
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {draft.tag === "commute" ? (
           <div className="grid grid-cols-2 gap-3">

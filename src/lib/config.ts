@@ -61,9 +61,55 @@ export const ScheduleTagSchema = z.enum([
   "study",
   "rest",
   "life",
+  "call",
+  "game",
   "other",
 ]);
 export type ScheduleTag = z.infer<typeof ScheduleTagSchema>;
+
+/** 通话渠道（仅 tag=call） */
+export const CallChannelSchema = z.enum([
+  "phone",
+  "douyin",
+  "wechat",
+  "other",
+]);
+export type CallChannel = z.infer<typeof CallChannelSchema>;
+
+export const DEFAULT_CALL_CHANNEL: CallChannel = "phone";
+
+export const CALL_CHANNEL_META: Record<CallChannel, { label: string }> = {
+  phone: { label: "手机通话" },
+  douyin: { label: "抖音通话" },
+  wechat: { label: "微信通话" },
+  other: { label: "其他通话" },
+};
+
+export const CALL_CHANNEL_OPTIONS = (
+  Object.keys(CALL_CHANNEL_META) as CallChannel[]
+).map((id) => ({ id, ...CALL_CHANNEL_META[id] }));
+
+/** 游戏平台（仅 tag=game，可选） */
+export const GamePlatformSchema = z.enum([
+  "wechat",
+  "qq",
+  "steam",
+  "switch",
+  "other",
+]);
+export type GamePlatform = z.infer<typeof GamePlatformSchema>;
+
+export const GAME_PLATFORM_META: Record<GamePlatform, { label: string }> = {
+  wechat: { label: "微信" },
+  qq: { label: "QQ" },
+  steam: { label: "Steam" },
+  switch: { label: "Switch" },
+  other: { label: "其他" },
+};
+
+export const GAME_PLATFORM_OPTIONS = (
+  Object.keys(GAME_PLATFORM_META) as GamePlatform[]
+).map((id) => ({ id, ...GAME_PLATFORM_META[id] }));
 
 /** 标签展示名与是否随放假跳过 */
 export const SCHEDULE_TAG_META: Record<
@@ -75,6 +121,8 @@ export const SCHEDULE_TAG_META: Record<
   study: { label: "学习", respectsHolidays: false },
   rest: { label: "休息", respectsHolidays: false },
   life: { label: "生活", respectsHolidays: false },
+  call: { label: "通话", respectsHolidays: false },
+  game: { label: "游戏", respectsHolidays: false },
   other: { label: "其他", respectsHolidays: false },
 };
 
@@ -88,6 +136,30 @@ export function tagRespectsHolidays(tag: ScheduleTag) {
 
 export function formatTagLabel(tag: ScheduleTag) {
   return SCHEDULE_TAG_META[tag]?.label ?? tag;
+}
+
+export function formatCallChannelLabel(channel: CallChannel) {
+  return CALL_CHANNEL_META[channel]?.label ?? channel;
+}
+
+export function itemCallChannel(item: {
+  tag?: ScheduleTag;
+  callChannel?: CallChannel;
+}): CallChannel | undefined {
+  if ((item.tag ?? "work") !== "call") return undefined;
+  return item.callChannel ?? DEFAULT_CALL_CHANNEL;
+}
+
+export function formatGamePlatformLabel(platform: GamePlatform) {
+  return GAME_PLATFORM_META[platform]?.label ?? platform;
+}
+
+export function itemGamePlatform(item: {
+  tag?: ScheduleTag;
+  gamePlatform?: GamePlatform;
+}): GamePlatform | undefined {
+  if ((item.tag ?? "work") !== "game") return undefined;
+  return item.gamePlatform;
 }
 
 export const DayOverrideSchema = z.enum(["off", "work"]);
@@ -117,6 +189,10 @@ export const ScheduleItemSchema = z
     /** 交通：出发地 / 目的地（可选） */
     origin: z.string().trim().optional(),
     destination: z.string().trim().optional(),
+    /** 通话渠道；仅 tag=call 有意义，旧数据缺省在 parse 时补 phone */
+    callChannel: CallChannelSchema.optional(),
+    /** 游戏平台；仅 tag=game，可选 */
+    gamePlatform: GamePlatformSchema.optional(),
     /**
      * 展示归属：自己 / 对方 / 共同（相对本机视角）。
      * 缺省在 parseAppConfig 中补全；旧配置若仅有异机 ownerId 则解析为 partner。
@@ -545,11 +621,18 @@ export function parseAppConfig(raw: unknown): AppConfig {
     const owner: ItemOwner =
       it.owner ??
       (ownerId !== couple.memberId ? "partner" : "self");
+    const tag = it.tag ?? "work";
     return {
       ...it,
+      tag,
       owner,
       ownerId,
       updatedAt: it.updatedAt || new Date().toISOString(),
+      callChannel:
+        tag === "call" ? (it.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
+      gamePlatform: tag === "game" ? it.gamePlatform : undefined,
+      origin: tag === "commute" ? it.origin : undefined,
+      destination: tag === "commute" ? it.destination : undefined,
     };
   });
   return {

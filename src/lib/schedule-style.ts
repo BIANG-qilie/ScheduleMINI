@@ -1,6 +1,10 @@
 import type { CSSProperties } from "react";
 import {
+  formatCallChannelLabel,
+  formatGamePlatformLabel,
   formatTagLabel,
+  itemCallChannel,
+  itemGamePlatform,
   itemRecurrence,
   itemTag,
   type ScheduleItem,
@@ -42,6 +46,18 @@ export const TAG_SURFACE: Record<
     chip: "bg-orange-100 text-orange-800 border-orange-200",
     bar: "bg-orange-500",
   },
+  call: {
+    block:
+      "border border-rose-600/30 bg-rose-50 text-rose-950",
+    chip: "bg-rose-100 text-rose-800 border-rose-200",
+    bar: "bg-rose-500",
+  },
+  game: {
+    block:
+      "border border-indigo-600/30 bg-indigo-50 text-indigo-950",
+    chip: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    bar: "bg-indigo-500",
+  },
   other: {
     block:
       "border border-stone-400/40 bg-stone-100 text-stone-900",
@@ -80,6 +96,16 @@ export const TAG_WIDGET: Record<
     badge: "bg-orange-400/25 text-orange-100",
     accent: "#fb923c",
   },
+  call: {
+    card: "border-rose-400/35 bg-rose-500/18",
+    badge: "bg-rose-400/25 text-rose-100",
+    accent: "#fb7185",
+  },
+  game: {
+    card: "border-indigo-400/35 bg-indigo-500/18",
+    badge: "bg-indigo-400/25 text-indigo-100",
+    accent: "#818cf8",
+  },
   other: {
     card: "border-white/15 bg-white/8",
     badge: "bg-white/12 text-white/70",
@@ -107,6 +133,28 @@ export function isCommuteItem(item: ScheduleItem) {
   return itemTag(item) === "commute";
 }
 
+export function isCallItem(item: ScheduleItem) {
+  return itemTag(item) === "call";
+}
+
+export function isGameItem(item: ScheduleItem) {
+  return itemTag(item) === "game";
+}
+
+/** 周/列表/小窗副行：交通 / 通话渠道 / 游戏平台 */
+export function formatItemSubline(item: ScheduleItem): string | null {
+  if (isCallItem(item)) {
+    const ch = itemCallChannel(item);
+    return ch ? formatCallChannelLabel(ch) : null;
+  }
+  if (isGameItem(item)) {
+    const platform = itemGamePlatform(item);
+    return platform ? formatGamePlatformLabel(platform) : null;
+  }
+  if (isCommuteItem(item)) return formatRoute(item);
+  return null;
+}
+
 export function scheduleBlockClass(item: ScheduleItem) {
   const tag = itemTag(item);
   const once = itemRecurrence(item) === "once";
@@ -128,8 +176,8 @@ export function itemHoverText(item: ScheduleItem) {
     `${item.start}–${item.end} · ${formatTagLabel(itemTag(item))}`,
     item.title,
   ];
-  const route = formatRoute(item);
-  if (route) parts.push(route);
+  const sub = formatItemSubline(item);
+  if (sub) parts.push(sub);
   if (item.note?.trim()) parts.push(item.note.trim());
   if (itemRecurrence(item) === "once") parts.push("仅一次");
   return parts.join("\n");

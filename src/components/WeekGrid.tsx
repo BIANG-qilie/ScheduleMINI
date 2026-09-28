@@ -18,8 +18,7 @@ import {
 } from "@/lib/config";
 import { resolveDayState, type DayLabel } from "@/lib/holidays";
 import {
-  formatRoute,
-  isCommuteItem,
+  formatItemSubline,
   itemHoverText,
   ownerSurfaceStyle,
 } from "@/lib/schedule-style";
@@ -357,8 +356,7 @@ export function WeekGrid({
                   );
                   return placed.map(({ item, segment, top, height }) => {
                     const once = itemRecurrence(item) === "once";
-                    const commute = isCommuteItem(item);
-                    const route = formatRoute(item);
+                    const subline = formatItemSubline(item);
                     const overnight =
                       segment.end === "24:00" || segment.start === "00:00";
                     // 短块优先标题；完整信息靠 hover
@@ -433,9 +431,9 @@ export function WeekGrid({
                             <span className="truncate">{item.title}</span>
                           </p>
                           {showSub ? (
-                            commute && route ? (
+                            subline ? (
                               <p className="truncate text-[10px] leading-tight opacity-80">
-                                {route}
+                                {subline}
                               </p>
                             ) : (
                               <p className="truncate font-mono text-[10px] leading-tight opacity-70">

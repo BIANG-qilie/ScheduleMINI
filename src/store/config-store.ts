@@ -4,9 +4,12 @@ import {
   CONFIG_CHANGED_EVENT,
   coexistenceIsPaused,
   buildCoexistenceSharedItemFields,
+  DEFAULT_CALL_CHANNEL,
   type AppConfig,
+  type CallChannel,
   type CoupleIdentity,
   type DayOverride,
+  type GamePlatform,
   type ItemOwner,
   type ScheduleItem,
   type ScheduleTag,
@@ -49,13 +52,17 @@ type ConfigState = {
     item: Omit<ScheduleItem, "id" | "skippedDates"> & {
       id?: string;
       skippedDates?: string[];
+      callChannel?: CallChannel;
+      gamePlatform?: GamePlatform;
     },
   ) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
   deleteItems: (ids: string[]) => Promise<void>;
   patchItems: (
     ids: string[],
-    patch: Partial<Pick<ScheduleItem, "tag" | "owner">>,
+    patch: Partial<
+      Pick<ScheduleItem, "tag" | "owner" | "callChannel" | "gamePlatform">
+    >,
   ) => Promise<void>;
   skipOccurrence: (id: string, dateKey: string) => Promise<void>;
   unskipOccurrence: (id: string, dateKey: string) => Promise<void>;
@@ -184,6 +191,12 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         (item.tag ?? "work") === "commute" && item.destination?.trim()
           ? item.destination.trim()
           : undefined,
+      callChannel:
+        (item.tag ?? "work") === "call"
+          ? (item.callChannel ?? DEFAULT_CALL_CHANNEL)
+          : undefined,
+      gamePlatform:
+        (item.tag ?? "work") === "game" ? item.gamePlatform : undefined,
       owner,
       ownerId: couple.memberId,
       updatedAt: new Date().toISOString(),
@@ -218,13 +231,43 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     const now = new Date().toISOString();
     const items = config.items.map((it) => {
       if (!idSet.has(it.id)) return it;
-      return {
+      const tag = (patch.tag ?? it.tag ?? "work") as ScheduleTag;
+      const next: ScheduleItem = {
         ...it,
-        ...(patch.tag ? { tag: patch.tag as ScheduleTag } : {}),
+        ...(patch.tag ? { tag } : {}),
         ...(patch.owner ? { owner: patch.owner as ItemOwner } : {}),
         ownerId: config.couple.memberId,
         updatedAt: now,
       };
+      if (patch.tag) {
+        if (tag === "call") {
+          next.callChannel =
+            patch.callChannel ?? it.callChannel ?? DEFAULT_CALL_CHANNEL;
+          next.gamePlatform = undefined;
+          next.origin = undefined;
+          next.destination = undefined;
+        } else if (tag === "game") {
+          next.gamePlatform = patch.gamePlatform ?? it.gamePlatform;
+          next.callChannel = undefined;
+          next.origin = undefined;
+          next.destination = undefined;
+        } else {
+          next.callChannel = undefined;
+          next.gamePlatform = undefined;
+          if (tag !== "commute") {
+            next.origin = undefined;
+            next.destination = undefined;
+          }
+        }
+      } else {
+        if (patch.callChannel && tag === "call") {
+          next.callChannel = patch.callChannel;
+        }
+        if (patch.gamePlatform && tag === "game") {
+          next.gamePlatform = patch.gamePlatform;
+        }
+      }
+      return next;
     });
     await setConfig({ ...config, items });
     if (config.couple.inviteCode) void syncNow();
