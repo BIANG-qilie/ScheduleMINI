@@ -247,6 +247,18 @@ export const AppConfigSchema = z
         path: ["gridEndHour"],
       });
     }
+    const seen = new Set<string>();
+    for (let i = 0; i < val.items.length; i++) {
+      const id = val.items[i].id;
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "日程 id 不能重复",
+          path: ["items", i, "id"],
+        });
+      }
+      seen.add(id);
+    }
   });
 
 export type ScheduleItem = z.infer<typeof ScheduleItemSchema>;
@@ -328,6 +340,110 @@ export function coexistenceIsPaused(
   if (!session) return false;
   const last = session.pauses[session.pauses.length - 1];
   return Boolean(last && !last.resumedAt);
+}
+
+/** 净时长文案：不足 1 分钟写秒，避免误读为满分钟 */
+export function formatNetDurationPrecise(ms: number) {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  if (totalSec < 60) return `${totalSec} 秒`;
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  if (mins < 60) {
+    return secs === 0 ? `${mins} 分钟` : `${mins} 分 ${secs} 秒`;
+  }
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (remMins === 0 && secs === 0) return `${hours} 小时`;
+  if (secs === 0) return `${hours} 小时 ${remMins} 分钟`;
+  return `${hours} 小时 ${remMins} 分 ${secs} 秒`;
+}
+
+export function toHhmm(d: Date) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+const COEX_MIN_BLOCK_MS = 60_000;
+
+export type CoexistenceFinished = {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  pauses: { pausedAt: string; resumedAt?: string }[];
+};
+
+/**
+ * 共处结束 → 共同 once 字段：
+ * 壁钟起止（不足 1 分钟撑高）；跨日不拆条，走 end < start；备注写净时长。
+ */
+export function buildCoexistenceSharedItemFields(finished: CoexistenceFinished) {
+  const start = new Date(finished.startedAt);
+  const realEnd = new Date(finished.endedAt);
+  const wallEnd = new Date(realEnd);
+  if (wallEnd.getTime() - start.getTime() < COEX_MIN_BLOCK_MS) {
+    wallEnd.setTime(start.getTime() + COEX_MIN_BLOCK_MS);
+  }
+  const net = coexistenceElapsedMs(finished, realEnd);
+  const netLabel = formatNetDurationPrecise(net);
+  const short = net < COEX_MIN_BLOCK_MS;
+  return {
+    start: toHhmm(start),
+    end: toHhmm(wallEnd),
+    title: short ? `共处 · 净 ${netLabel}` : "共处",
+    note: `净时长 ${netLabel}`,
+    weekdays: [] as number[],
+    enabled: true as const,
+    recurrence: "once" as const,
+    date: formatDateKey(start),
+    tag: "life" as const,
+    owner: "shared" as const,
+  };
+}
+
+/** 周列重叠块：左对齐分列（同簇内缩窄） */
+export function computeOverlapLayout(
+  blocks: { id: string; start: number; end: number }[],
+): Map<string, { column: number; columnCount: number }> {
+  const sorted = [...blocks].sort(
+    (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
+  );
+  const clusters: (typeof sorted)[] = [];
+  let current: typeof sorted = [];
+  let clusterEnd = -Infinity;
+  for (const b of sorted) {
+    if (current.length === 0 || b.start < clusterEnd) {
+      current.push(b);
+      clusterEnd = Math.max(clusterEnd, b.end);
+    } else {
+      clusters.push(current);
+      current = [b];
+      clusterEnd = b.end;
+    }
+  }
+  if (current.length) clusters.push(current);
+
+  const result = new Map<string, { column: number; columnCount: number }>();
+  for (const cluster of clusters) {
+    const ends: number[] = [];
+    const cols = new Map<string, number>();
+    for (const b of cluster) {
+      let col = ends.findIndex((t) => t <= b.start);
+      if (col === -1) {
+        col = ends.length;
+        ends.push(b.end);
+      } else {
+        ends[col] = b.end;
+      }
+      cols.set(b.id, col);
+    }
+    const columnCount = Math.max(1, ends.length);
+    for (const b of cluster) {
+      result.set(b.id, {
+        column: cols.get(b.id) ?? 0,
+        columnCount,
+      });
+    }
+  }
+  return result;
 }
 
 export const CONFIG_VERSION = 1 as const;

@@ -24,7 +24,13 @@ docker run --rm -p 8787:8787 -e PORT=8787 schedulemini-sync
 ```
 
 Railway：Builder 选 Dockerfile；部署后客户端默认已指向  
-`https://schedulemini-production.up.railway.app`（需重新部署以启用多端 person 模型）。
+`https://schedulemini-production.up.railway.app`。
+
+**含 `shared-v2` 的 `sync-relay/server.mjs` 更新后必须 Redeploy**，否则双机仍跑旧中继。
+
+```bash
+curl -sS https://schedulemini-production.up.railway.app/health
+```
 
 ## API
 

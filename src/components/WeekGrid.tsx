@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
   compareTime,
+  computeOverlapLayout,
   formatDateKey,
   formatWeekRangeLabel,
   getCurrentWeekColumns,
@@ -315,120 +316,143 @@ export function WeekGrid({
                   />
                 ))}
 
-                {dayItems.map((item, index) => {
-                  const segment = itemSegmentOnDate(
-                    item,
-                    col.dateKey,
-                    col.weekday,
+                {(() => {
+                  const placed = dayItems
+                    .map((item) => {
+                      const segment = itemSegmentOnDate(
+                        item,
+                        col.dateKey,
+                        col.weekday,
+                      );
+                      if (!segment) return null;
+                      let start = timeToClampedMinutes(segment.start);
+                      let end =
+                        segment.end === "24:00"
+                          ? gridEndHour * 60
+                          : timeToClampedMinutes(segment.end);
+                      // 贴网格下沿的跨日晚段（如 22:00–24:00 且网格止于 22）仍显示一小截
+                      if (end <= start && segment.end === "24:00") {
+                        end = gridEndHour * 60;
+                        start = Math.max(gridStartHour * 60, end - 40);
+                      }
+                      if (end <= start) return null;
+                      const top =
+                        ((start - gridStartHour * 60) / 60) * DAY_PX;
+                      // 严格按时长占位，不人为撑高以免压住下一段
+                      const height = Math.max(
+                        10,
+                        ((end - start) / 60) * DAY_PX - 1,
+                      );
+                      return { item, segment, start, end, top, height };
+                    })
+                    .filter(
+                      (x): x is NonNullable<typeof x> => x != null,
+                    );
+                  const layout = computeOverlapLayout(
+                    placed.map((p) => ({
+                      id: p.item.id,
+                      start: p.start,
+                      end: p.end,
+                    })),
                   );
-                  if (!segment) return null;
-                  let start = timeToClampedMinutes(segment.start);
-                  let end =
-                    segment.end === "24:00"
-                      ? gridEndHour * 60
-                      : timeToClampedMinutes(segment.end);
-                  // 贴网格下沿的跨日晚段（如 22:00–24:00 且网格止于 22）仍显示一小截
-                  if (end <= start && segment.end === "24:00") {
-                    end = gridEndHour * 60;
-                    start = Math.max(gridStartHour * 60, end - 40);
-                  }
-                  if (end <= start) return null;
-                  const top = ((start - gridStartHour * 60) / 60) * DAY_PX;
-                  // 严格按时长占位，不人为撑高以免压住下一段
-                  const height = Math.max(
-                    10,
-                    ((end - start) / 60) * DAY_PX - 1,
-                  );
-                  const once = itemRecurrence(item) === "once";
-                  const commute = isCommuteItem(item);
-                  const route = formatRoute(item);
-                  const overnight =
-                    segment.end === "24:00" || segment.start === "00:00";
-                  const showSub = height >= 28;
-                  const showOvernight = overnight && height >= 40;
-                  const color = ownerColor(item, couple);
-                  // 左对齐：固定小边距，重叠时仅抬 z-index，不再右移 inset
-                  const z = 10 + (index % 5);
-                  return (
-                    <button
-                      key={`${item.id}-${col.dateKey}`}
-                      type="button"
-                      title={itemHoverText(item)}
-                      className={cn(
-                        "group absolute overflow-hidden rounded border text-left transition hover:brightness-[0.97]",
-                        height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
-                        once && "border-dashed",
-                        selectedIds?.has(item.id) &&
-                          "ring-2 ring-[var(--color-accent)] ring-offset-1",
-                      )}
-                      style={{
-                        top,
-                        height,
-                        left: 2,
-                        right: 2,
-                        zIndex: z,
-                        ...ownerSurfaceStyle(color),
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (e.shiftKey && onToggleSelect) {
-                          onToggleSelect(item.id);
-                          return;
-                        }
-                        onEditItem(item, col.dateKey);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (once) {
+                  return placed.map(({ item, segment, top, height }) => {
+                    const once = itemRecurrence(item) === "once";
+                    const commute = isCommuteItem(item);
+                    const route = formatRoute(item);
+                    const overnight =
+                      segment.end === "24:00" || segment.start === "00:00";
+                    // 短块优先标题；完整信息靠 hover
+                    const showSub = height >= 28;
+                    const showOvernight = overnight && height >= 40;
+                    const color = ownerColor(item, couple);
+                    const slot = layout.get(item.id) ?? {
+                      column: 0,
+                      columnCount: 1,
+                    };
+                    const widthPct = 100 / slot.columnCount;
+                    const z = 10 + slot.column;
+                    return (
+                      <button
+                        key={`${item.id}-${col.dateKey}`}
+                        type="button"
+                        title={itemHoverText(item)}
+                        className={cn(
+                          "group absolute overflow-hidden rounded border text-left transition hover:brightness-[0.97]",
+                          height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
+                          once && "border-dashed",
+                          selectedIds?.has(item.id) &&
+                            "ring-2 ring-[var(--color-accent)] ring-offset-1",
+                        )}
+                        style={{
+                          top,
+                          height,
+                          left: `calc(${slot.column * widthPct}% + 2px)`,
+                          width: `calc(${widthPct}% - 4px)`,
+                          right: "auto",
+                          zIndex: z,
+                          ...ownerSurfaceStyle(color),
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (e.shiftKey && onToggleSelect) {
+                            onToggleSelect(item.id);
+                            return;
+                          }
                           onEditItem(item, col.dateKey);
-                          return;
-                        }
-                        setMenu({
-                          kind: "item",
-                          item,
-                          dateKey: col.dateKey,
-                          x: e.clientX,
-                          y: e.clientY,
-                        });
-                      }}
-                    >
-                      <div className="h-full overflow-hidden">
-                        <p
-                          className={cn(
-                            "flex items-center gap-0.5 truncate font-semibold leading-tight",
-                            height < 18 ? "text-[10px]" : "text-[11px]",
-                          )}
-                        >
-                          {once ? (
-                            <span
-                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                              title="仅一次"
-                              aria-label="仅一次"
-                            />
-                          ) : null}
-                          <span className="truncate">{item.title}</span>
-                        </p>
-                        {showSub ? (
-                          commute && route ? (
-                            <p className="truncate text-[10px] leading-tight opacity-80">
-                              {route}
-                            </p>
-                          ) : (
-                            <p className="truncate font-mono text-[10px] leading-tight opacity-70">
-                              {item.start}–{item.end}
-                            </p>
-                          )
-                        ) : null}
-                        {showOvernight ? (
-                          <p className="truncate text-[9px] leading-tight opacity-55">
-                            跨日
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (once) {
+                            onEditItem(item, col.dateKey);
+                            return;
+                          }
+                          setMenu({
+                            kind: "item",
+                            item,
+                            dateKey: col.dateKey,
+                            x: e.clientX,
+                            y: e.clientY,
+                          });
+                        }}
+                      >
+                        <div className="h-full overflow-hidden">
+                          <p
+                            className={cn(
+                              "flex items-center gap-0.5 truncate font-semibold leading-tight",
+                              height < 18 ? "text-[10px]" : "text-[11px]",
+                            )}
+                          >
+                            {once ? (
+                              <span
+                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                                title="仅一次"
+                                aria-label="仅一次"
+                              />
+                            ) : null}
+                            <span className="truncate">{item.title}</span>
                           </p>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
+                          {showSub ? (
+                            commute && route ? (
+                              <p className="truncate text-[10px] leading-tight opacity-80">
+                                {route}
+                              </p>
+                            ) : (
+                              <p className="truncate font-mono text-[10px] leading-tight opacity-70">
+                                {item.start}–{item.end}
+                              </p>
+                            )
+                          ) : null}
+                          {showOvernight ? (
+                            <p className="truncate text-[9px] leading-tight opacity-55">
+                              跨日
+                            </p>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
 
                 {col.dateKey === todayKey && nowLineTop != null ? (
                   <div

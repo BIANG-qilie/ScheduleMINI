@@ -27,13 +27,14 @@ export function Dialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="关闭对话框"
+        aria-label={`关闭${title}`}
         className="absolute inset-0 bg-[color-mix(in_oklab,var(--color-ink)_45%,transparent)]"
         onClick={() => onOpenChange(false)}
       />
       <div
         role="dialog"
         aria-modal="true"
+        aria-label={title}
         className={cn(
           "relative z-10 w-full max-w-lg rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-lg",
           className,

@@ -354,12 +354,14 @@ export function SettingsPage() {
     try {
       const ok = await importConfig();
       if (ok) {
+        setPrefsOpen(false);
         setStatus("配置已导入并替换");
         if (useConfigStore.getState().config.widgetVisible) {
           await setWidgetVisible(true);
         }
       }
     } catch (err) {
+      setPrefsOpen(false);
       setStatus(
         `导入失败：${err instanceof Error ? err.message : String(err)}`,
       );
@@ -430,6 +432,11 @@ export function SettingsPage() {
 
         {status ? (
           <div
+            role={
+              status.startsWith("导入失败") || status.startsWith("配置加载")
+                ? "alert"
+                : undefined
+            }
             className={cn(
               "rounded-lg border px-4 py-3 text-sm",
               status.startsWith("导入失败") || status.startsWith("配置加载")

@@ -37,14 +37,40 @@ E2E 使用端口 **45331**（非开发 45231），默认不 `reuseExistingServer
 3. 损坏 `config.json` 后启动：提示错误 + 空日程，**不是**样例晨会
 4. 导入非法 JSON：设置页内红色错误，不弹系统 alert 作为唯一反馈
 5. 拖拽悬浮窗大小/位置，重启后仍在
+6. 共处：开 → 暂停 → 继续 → 结束确认 → 列表出现「共处」共同条目（壁钟块 + 净时长备注）
+7. 批量：列表勾选或周视图 Shift+点击 → 改标签 / 改归属 / 删除
 
-## Windows 原生回归（本机）
+## Windows 原生回归（本机勾选）
 
-在 Windows 上 `npm run tauri build` 安装后检查：
+Cloud Linux **不能**代跑。在 Windows 上：
 
-- 托盘打开设置 / 显隐悬浮窗 / 退出
-- 开机自启开关
-- 课前提醒通知（已安装包；开发态可能显示 PowerShell 名）
-- 关闭设置窗不退出进程
+```bash
+git pull origin main
+npm ci
+npm run tauri build
+```
 
-Cloud Linux 环境无法替代此项；记录结果到 PR 或 issue 即可。
+安装产物后逐项勾选，结果记到 issue / PR 评论：
+
+| # | 项 | 步骤 | 期望 | ☑ |
+| --- | --- | --- | --- | --- |
+| W1 | 托盘 → 设置 | 托盘图标右键 / 单击 → 打开设置 | 主窗「小日程」出现 | ☐ |
+| W2 | 托盘 → 显隐悬浮窗 | 托盘切换显示/隐藏 | 小窗显隐与设置开关一致 | ☐ |
+| W3 | 托盘 → 退出 | 托盘选退出 | 进程结束，托盘图标消失 | ☐ |
+| W4 | 开机自启 | 设置 → 显示 → 开机自启开/关，注销或重启 | 开：登录后自动起；关：不起 | ☐ |
+| W5 | 课前提醒通知 | 建一条数分钟后开始的日程，开提醒 | 到点系统通知（已安装包；开发态可能显示 PowerShell 名） | ☐ |
+| W6 | 拖拽位置记忆 | 拖移并缩放悬浮窗，完全退出再开 | 位置与大小恢复 | ☐ |
+| W7 | 关设置不退进程 | 关闭设置窗 | 托盘与悬浮窗仍在 | ☐ |
+
+## 同步中继（Railway）
+
+默认：`https://schedulemini-production.up.railway.app`
+
+含 `shared-v2` 全量共享文档的 `sync-relay/server.mjs` 变更后，须在 Railway **用仓库根 Dockerfile 重新部署**，再做双机邀请码联调。步骤见仓库 `sync-relay/README.md` 与项目文档「中继部署」。
+
+烟测：
+
+```bash
+curl -sS https://schedulemini-production.up.railway.app/health
+# → {"ok":true,"rooms":…,"maxPersons":2}
+```

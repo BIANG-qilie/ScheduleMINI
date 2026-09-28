@@ -106,6 +106,58 @@ describe("device sync code", () => {
   });
 });
 
+describe("shared-v2 owner round-trip", () => {
+  it("keeps shared through flip and LWW merge", () => {
+    const local = [
+      {
+        ...item("s1", "2026-01-01T10:00:00.000Z", "约会"),
+        owner: "shared" as const,
+      },
+    ];
+    const fromPartner = local.map((it) => ({
+      ...it,
+      owner: flipOwnerForLocal(it.owner),
+      updatedAt: "2026-01-02T10:00:00.000Z",
+      title: "约会·新",
+    }));
+    expect(fromPartner[0].owner).toBe("shared");
+    const merged = mergeItemsLww(local, fromPartner);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].owner).toBe("shared");
+    expect(merged[0].title).toBe("约会·新");
+  });
+
+  it("does not flip shared when partner updates self item", () => {
+    const remoteSelf = item("x", "2026-01-03T00:00:00.000Z", "对方课");
+    const flipped = {
+      ...remoteSelf,
+      owner: flipOwnerForLocal(remoteSelf.owner),
+    };
+    expect(flipped.owner).toBe("partner");
+    const withShared = [
+      {
+        ...item("s", "2026-01-01T00:00:00.000Z", "共同"),
+        owner: "shared" as const,
+      },
+      flipped,
+    ];
+    const merged = mergeItemsLww([], withShared);
+    expect(merged.find((i) => i.id === "s")?.owner).toBe("shared");
+    expect(merged.find((i) => i.id === "x")?.owner).toBe("partner");
+  });
+
+  it("LWW prefers newer shared over older self same id", () => {
+    const olderSelf = item("same", "2026-01-01T00:00:00.000Z", "旧");
+    const newerShared = {
+      ...item("same", "2026-01-05T00:00:00.000Z", "共同版"),
+      owner: "shared" as const,
+    };
+    const merged = mergeItemsLww([olderSelf], [newerShared]);
+    expect(merged[0].owner).toBe("shared");
+    expect(merged[0].title).toBe("共同版");
+  });
+});
+
 describe("owner lane", () => {
   it("flips relative owner across devices", () => {
     expect(flipOwnerForLocal("self")).toBe("partner");

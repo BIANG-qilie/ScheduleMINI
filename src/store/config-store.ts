@@ -2,10 +2,8 @@ import { create } from "zustand";
 import { emit, listen } from "@tauri-apps/api/event";
 import {
   CONFIG_CHANGED_EVENT,
-  coexistenceElapsedMs,
   coexistenceIsPaused,
-  formatDateKey,
-  formatDurationZh,
+  buildCoexistenceSharedItemFields,
   type AppConfig,
   type CoupleIdentity,
   type DayOverride,
@@ -112,10 +110,6 @@ async function broadcastConfig(config: AppConfig) {
       new CustomEvent(CONFIG_CHANGED_EVENT, { detail: config }),
     );
   }
-}
-
-function hhmm(d: Date) {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -575,26 +569,11 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
     if (!opts?.createSharedItem) return {};
 
-    const start = new Date(finished.startedAt);
-    const end = new Date(endedAt);
-    // 壁钟块：若不足 1 分钟则撑到 +1 分钟，避免 start===end
-    if (end.getTime() - start.getTime() < 60_000) {
-      end.setTime(start.getTime() + 60_000);
-    }
-    const net = coexistenceElapsedMs(finished, end);
+    const fields = buildCoexistenceSharedItemFields(finished);
     const id = createId();
     await upsertItem({
       id,
-      start: hhmm(start),
-      end: hhmm(end),
-      title: "共处",
-      note: `净时长 ${formatDurationZh(net)}`,
-      weekdays: [],
-      enabled: true,
-      recurrence: "once",
-      date: formatDateKey(start),
-      tag: "life",
-      owner: "shared",
+      ...fields,
     });
     return { createdItemId: id };
   },
