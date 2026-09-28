@@ -70,6 +70,8 @@ type Draft = {
   date: string;
   /** 周循环生效日起（含） */
   activeFrom: string;
+  /** 周循环失效日（含）；空=不限 */
+  activeUntil: string;
   tag: ScheduleTag;
   origin: string;
   destination: string;
@@ -88,6 +90,7 @@ const emptyDraft = (): Draft => {
     recurrence: "weekly",
     date: today,
     activeFrom: today,
+    activeUntil: "",
     tag: "work",
     origin: "",
     destination: "",
@@ -108,6 +111,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     recurrence: item.recurrence ?? "weekly",
     date: item.date ?? today,
     activeFrom: item.activeFrom ?? today,
+    activeUntil: item.activeUntil ?? "",
     tag: item.tag ?? "work",
     origin: item.origin ?? "",
     destination: item.destination ?? "",
@@ -288,6 +292,15 @@ export function SettingsPage() {
       setFormError("结束时间不能与开始时间相同");
       return;
     }
+    if (
+      draft.recurrence === "weekly" &&
+      draft.activeFrom &&
+      draft.activeUntil &&
+      draft.activeUntil < draft.activeFrom
+    ) {
+      setFormError("失效日不能早于生效日");
+      return;
+    }
     setBusy(true);
     try {
       const existing = draft.id
@@ -308,6 +321,10 @@ export function SettingsPage() {
         activeFrom:
           draft.recurrence === "weekly" && draft.activeFrom
             ? draft.activeFrom
+            : undefined,
+        activeUntil:
+          draft.recurrence === "weekly" && draft.activeUntil
+            ? draft.activeUntil
             : undefined,
         skippedDates:
           draft.recurrence === "weekly" && existing
@@ -1303,22 +1320,35 @@ export function SettingsPage() {
                 );
               })}
             </div>
-            <div className="space-y-2 pt-2">
-              <Label htmlFor="active-from">从此日起生效</Label>
-              <Input
-                id="active-from"
-                type="date"
-                value={draft.activeFrom}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    activeFrom: e.target.value,
-                  }))
-                }
-              />
-              <p className="text-xs text-[var(--color-ink-muted)]">
-                该日之前不出现
-              </p>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="active-from">生效</Label>
+                <Input
+                  id="active-from"
+                  type="date"
+                  value={draft.activeFrom}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      activeFrom: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="active-until">失效</Label>
+                <Input
+                  id="active-until"
+                  type="date"
+                  value={draft.activeUntil}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      activeUntil: e.target.value,
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
         )}

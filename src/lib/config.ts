@@ -110,6 +110,8 @@ export const ScheduleItemSchema = z
     skippedDates: z.array(DateSchema).default([]),
     /** 周循环：从此日（含）起才出现；缺省表示不限起点 */
     activeFrom: DateSchema.optional(),
+    /** 周循环：至此日（含）仍出现；缺省表示不限终点；旧配置缺省=无失效 */
+    activeUntil: DateSchema.optional(),
     /** 交通：出发地 / 目的地（可选） */
     origin: z.string().trim().optional(),
     destination: z.string().trim().optional(),
@@ -143,6 +145,18 @@ export const ScheduleItemSchema = z
         code: "custom",
         message: "请选择日期",
         path: ["date"],
+      });
+    }
+    if (
+      val.recurrence === "weekly" &&
+      val.activeFrom &&
+      val.activeUntil &&
+      val.activeUntil < val.activeFrom
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "失效日不能早于生效日",
+        path: ["activeUntil"],
       });
     }
   });
@@ -467,12 +481,10 @@ export function itemOccursOnDate(
 
   if (isOccurrenceSkipped(item, dateKey, weekday)) return false;
 
-  // 周循环生效日：以本次出现的起始日为锚，早于 activeFrom 不出现
-  const activeFrom = item.activeFrom;
-  if (activeFrom) {
-    const anchor = occurrenceAnchorDate(item, dateKey, weekday);
-    if (anchor < activeFrom) return false;
-  }
+  // 周循环窗口：以本次出现的起始日为锚；activeFrom/activeUntil 均为含当日
+  const anchor = occurrenceAnchorDate(item, dateKey, weekday);
+  if (item.activeFrom && anchor < item.activeFrom) return false;
+  if (item.activeUntil && anchor > item.activeUntil) return false;
 
   if (tagRespectsHolidays(itemTag(item))) {
     if (isDayOff(dateKey, dayOverrides)) return false;
@@ -700,15 +712,21 @@ export function formatWeekdays(weekdays: number[]) {
     .join("、");
 }
 
+function formatMonthDay(dateKey: string) {
+  const d = parseDateKey(dateKey);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 export function formatScheduleScope(item: ScheduleItem) {
   if (itemRecurrence(item) === "once" && item.date) {
     const d = parseDateKey(item.date);
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   }
   const days = formatWeekdays(item.weekdays);
-  if (item.activeFrom) {
-    const d = parseDateKey(item.activeFrom);
-    return `${days} · ${d.getMonth() + 1}/${d.getDate()}起`;
-  }
+  const from = item.activeFrom ? formatMonthDay(item.activeFrom) : null;
+  const until = item.activeUntil ? formatMonthDay(item.activeUntil) : null;
+  if (from && until) return `${days} · ${from}–${until}`;
+  if (from) return `${days} · ${from}起`;
+  if (until) return `${days} · 至${until}`;
   return days;
 }

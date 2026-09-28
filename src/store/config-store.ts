@@ -160,6 +160,10 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         recurrence === "weekly" && item.activeFrom
           ? item.activeFrom
           : undefined,
+      activeUntil:
+        recurrence === "weekly" && item.activeUntil
+          ? item.activeUntil
+          : undefined,
       origin:
         (item.tag ?? "work") === "commute" && item.origin?.trim()
           ? item.origin.trim()
