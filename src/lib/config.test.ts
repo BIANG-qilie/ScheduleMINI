@@ -217,7 +217,7 @@ describe("holidays and work tag", () => {
       weekdays: [1, 2, 3, 4, 5],
       enabled: true,
       recurrence: "weekly" as const,
-      tag: "work" as const,
+      tag: "life" as const,
       skippedDates: [],
       activeFrom: "2026-09-21",
       activeUntil: "2026-09-25",
