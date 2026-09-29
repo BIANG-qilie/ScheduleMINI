@@ -358,6 +358,7 @@ export function WeekGrid({
                   );
                   return placed.map(({ item, segment, top, height }) => {
                     const once = itemRecurrence(item) === "once";
+                    const courseSwap = !!item.isCourseSwap;
                     const subline = formatItemSubline(item);
                     const overnight =
                       segment.end === "24:00" || segment.start === "00:00";
@@ -379,7 +380,7 @@ export function WeekGrid({
                         className={cn(
                           "group absolute overflow-hidden rounded border text-left transition hover:brightness-[0.97]",
                           height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
-                          once && "border-dashed",
+                          (once || courseSwap) && "border-dashed",
                           selectedIds?.has(item.id) &&
                             "ring-2 ring-[var(--color-accent)] ring-offset-1",
                         )}
@@ -403,7 +404,7 @@ export function WeekGrid({
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (once) {
+                          if (once || courseSwap) {
                             onEditItem(item, col.dateKey);
                             return;
                           }
@@ -423,11 +424,11 @@ export function WeekGrid({
                               height < 18 ? "text-[10px]" : "text-[11px]",
                             )}
                           >
-                            {once ? (
+                            {courseSwap || once ? (
                               <span
                                 className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                                title="仅一次"
-                                aria-label="仅一次"
+                                title={courseSwap ? "换课" : "仅一次"}
+                                aria-label={courseSwap ? "换课" : "仅一次"}
                               />
                             ) : null}
                             <span className="truncate">

@@ -165,9 +165,10 @@ export function formatItemSubline(item: ScheduleItem): string | null {
 export function scheduleBlockClass(item: ScheduleItem) {
   const tag = itemTag(item);
   const once = itemRecurrence(item) === "once";
+  const swap = !!item.isCourseSwap;
   return cn(
     TAG_SURFACE[tag].block,
-    once && "ring-1 ring-dashed ring-amber-500/70",
+    (once || swap) && "ring-1 ring-dashed ring-amber-500/70",
   );
 }
 
@@ -186,7 +187,8 @@ export function itemHoverText(item: ScheduleItem) {
   const sub = formatItemSubline(item);
   if (sub) parts.push(sub);
   if (item.note?.trim()) parts.push(item.note.trim());
-  if (itemRecurrence(item) === "once") parts.push("仅一次");
+  if (item.isCourseSwap) parts.push("换课");
+  else if (itemRecurrence(item) === "once") parts.push("仅一次");
   return parts.join("\n");
 }
 

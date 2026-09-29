@@ -36,11 +36,13 @@ import {
   itemCallChannel,
   itemDisplayTitle,
   itemGamePlatform,
+  itemIsCourseSwap,
   itemSkippedDates,
   itemWorkKind,
   ownerColor,
   ownerLabel,
   tagRespectsHolidays,
+  workKindRequiredField,
   type CallChannel,
   type GamePlatform,
   type ItemOwner,
@@ -92,6 +94,7 @@ type Draft = {
   workKind: WorkKind;
   workPrimary: string;
   workSecondary: string;
+  isCourseSwap: boolean;
   owner: ItemOwner;
 };
 
@@ -116,6 +119,7 @@ const emptyDraft = (): Draft => {
     workKind: DEFAULT_WORK_KIND,
     workPrimary: "",
     workSecondary: "",
+    isCourseSwap: false,
     owner: "self",
   };
 };
@@ -143,6 +147,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     workKind,
     workPrimary: item.workPrimary ?? "",
     workSecondary: item.workSecondary ?? "",
+    isCourseSwap: itemIsCourseSwap(item),
     owner: item.owner ?? "self",
   };
 }
@@ -312,20 +317,30 @@ export function SettingsPage() {
     setFormError(null);
     const structuredWork =
       draft.tag === "work" && draft.workKind !== "other";
+    const courseSwap =
+      draft.tag === "work" &&
+      draft.workKind === "class" &&
+      draft.isCourseSwap;
+    const recurrence = courseSwap ? "once" : draft.recurrence;
     if (structuredWork) {
-      if (!draft.workPrimary.trim()) {
+      const required = workKindRequiredField(draft.workKind);
+      if (required === "primary" && !draft.workPrimary.trim()) {
         setFormError(`请填写${WORK_KIND_META[draft.workKind].primaryLabel}`);
+        return;
+      }
+      if (required === "secondary" && !draft.workSecondary.trim()) {
+        setFormError(`请填写${WORK_KIND_META[draft.workKind].secondaryLabel}`);
         return;
       }
     } else if (!draft.title.trim()) {
       setFormError("请填写标题");
       return;
     }
-    if (draft.recurrence === "weekly" && draft.weekdays.length === 0) {
+    if (recurrence === "weekly" && draft.weekdays.length === 0) {
       setFormError("请至少选择一个星期几");
       return;
     }
-    if (draft.recurrence === "once" && !draft.date) {
+    if (recurrence === "once" && !draft.date) {
       setFormError("请选择日期");
       return;
     }
@@ -334,7 +349,7 @@ export function SettingsPage() {
       return;
     }
     if (
-      draft.recurrence === "weekly" &&
+      recurrence === "weekly" &&
       draft.activeFrom &&
       draft.activeUntil &&
       draft.activeUntil < draft.activeFrom
@@ -347,30 +362,33 @@ export function SettingsPage() {
       const existing = draft.id
         ? config.items.find((it) => it.id === draft.id)
         : undefined;
+      const workTitle = structuredWork
+        ? draft.workPrimary.trim() ||
+          draft.workSecondary.trim() ||
+          draft.title.trim()
+        : draft.title.trim();
       await upsertItem({
         id: draft.id,
         start: draft.start,
         end: draft.end,
-        title: structuredWork
-          ? draft.workPrimary.trim()
-          : draft.title.trim(),
+        title: workTitle,
         note: draft.note,
-        weekdays: draft.recurrence === "weekly" ? draft.weekdays : [],
+        weekdays: recurrence === "weekly" ? draft.weekdays : [],
         enabled: draft.enabled,
-        recurrence: draft.recurrence,
-        date: draft.recurrence === "once" ? draft.date : undefined,
+        recurrence,
+        date: recurrence === "once" ? draft.date : undefined,
         tag: draft.tag,
         owner: config.soloMode ? "self" : draft.owner,
         activeFrom:
-          draft.recurrence === "weekly" && draft.activeFrom
+          recurrence === "weekly" && draft.activeFrom
             ? draft.activeFrom
             : undefined,
         activeUntil:
-          draft.recurrence === "weekly" && draft.activeUntil
+          recurrence === "weekly" && draft.activeUntil
             ? draft.activeUntil
             : undefined,
         skippedDates:
-          draft.recurrence === "weekly" && existing
+          recurrence === "weekly" && existing
             ? itemSkippedDates(existing)
             : [],
         origin: draft.tag === "commute" ? draft.origin : undefined,
@@ -392,6 +410,7 @@ export function SettingsPage() {
           draft.tag === "work" && draft.workKind !== "other"
             ? draft.workSecondary
             : undefined,
+        isCourseSwap: courseSwap || undefined,
       });
       setEditorOpen(false);
       setOccurrenceDate(null);
@@ -639,6 +658,7 @@ export function SettingsPage() {
                 const tag = item.tag ?? "work";
                 const subline = formatItemSubline(item);
                 const once = (item.recurrence ?? "weekly") === "once";
+                const courseSwap = itemIsCourseSwap(item);
                 const color = ownerColor(item, config.couple);
                 return (
                   <li
@@ -646,7 +666,7 @@ export function SettingsPage() {
                     title={itemHoverText(item)}
                     className={cn(
                       "group relative flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:justify-between",
-                      once && "border-dashed",
+                      (once || courseSwap) && "border-dashed border-amber-400/55",
                       selectedIds.has(item.id) && "ring-2 ring-[var(--color-accent)]",
                     )}
                     style={ownerSurfaceStyle(color)}
@@ -673,7 +693,11 @@ export function SettingsPage() {
                         <span className={scheduleChipClass(tag)}>
                           {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
                         </span>
-                        {once ? (
+                        {courseSwap ? (
+                          <span className="rounded border border-amber-400/50 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                            换课
+                          </span>
+                        ) : once ? (
                           <span className="rounded border border-amber-400/50 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
                             仅一次
                           </span>
@@ -1219,11 +1243,14 @@ export function SettingsPage() {
       <Dialog
         open={editorOpen}
         onOpenChange={setEditorOpen}
+        dense
         title={draft.id ? "编辑日程" : "新建日程"}
+        description="一栏填完，保存即生效"
         footer={
           <>
             {draft.id &&
             draft.recurrence === "weekly" &&
+            !draft.isCourseSwap &&
             occurrenceDate ? (
               <Button
                 type="button"
@@ -1267,97 +1294,66 @@ export function SettingsPage() {
           </>
         }
       >
-        <div className="space-y-2">
-          <Label>归属</Label>
-          <div className="relative inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
-            {(
-              [
-                ["self", "自己", config.couple.selfColor] as const,
-                ["partner", "对方", config.couple.partnerColor] as const,
-                ["shared", "共同", "#f3a6a0"] as const,
-              ] as const
-            ).map(([value, label, color]) => {
-              const active = draft.owner === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  className={cn(
-                    "relative h-8 overflow-visible rounded-[5px] px-3 text-xs transition-colors",
-                    !active && "text-[var(--color-ink-muted)] hover:bg-black/[0.03]",
-                  )}
-                  style={
-                    active
-                      ? {
-                          backgroundColor: color,
-                          color: "#fff",
-                          boxShadow:
-                            value === "shared"
-                              ? "0 2px 10px -2px rgba(243,166,160,0.55)"
-                              : undefined,
-                        }
-                      : undefined
-                  }
-                  onClick={() => {
-                    setDraft((prev) => ({ ...prev, owner: value }));
-                    if (value === "shared") {
-                      setHeartBurst((n) => n + 1);
+        {!config.soloMode ? (
+          <section className="flex flex-col gap-2">
+            <Label>归属</Label>
+            <div className="relative inline-flex self-start rounded-lg border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_55%,var(--color-surface))] p-0.5">
+              {(
+                [
+                  ["self", "自己", config.couple.selfColor] as const,
+                  ["partner", "对方", config.couple.partnerColor] as const,
+                  ["shared", "共同", "#f3a6a0"] as const,
+                ] as const
+              ).map(([value, label, color]) => {
+                const active = draft.owner === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={cn(
+                      "relative h-8 overflow-visible rounded-md px-3 text-xs transition-colors",
+                      !active &&
+                        "text-[var(--color-ink-muted)] hover:bg-black/[0.03]",
+                    )}
+                    style={
+                      active
+                        ? {
+                            backgroundColor: color,
+                            color: "#fff",
+                            boxShadow:
+                              value === "shared"
+                                ? "0 2px 10px -2px rgba(243,166,160,0.55)"
+                                : undefined,
+                          }
+                        : undefined
                     }
-                  }}
-                >
-                  {label}
-                  {value === "shared" && heartBurst > 0 ? (
-                    <span
-                      key={heartBurst}
-                      className="owner-heart-burst pointer-events-none absolute inset-0"
-                      aria-hidden
-                    >
-                      <span className="owner-heart owner-heart-a">♥</span>
-                      <span className="owner-heart owner-heart-b">♥</span>
-                      <span className="owner-heart owner-heart-c">♥</span>
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                    onClick={() => {
+                      setDraft((prev) => ({ ...prev, owner: value }));
+                      if (value === "shared") {
+                        setHeartBurst((n) => n + 1);
+                      }
+                    }}
+                  >
+                    {label}
+                    {value === "shared" && heartBurst > 0 ? (
+                      <span
+                        key={heartBurst}
+                        className="owner-heart-burst pointer-events-none absolute inset-0"
+                        aria-hidden
+                      >
+                        <span className="owner-heart owner-heart-a">♥</span>
+                        <span className="owner-heart owner-heart-b">♥</span>
+                        <span className="owner-heart owner-heart-c">♥</span>
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
-        <div className="space-y-2">
-          <Label>重复方式</Label>
-          <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
-            <button
-              type="button"
-              className={cn(
-                "h-8 rounded-[5px] px-3 text-xs",
-                draft.recurrence === "weekly"
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-muted)]",
-              )}
-              onClick={() =>
-                setDraft((prev) => ({ ...prev, recurrence: "weekly" }))
-              }
-            >
-              每周重复
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "h-8 rounded-[5px] px-3 text-xs",
-                draft.recurrence === "once"
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-muted)]",
-              )}
-              onClick={() =>
-                setDraft((prev) => ({ ...prev, recurrence: "once" }))
-              }
-            >
-              仅一次
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-2">
+        <section className="flex flex-col gap-2">
           <Label>标签</Label>
           <div className="flex flex-wrap gap-1.5">
             {SCHEDULE_TAG_OPTIONS.map((opt) => (
@@ -1365,9 +1361,9 @@ export function SettingsPage() {
                 key={opt.id}
                 type="button"
                 className={cn(
-                  "h-8 rounded-md border px-2.5 text-xs",
+                  "h-8 rounded-lg border px-2.5 text-xs",
                   draft.tag === opt.id
-                    ? cn(TAG_SURFACE[opt.id].chip, "ring-2 ring-offset-1")
+                    ? cn(TAG_SURFACE[opt.id].chip, "ring-1 ring-[var(--color-accent)]/35")
                     : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
                 )}
                 onClick={() =>
@@ -1382,6 +1378,8 @@ export function SettingsPage() {
                       opt.id === "work"
                         ? prev.workKind || DEFAULT_WORK_KIND
                         : prev.workKind,
+                    isCourseSwap:
+                      opt.id === "work" ? prev.isCourseSwap : false,
                     owner:
                       opt.id === "game" && prev.tag !== "game"
                         ? "shared"
@@ -1393,13 +1391,17 @@ export function SettingsPage() {
               </button>
             ))}
           </div>
-          {tagRespectsHolidays(draft.tag) && draft.recurrence === "weekly" ? (
-            <p className="text-xs text-[var(--color-ink-muted)]">放假日不出现</p>
+          {tagRespectsHolidays(draft.tag) &&
+          draft.recurrence === "weekly" &&
+          !draft.isCourseSwap ? (
+            <p className="text-xs leading-normal text-[var(--color-ink-muted)]">
+              放假日不出现
+            </p>
           ) : null}
-        </div>
+        </section>
 
         {draft.tag === "work" ? (
-          <div className="space-y-2">
+          <section className="flex flex-col gap-2">
             <Label>工作类型</Label>
             <div className="flex flex-wrap gap-1.5">
               {WORK_KIND_OPTIONS.map((opt) => (
@@ -1407,24 +1409,60 @@ export function SettingsPage() {
                   key={opt.id}
                   type="button"
                   className={cn(
-                    "h-8 rounded-md border px-2.5 text-xs",
+                    "h-8 rounded-lg border px-2.5 text-xs",
                     draft.workKind === opt.id
-                      ? cn(TAG_SURFACE.work.chip, "ring-2 ring-offset-1")
+                      ? cn(
+                          TAG_SURFACE.work.chip,
+                          "ring-1 ring-[var(--color-accent)]/35",
+                        )
                       : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
                   )}
                   onClick={() =>
-                    setDraft((prev) => ({ ...prev, workKind: opt.id }))
+                    setDraft((prev) => ({
+                      ...prev,
+                      workKind: opt.id,
+                      isCourseSwap:
+                        opt.id === "class" ? prev.isCourseSwap : false,
+                      recurrence:
+                        opt.id === "class" && prev.isCourseSwap
+                          ? "once"
+                          : prev.recurrence,
+                    }))
                   }
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
-          </div>
+            {draft.workKind === "class" ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300/50 bg-amber-50/70 px-3 py-2.5">
+                <div className="min-w-0">
+                  <Label htmlFor="course-swap" className="text-sm">
+                    换课
+                  </Label>
+                  <p className="mt-0.5 text-[11px] leading-normal text-amber-900/70">
+                    开启后固定为仅一次，周循环不可用
+                  </p>
+                </div>
+                <Switch
+                  id="course-swap"
+                  checked={draft.isCourseSwap}
+                  onCheckedChange={(on) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      isCourseSwap: on,
+                      recurrence: on ? "once" : prev.recurrence,
+                      date: on && !prev.date ? formatDateKey(new Date()) : prev.date,
+                    }))
+                  }
+                />
+              </div>
+            ) : null}
+          </section>
         ) : null}
 
         {draft.tag === "call" ? (
-          <div className="space-y-2">
+          <section className="flex flex-col gap-2">
             <Label>通话渠道</Label>
             <div className="flex flex-wrap gap-1.5">
               {CALL_CHANNEL_OPTIONS.map((opt) => (
@@ -1432,9 +1470,12 @@ export function SettingsPage() {
                   key={opt.id}
                   type="button"
                   className={cn(
-                    "h-8 rounded-md border px-2.5 text-xs",
+                    "h-8 rounded-lg border px-2.5 text-xs",
                     draft.callChannel === opt.id
-                      ? cn(TAG_SURFACE.call.chip, "ring-2 ring-offset-1")
+                      ? cn(
+                          TAG_SURFACE.call.chip,
+                          "ring-1 ring-[var(--color-accent)]/35",
+                        )
                       : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
                   )}
                   onClick={() =>
@@ -1445,11 +1486,11 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         ) : null}
 
         {draft.tag === "game" ? (
-          <div className="space-y-2">
+          <section className="flex flex-col gap-2">
             <Label>平台</Label>
             <div className="flex flex-wrap gap-1.5">
               {GAME_PLATFORM_OPTIONS.map((opt) => (
@@ -1457,9 +1498,12 @@ export function SettingsPage() {
                   key={opt.id}
                   type="button"
                   className={cn(
-                    "h-8 rounded-md border px-2.5 text-xs",
+                    "h-8 rounded-lg border px-2.5 text-xs",
                     draft.gamePlatform === opt.id
-                      ? cn(TAG_SURFACE.game.chip, "ring-2 ring-offset-1")
+                      ? cn(
+                          TAG_SURFACE.game.chip,
+                          "ring-1 ring-[var(--color-accent)]/35",
+                        )
                       : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
                   )}
                   onClick={() =>
@@ -1474,12 +1518,12 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         ) : null}
 
         {draft.tag === "commute" ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <Label htmlFor="origin">出发地</Label>
               <Input
                 id="origin"
@@ -1490,7 +1534,7 @@ export function SettingsPage() {
                 }
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <Label htmlFor="destination">目的地</Label>
               <Input
                 id="destination"
@@ -1504,149 +1548,231 @@ export function SettingsPage() {
                 }
               />
             </div>
-          </div>
+          </section>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="min-w-0 space-y-1.5">
-            <Label htmlFor="start">开始</Label>
-            <Input
-              id="start"
-              type="time"
-              step={60}
-              value={draft.start}
-              onChange={(e) =>
-                setDraft((prev) => ({ ...prev, start: e.target.value }))
-              }
-            />
-            <p className="text-[11px] text-[var(--color-ink-muted)]">24 小时制</p>
+        <section className="flex flex-col gap-3">
+          <Label>时间</Label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="start" className="text-xs text-[var(--color-ink-muted)]">
+                开始
+              </Label>
+              <Input
+                id="start"
+                type="time"
+                step={60}
+                value={draft.start}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, start: e.target.value }))
+                }
+              />
+              <p className="text-[11px] leading-normal text-[var(--color-ink-muted)]">
+                24 小时制
+              </p>
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="end" className="text-xs text-[var(--color-ink-muted)]">
+                结束
+              </Label>
+              <Input
+                id="end"
+                type="time"
+                step={60}
+                value={draft.end}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, end: e.target.value }))
+                }
+              />
+              <p className="text-[11px] leading-normal text-[var(--color-ink-muted)]">
+                早于开始即跨日
+              </p>
+            </div>
           </div>
-          <div className="min-w-0 space-y-1.5">
-            <Label htmlFor="end">结束</Label>
-            <Input
-              id="end"
-              type="time"
-              step={60}
-              value={draft.end}
-              onChange={(e) =>
-                setDraft((prev) => ({ ...prev, end: e.target.value }))
-              }
-            />
-            <p className="text-[11px] leading-snug text-[var(--color-ink-muted)]">
-              早于开始即跨日
-            </p>
-          </div>
-        </div>
+        </section>
 
-        {draft.recurrence === "once" ? (
-          <div className="space-y-2">
-            <Label htmlFor="once-date">日期</Label>
-            <Input
-              id="once-date"
-              type="date"
-              value={draft.date}
-              onChange={(e) =>
-                setDraft((prev) => ({ ...prev, date: e.target.value }))
+        <section className="flex flex-col gap-2">
+          <Label>重复方式</Label>
+          <div className="inline-flex self-start rounded-lg border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_55%,var(--color-surface))] p-0.5">
+            <button
+              type="button"
+              disabled={draft.isCourseSwap}
+              className={cn(
+                "h-8 rounded-md px-3 text-xs",
+                draft.recurrence === "weekly" && !draft.isCourseSwap
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+                draft.isCourseSwap && "cursor-not-allowed opacity-40",
+              )}
+              onClick={() =>
+                setDraft((prev) => ({ ...prev, recurrence: "weekly" }))
               }
-            />
+            >
+              每周重复
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "h-8 rounded-md px-3 text-xs",
+                draft.recurrence === "once" || draft.isCourseSwap
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+              )}
+              onClick={() =>
+                setDraft((prev) => ({ ...prev, recurrence: "once" }))
+              }
+            >
+              仅一次
+            </button>
           </div>
-        ) : (
-          <div className="space-y-2">
-            <Label>每周重复</Label>
-            <div className="flex flex-wrap gap-2">
-              {WEEKDAY_LABELS.map((label, day) => {
-                const active = draft.weekdays.includes(day);
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => toggleWeekday(day)}
-                    className={
-                      active
-                        ? "h-9 min-w-9 rounded-md bg-[var(--color-accent)] px-3 text-sm text-white"
-                        : "h-9 min-w-9 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
+          {draft.isCourseSwap ? (
+            <p className="text-xs leading-normal text-amber-800/80">
+              换课中：已锁定为仅一次
+            </p>
+          ) : null}
+
+          {draft.recurrence === "once" || draft.isCourseSwap ? (
+            <div className="flex min-w-0 flex-col gap-1.5 pt-1">
+              <Label htmlFor="once-date">日期</Label>
+              <Input
+                id="once-date"
+                type="date"
+                value={draft.date}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, date: e.target.value }))
+                }
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 pt-1">
+              <Label>每周重复</Label>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAY_LABELS.map((label, day) => {
+                  const active = draft.weekdays.includes(day);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => toggleWeekday(day)}
+                      className={
+                        active
+                          ? "h-9 min-w-9 rounded-lg bg-[var(--color-accent)] px-3 text-sm text-white"
+                          : "h-9 min-w-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
+                      }
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="active-from">生效</Label>
+                  <Input
+                    id="active-from"
+                    type="date"
+                    value={draft.activeFrom}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        activeFrom: e.target.value,
+                      }))
                     }
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="active-from">生效</Label>
-                <Input
-                  id="active-from"
-                  type="date"
-                  value={draft.activeFrom}
-                  onChange={(e) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      activeFrom: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="active-until">失效</Label>
-                <Input
-                  id="active-until"
-                  type="date"
-                  value={draft.activeUntil}
-                  onChange={(e) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      activeUntil: e.target.value,
-                    }))
-                  }
-                />
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="active-until">失效</Label>
+                  <Input
+                    id="active-until"
+                    type="date"
+                    value={draft.activeUntil}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        activeUntil: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </section>
 
         {draft.tag === "work" && draft.workKind !== "other" ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="min-w-0 space-y-1.5">
-              <Label htmlFor="work-primary">
-                {WORK_KIND_META[draft.workKind].primaryLabel}
-              </Label>
-              <Input
-                id="work-primary"
-                value={draft.workPrimary}
-                placeholder={WORK_KIND_META[draft.workKind].primaryPlaceholder}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    workPrimary: e.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="min-w-0 space-y-1.5">
-              <Label htmlFor="work-secondary">
-                {WORK_KIND_META[draft.workKind].secondaryLabel}
-                <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
-                  选填
-                </span>
-              </Label>
-              <Input
-                id="work-secondary"
-                value={draft.workSecondary}
-                placeholder={
-                  WORK_KIND_META[draft.workKind].secondaryPlaceholder
-                }
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    workSecondary: e.target.value,
-                  }))
-                }
-              />
-            </div>
-          </div>
+          <section className="flex flex-col gap-3">
+            <Label>内容</Label>
+            {(() => {
+              const meta = WORK_KIND_META[draft.workKind];
+              const required = workKindRequiredField(draft.workKind);
+              const primaryOptional = required !== "primary";
+              const secondaryOptional = required !== "secondary";
+              const primaryFirst = required !== "secondary";
+              const primaryField = (
+                <div className="flex min-w-0 flex-col gap-1.5" key="primary">
+                  <Label htmlFor="work-primary">
+                    {meta.primaryLabel}
+                    {primaryOptional ? (
+                      <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
+                        选填
+                      </span>
+                    ) : null}
+                  </Label>
+                  <Input
+                    id="work-primary"
+                    value={draft.workPrimary}
+                    placeholder={meta.primaryPlaceholder}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        workPrimary: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              );
+              const secondaryField = (
+                <div className="flex min-w-0 flex-col gap-1.5" key="secondary">
+                  <Label htmlFor="work-secondary">
+                    {meta.secondaryLabel}
+                    {secondaryOptional ? (
+                      <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
+                        选填
+                      </span>
+                    ) : null}
+                  </Label>
+                  <Input
+                    id="work-secondary"
+                    value={draft.workSecondary}
+                    placeholder={meta.secondaryPlaceholder}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        workSecondary: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              );
+              return (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {primaryFirst ? (
+                    <>
+                      {primaryField}
+                      {secondaryField}
+                    </>
+                  ) : (
+                    <>
+                      {secondaryField}
+                      {primaryField}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+          </section>
         ) : (
-          <div className="min-w-0 space-y-1.5">
+          <section className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="title">
               {draft.tag === "work"
                 ? WORK_KIND_META.other.primaryLabel
@@ -1664,10 +1790,10 @@ export function SettingsPage() {
                 setDraft((prev) => ({ ...prev, title: e.target.value }))
               }
             />
-          </div>
+          </section>
         )}
 
-        <div className="min-w-0 space-y-1.5">
+        <section className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="note">
             备注
             <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
@@ -1682,9 +1808,9 @@ export function SettingsPage() {
               setDraft((prev) => ({ ...prev, note: e.target.value }))
             }
           />
-        </div>
+        </section>
 
-        <div className="flex items-center justify-between">
+        <section className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-line)]/80 px-3 py-2.5">
           <Label htmlFor="enabled">启用此日程</Label>
           <Switch
             id="enabled"
@@ -1693,15 +1819,15 @@ export function SettingsPage() {
               setDraft((prev) => ({ ...prev, enabled }))
             }
           />
-        </div>
+        </section>
 
-        {draft.id && draft.recurrence === "weekly"
+        {draft.id && draft.recurrence === "weekly" && !draft.isCourseSwap
           ? (() => {
               const existing = config.items.find((it) => it.id === draft.id);
               const skipped = existing ? itemSkippedDates(existing) : [];
               if (skipped.length === 0) return null;
               return (
-                <div className="space-y-2">
+                <section className="flex flex-col gap-2">
                   <Label>已取消的日期</Label>
                   <div className="flex flex-wrap gap-1.5">
                     {skipped.map((d) => (
@@ -1717,7 +1843,7 @@ export function SettingsPage() {
                       </button>
                     ))}
                   </div>
-                </div>
+                </section>
               );
             })()
           : null}

@@ -168,6 +168,71 @@ describe("work subtypes", () => {
     ).toBe("数学 · 高一 1 班");
   });
 
+  it("formats 带读 with required 对象/班级", () => {
+    expect(
+      formatWorkDisplay({
+        tag: "work",
+        workKind: "tutoring",
+        workPrimary: "",
+        workSecondary: "二年级",
+        title: "旧标题",
+      }),
+    ).toBe("二年级");
+    expect(
+      formatWorkDisplay({
+        tag: "work",
+        workKind: "tutoring",
+        workPrimary: "绘本",
+        workSecondary: "二年级",
+        title: "旧标题",
+      }),
+    ).toBe("绘本 · 二年级");
+  });
+
+  it("rejects 带读 without 对象/班级", () => {
+    const r = ScheduleItemSchema.safeParse({
+      id: "t",
+      start: "09:00",
+      end: "10:00",
+      title: "x",
+      weekdays: [],
+      enabled: true,
+      recurrence: "once",
+      date: "2026-09-29",
+      tag: "work",
+      workKind: "tutoring",
+      workPrimary: "绘本",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("persists 换课 as once class item", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [
+        {
+          id: "swap",
+          start: "10:00",
+          end: "11:00",
+          title: "美术 · 五2",
+          weekdays: [],
+          enabled: true,
+          recurrence: "once",
+          date: "2026-09-30",
+          tag: "work",
+          workKind: "class",
+          workPrimary: "美术",
+          workSecondary: "五2",
+          isCourseSwap: true,
+        },
+      ],
+    });
+    expect(cfg.items[0].isCourseSwap).toBe(true);
+    expect(cfg.items[0].recurrence).toBe("once");
+  });
+
   it("migrates old work items to other", () => {
     const cfg = parseAppConfig({
       version: 1,

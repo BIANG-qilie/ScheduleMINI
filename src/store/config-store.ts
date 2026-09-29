@@ -180,6 +180,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       tag === "work" && workKind && workKind !== "other"
         ? item.workSecondary?.trim() || undefined
         : undefined;
+    const isCourseSwap =
+      tag === "work" && workKind === "class" && !!item.isCourseSwap;
+    const effectiveRecurrence = isCourseSwap ? "once" : recurrence;
     const title =
       tag === "work" && workKind && workKind !== "other"
         ? formatWorkDisplay({
@@ -187,7 +190,11 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
             workKind,
             workPrimary,
             workSecondary,
-            title: item.title?.trim() || workPrimary || "工作",
+            title:
+              item.title?.trim() ||
+              workPrimary ||
+              workSecondary ||
+              "工作",
           })
         : item.title.trim();
     const nextItem: ScheduleItem = {
@@ -195,18 +202,18 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       id: item.id ?? createId(),
       note: item.note?.trim() ? item.note.trim() : undefined,
       title,
-      recurrence,
-      weekdays: recurrence === "weekly" ? item.weekdays : [],
-      date: recurrence === "once" ? item.date : undefined,
+      recurrence: effectiveRecurrence,
+      weekdays: effectiveRecurrence === "weekly" ? item.weekdays : [],
+      date: effectiveRecurrence === "once" ? item.date : undefined,
       tag,
       skippedDates:
-        recurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
+        effectiveRecurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
       activeFrom:
-        recurrence === "weekly" && item.activeFrom
+        effectiveRecurrence === "weekly" && item.activeFrom
           ? item.activeFrom
           : undefined,
       activeUntil:
-        recurrence === "weekly" && item.activeUntil
+        effectiveRecurrence === "weekly" && item.activeUntil
           ? item.activeUntil
           : undefined,
       origin:
@@ -223,6 +230,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       workKind,
       workPrimary,
       workSecondary,
+      isCourseSwap: isCourseSwap ? true : undefined,
       owner,
       ownerId: couple.memberId,
       updatedAt: new Date().toISOString(),
@@ -273,6 +281,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           next.workKind = undefined;
           next.workPrimary = undefined;
           next.workSecondary = undefined;
+          next.isCourseSwap = undefined;
           next.origin = undefined;
           next.destination = undefined;
         } else if (tag === "game") {
@@ -281,6 +290,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           next.workKind = undefined;
           next.workPrimary = undefined;
           next.workSecondary = undefined;
+          next.isCourseSwap = undefined;
           next.origin = undefined;
           next.destination = undefined;
         } else if (tag === "work") {
@@ -289,12 +299,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           next.gamePlatform = undefined;
           next.origin = undefined;
           next.destination = undefined;
+          if (next.workKind !== "class") next.isCourseSwap = undefined;
         } else {
           next.callChannel = undefined;
           next.gamePlatform = undefined;
           next.workKind = undefined;
           next.workPrimary = undefined;
           next.workSecondary = undefined;
+          next.isCourseSwap = undefined;
           if (tag !== "commute") {
             next.origin = undefined;
             next.destination = undefined;

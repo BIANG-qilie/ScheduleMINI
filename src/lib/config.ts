@@ -188,6 +188,8 @@ export type WorkKind = z.infer<typeof WorkKindSchema>;
 
 export const DEFAULT_WORK_KIND: WorkKind = "other";
 
+export type WorkRequiredField = "primary" | "secondary" | "title";
+
 export const WORK_KIND_META: Record<
   WorkKind,
   {
@@ -196,6 +198,8 @@ export const WORK_KIND_META: Record<
     secondaryLabel: string;
     primaryPlaceholder: string;
     secondaryPlaceholder: string;
+    /** 必填字段；带读为对象/班级（secondary） */
+    requiredField: WorkRequiredField;
   }
 > = {
   class: {
@@ -204,13 +208,15 @@ export const WORK_KIND_META: Record<
     secondaryLabel: "班级",
     primaryPlaceholder: "例如：数学",
     secondaryPlaceholder: "例如：高一 1 班",
+    requiredField: "primary",
   },
   tutoring: {
     label: "带读",
     primaryLabel: "读本 / 材料",
-    secondaryLabel: "对象 / 年级",
+    secondaryLabel: "对象 / 班级",
     primaryPlaceholder: "例如：绘本《月亮的味道》",
-    secondaryPlaceholder: "例如：二年级",
+    secondaryPlaceholder: "例如：二年级 / 高一 1 班",
+    requiredField: "secondary",
   },
   coding: {
     label: "编程",
@@ -218,6 +224,7 @@ export const WORK_KIND_META: Record<
     secondaryLabel: "语言 / 栈",
     primaryPlaceholder: "例如：小日程桌面端",
     secondaryPlaceholder: "例如：TypeScript",
+    requiredField: "primary",
   },
   other: {
     label: "其他工作",
@@ -225,6 +232,7 @@ export const WORK_KIND_META: Record<
     secondaryLabel: "",
     primaryPlaceholder: "例如：站会、深度工作、约谈",
     secondaryPlaceholder: "",
+    requiredField: "title",
   },
 };
 
@@ -236,7 +244,7 @@ export function formatWorkKindLabel(kind: WorkKind) {
   return WORK_KIND_META[kind]?.label ?? kind;
 }
 
-/** 工作展示：`科目 · 班级` 或仅主字段；旧数据回退 title */
+/** 工作展示：`主 · 次`（有则拼）；带读可仅对象/班级；旧数据回退 title */
 export function formatWorkDisplay(item: {
   tag?: ScheduleTag;
   workKind?: WorkKind;
@@ -248,9 +256,17 @@ export function formatWorkDisplay(item: {
   const kind = item.workKind ?? DEFAULT_WORK_KIND;
   if (kind === "other") return item.title;
   const primary = item.workPrimary?.trim();
-  if (!primary) return item.title;
   const secondary = item.workSecondary?.trim();
+  if (kind === "tutoring") {
+    if (!secondary) return item.title;
+    return primary ? `${primary} · ${secondary}` : secondary;
+  }
+  if (!primary) return item.title;
   return secondary ? `${primary} · ${secondary}` : primary;
+}
+
+export function workKindRequiredField(kind: WorkKind): WorkRequiredField {
+  return WORK_KIND_META[kind].requiredField;
 }
 
 /** 周/列表/小窗主标题 */
@@ -271,6 +287,18 @@ export function itemWorkKind(item: {
 }): WorkKind | undefined {
   if ((item.tag ?? "work") !== "work") return undefined;
   return item.workKind ?? DEFAULT_WORK_KIND;
+}
+
+export function itemIsCourseSwap(item: {
+  tag?: ScheduleTag;
+  workKind?: WorkKind;
+  isCourseSwap?: boolean;
+}): boolean {
+  return (
+    (item.tag ?? "work") === "work" &&
+    (item.workKind ?? DEFAULT_WORK_KIND) === "class" &&
+    !!item.isCourseSwap
+  );
 }
 
 export const DayOverrideSchema = z.enum(["off", "work"]);
@@ -310,6 +338,8 @@ export const ScheduleItemSchema = z
     workPrimary: z.string().trim().optional(),
     /** 工作次字段：班级 / 对象 / 语言 */
     workSecondary: z.string().trim().optional(),
+    /** 上课换课：仅一次代课/调课，带琥珀虚线提示 */
+    isCourseSwap: z.boolean().optional(),
     /**
      * 展示归属：自己 / 对方 / 共同（相对本机视角）。
      * 缺省在 parseAppConfig 中补全；旧配置若仅有异机 ownerId 则解析为 partner。
@@ -356,12 +386,33 @@ export const ScheduleItemSchema = z
     }
     if (val.tag === "work") {
       const kind = val.workKind ?? DEFAULT_WORK_KIND;
-      if (kind !== "other" && !val.workPrimary?.trim()) {
-        const label = WORK_KIND_META[kind].primaryLabel;
+      const required = WORK_KIND_META[kind].requiredField;
+      if (required === "primary" && !val.workPrimary?.trim()) {
         ctx.addIssue({
           code: "custom",
-          message: `请填写${label}`,
+          message: `请填写${WORK_KIND_META[kind].primaryLabel}`,
           path: ["workPrimary"],
+        });
+      }
+      if (required === "secondary" && !val.workSecondary?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: `请填写${WORK_KIND_META[kind].secondaryLabel}`,
+          path: ["workSecondary"],
+        });
+      }
+      if (val.isCourseSwap && kind !== "class") {
+        ctx.addIssue({
+          code: "custom",
+          message: "换课仅适用于上课",
+          path: ["isCourseSwap"],
+        });
+      }
+      if (val.isCourseSwap && val.recurrence !== "once") {
+        ctx.addIssue({
+          code: "custom",
+          message: "换课须为仅一次",
+          path: ["recurrence"],
         });
       }
     }
@@ -802,6 +853,12 @@ export function parseAppConfig(raw: unknown): AppConfig {
       workKind: tag === "work" ? (it.workKind ?? DEFAULT_WORK_KIND) : undefined,
       workPrimary: tag === "work" ? it.workPrimary : undefined,
       workSecondary: tag === "work" ? it.workSecondary : undefined,
+      isCourseSwap:
+        tag === "work" &&
+        (it.workKind ?? DEFAULT_WORK_KIND) === "class" &&
+        it.isCourseSwap
+          ? true
+          : undefined,
       origin: tag === "commute" ? it.origin : undefined,
       destination: tag === "commute" ? it.destination : undefined,
     };

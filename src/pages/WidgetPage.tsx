@@ -57,6 +57,7 @@ function FullModeItemCard({
   accent?: string;
 }) {
   const once = itemRecurrence(item) === "once";
+  const courseSwap = !!item.isCourseSwap;
   const tag = itemTag(item);
   const style = TAG_WIDGET[tag];
   const subline = formatItemSubline(item);
@@ -67,7 +68,7 @@ function FullModeItemCard({
         "rounded-xl border px-3 py-2.5",
         style.card,
         current && "ring-1 ring-white/35",
-        once && "border-dashed",
+        (once || courseSwap) && "border-dashed",
       )}
       style={{
         boxShadow: `inset 3px 0 0 ${current ? line : `${line}55`}`,
@@ -86,7 +87,9 @@ function FullModeItemCard({
           >
             {formatTagLabel(tag)}
           </span>
-          {once ? (
+          {courseSwap ? (
+            <span className="text-[10px] text-amber-200/80">换课</span>
+          ) : once ? (
             <span className="text-[10px] text-amber-200/80">仅一次</span>
           ) : null}
           {badge ? (

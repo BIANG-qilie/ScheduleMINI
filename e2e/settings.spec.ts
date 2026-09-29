@@ -77,7 +77,9 @@ test.describe("小日程设置页", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "新建日程" }).click();
     const dialog = page.getByRole("dialog", { name: "新建日程" });
+    await expect(dialog.getByText("标签", { exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "工作", exact: true }).click();
+    await expect(dialog.getByText("工作类型", { exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "上课", exact: true }).click();
     await dialog.getByLabel("科目").fill("数学");
     await dialog.getByLabel(/班级/).fill("高一 1 班");
@@ -89,6 +91,46 @@ test.describe("小日程设置页", () => {
     const row = page.locator("li").filter({ hasText: "数学 · 高一 1 班" });
     await expect(row).toBeVisible();
     await expect(row.getByText("上课", { exact: true })).toBeVisible();
+  });
+
+  test("带读必填对象班级", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "新建日程" }).click();
+    const dialog = page.getByRole("dialog", { name: "新建日程" });
+    await dialog.getByRole("button", { name: "工作", exact: true }).click();
+    await dialog.getByRole("button", { name: "带读", exact: true }).click();
+    await dialog.locator("#start").fill("14:00");
+    await dialog.locator("#end").fill("15:00");
+    await dialog.getByRole("button", { name: "保存" }).click();
+    await expect(dialog.getByText(/请填写对象/)).toBeVisible();
+    await dialog.getByLabel(/对象/).fill("二年级");
+    await dialog.getByLabel(/读本/).fill("绘本");
+    await dialog.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("已添加日程")).toBeVisible();
+    await page.getByRole("button", { name: "列表" }).click();
+    await expect(
+      page.locator("li").filter({ hasText: "绘本 · 二年级" }),
+    ).toBeVisible();
+  });
+
+  test("上课换课锁定仅一次", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "新建日程" }).click();
+    const dialog = page.getByRole("dialog", { name: "新建日程" });
+    await dialog.getByRole("button", { name: "工作", exact: true }).click();
+    await dialog.getByRole("button", { name: "上课", exact: true }).click();
+    await dialog.getByLabel("科目").fill("美术");
+    await dialog.locator("#course-swap").click();
+    await expect(dialog.getByText(/锁定为仅一次/)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "每周重复" })).toBeDisabled();
+    await dialog.locator("#once-date").fill("2026-10-08");
+    await dialog.locator("#start").fill("10:00");
+    await dialog.locator("#end").fill("11:00");
+    await dialog.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("已添加日程")).toBeVisible();
+    await page.getByRole("button", { name: "列表" }).click();
+    const row = page.locator("li").filter({ hasText: "美术" });
+    await expect(row.getByText("换课", { exact: true })).toBeVisible();
   });
 
   test("同点起止被拒绝", async ({ page }) => {

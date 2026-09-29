@@ -8,7 +8,8 @@ export function Label({
   return (
     <label
       className={cn(
-        "text-sm font-medium leading-snug text-[var(--color-ink)] peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+        // leading-normal + block：避免 overflow 容器里中文顶部被裁切
+        "block overflow-visible text-sm font-medium leading-normal text-[var(--color-ink)] peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
         className,
       )}
       {...props}
