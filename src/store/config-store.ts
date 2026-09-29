@@ -5,6 +5,8 @@ import {
   coexistenceIsPaused,
   buildCoexistenceSharedItemFields,
   DEFAULT_CALL_CHANNEL,
+  DEFAULT_WORK_KIND,
+  formatWorkDisplay,
   type AppConfig,
   type CallChannel,
   type CoupleIdentity,
@@ -13,6 +15,7 @@ import {
   type ItemOwner,
   type ScheduleItem,
   type ScheduleTag,
+  type WorkKind,
   defaultConfig,
   emptyConfig,
   itemSkippedDates,
@@ -164,15 +167,38 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     const couple = config.couple;
     const recurrence = item.recurrence ?? "weekly";
     const owner = (item.owner ?? "self") as ItemOwner;
+    const tag = item.tag ?? "work";
+    const workKind =
+      tag === "work"
+        ? ((item.workKind ?? DEFAULT_WORK_KIND) as WorkKind)
+        : undefined;
+    const workPrimary =
+      tag === "work" && workKind && workKind !== "other"
+        ? item.workPrimary?.trim() || undefined
+        : undefined;
+    const workSecondary =
+      tag === "work" && workKind && workKind !== "other"
+        ? item.workSecondary?.trim() || undefined
+        : undefined;
+    const title =
+      tag === "work" && workKind && workKind !== "other"
+        ? formatWorkDisplay({
+            tag,
+            workKind,
+            workPrimary,
+            workSecondary,
+            title: item.title?.trim() || workPrimary || "工作",
+          })
+        : item.title.trim();
     const nextItem: ScheduleItem = {
       ...item,
       id: item.id ?? createId(),
       note: item.note?.trim() ? item.note.trim() : undefined,
-      title: item.title.trim(),
+      title,
       recurrence,
       weekdays: recurrence === "weekly" ? item.weekdays : [],
       date: recurrence === "once" ? item.date : undefined,
-      tag: item.tag ?? "work",
+      tag,
       skippedDates:
         recurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
       activeFrom:
@@ -184,19 +210,19 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           ? item.activeUntil
           : undefined,
       origin:
-        (item.tag ?? "work") === "commute" && item.origin?.trim()
+        tag === "commute" && item.origin?.trim()
           ? item.origin.trim()
           : undefined,
       destination:
-        (item.tag ?? "work") === "commute" && item.destination?.trim()
+        tag === "commute" && item.destination?.trim()
           ? item.destination.trim()
           : undefined,
       callChannel:
-        (item.tag ?? "work") === "call"
-          ? (item.callChannel ?? DEFAULT_CALL_CHANNEL)
-          : undefined,
-      gamePlatform:
-        (item.tag ?? "work") === "game" ? item.gamePlatform : undefined,
+        tag === "call" ? (item.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
+      gamePlatform: tag === "game" ? item.gamePlatform : undefined,
+      workKind,
+      workPrimary,
+      workSecondary,
       owner,
       ownerId: couple.memberId,
       updatedAt: new Date().toISOString(),
@@ -244,16 +270,31 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           next.callChannel =
             patch.callChannel ?? it.callChannel ?? DEFAULT_CALL_CHANNEL;
           next.gamePlatform = undefined;
+          next.workKind = undefined;
+          next.workPrimary = undefined;
+          next.workSecondary = undefined;
           next.origin = undefined;
           next.destination = undefined;
         } else if (tag === "game") {
           next.gamePlatform = patch.gamePlatform ?? it.gamePlatform;
           next.callChannel = undefined;
+          next.workKind = undefined;
+          next.workPrimary = undefined;
+          next.workSecondary = undefined;
+          next.origin = undefined;
+          next.destination = undefined;
+        } else if (tag === "work") {
+          next.workKind = it.workKind ?? DEFAULT_WORK_KIND;
+          next.callChannel = undefined;
+          next.gamePlatform = undefined;
           next.origin = undefined;
           next.destination = undefined;
         } else {
           next.callChannel = undefined;
           next.gamePlatform = undefined;
+          next.workKind = undefined;
+          next.workPrimary = undefined;
+          next.workSecondary = undefined;
           if (tag !== "commute") {
             next.origin = undefined;
             next.destination = undefined;

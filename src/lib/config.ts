@@ -177,6 +177,102 @@ export function itemGamePlatform(item: {
   return item.gamePlatform;
 }
 
+/** 工作子类型：上课 / 带读 / 编程 / 其他工作 */
+export const WorkKindSchema = z.enum([
+  "class",
+  "tutoring",
+  "coding",
+  "other",
+]);
+export type WorkKind = z.infer<typeof WorkKindSchema>;
+
+export const DEFAULT_WORK_KIND: WorkKind = "other";
+
+export const WORK_KIND_META: Record<
+  WorkKind,
+  {
+    label: string;
+    primaryLabel: string;
+    secondaryLabel: string;
+    primaryPlaceholder: string;
+    secondaryPlaceholder: string;
+  }
+> = {
+  class: {
+    label: "上课",
+    primaryLabel: "科目",
+    secondaryLabel: "班级",
+    primaryPlaceholder: "例如：数学",
+    secondaryPlaceholder: "例如：高一 1 班",
+  },
+  tutoring: {
+    label: "带读",
+    primaryLabel: "读本 / 材料",
+    secondaryLabel: "对象 / 年级",
+    primaryPlaceholder: "例如：绘本《月亮的味道》",
+    secondaryPlaceholder: "例如：二年级",
+  },
+  coding: {
+    label: "编程",
+    primaryLabel: "项目 / 主题",
+    secondaryLabel: "语言 / 栈",
+    primaryPlaceholder: "例如：小日程桌面端",
+    secondaryPlaceholder: "例如：TypeScript",
+  },
+  other: {
+    label: "其他工作",
+    primaryLabel: "标题 / 内容",
+    secondaryLabel: "",
+    primaryPlaceholder: "例如：站会、深度工作、约谈",
+    secondaryPlaceholder: "",
+  },
+};
+
+export const WORK_KIND_OPTIONS = (
+  Object.keys(WORK_KIND_META) as WorkKind[]
+).map((id) => ({ id, ...WORK_KIND_META[id] }));
+
+export function formatWorkKindLabel(kind: WorkKind) {
+  return WORK_KIND_META[kind]?.label ?? kind;
+}
+
+/** 工作展示：`科目 · 班级` 或仅主字段；旧数据回退 title */
+export function formatWorkDisplay(item: {
+  tag?: ScheduleTag;
+  workKind?: WorkKind;
+  workPrimary?: string;
+  workSecondary?: string;
+  title: string;
+}): string {
+  if ((item.tag ?? "work") !== "work") return item.title;
+  const kind = item.workKind ?? DEFAULT_WORK_KIND;
+  if (kind === "other") return item.title;
+  const primary = item.workPrimary?.trim();
+  if (!primary) return item.title;
+  const secondary = item.workSecondary?.trim();
+  return secondary ? `${primary} · ${secondary}` : primary;
+}
+
+/** 周/列表/小窗主标题 */
+export function itemDisplayTitle(item: {
+  tag?: ScheduleTag;
+  workKind?: WorkKind;
+  workPrimary?: string;
+  workSecondary?: string;
+  title: string;
+}): string {
+  if ((item.tag ?? "work") === "work") return formatWorkDisplay(item);
+  return item.title;
+}
+
+export function itemWorkKind(item: {
+  tag?: ScheduleTag;
+  workKind?: WorkKind;
+}): WorkKind | undefined {
+  if ((item.tag ?? "work") !== "work") return undefined;
+  return item.workKind ?? DEFAULT_WORK_KIND;
+}
+
 export const DayOverrideSchema = z.enum(["off", "work"]);
 export type DayOverride = z.infer<typeof DayOverrideSchema>;
 
@@ -208,6 +304,12 @@ export const ScheduleItemSchema = z
     callChannel: CallChannelSchema.optional(),
     /** 游戏平台；仅 tag=game，可选 */
     gamePlatform: GamePlatformSchema.optional(),
+    /** 工作子类型；仅 tag=work；旧数据缺省 other */
+    workKind: WorkKindSchema.optional(),
+    /** 工作主字段：科目 / 读本 / 项目 */
+    workPrimary: z.string().trim().optional(),
+    /** 工作次字段：班级 / 对象 / 语言 */
+    workSecondary: z.string().trim().optional(),
     /**
      * 展示归属：自己 / 对方 / 共同（相对本机视角）。
      * 缺省在 parseAppConfig 中补全；旧配置若仅有异机 ownerId 则解析为 partner。
@@ -251,6 +353,17 @@ export const ScheduleItemSchema = z
         message: "失效日不能早于生效日",
         path: ["activeUntil"],
       });
+    }
+    if (val.tag === "work") {
+      const kind = val.workKind ?? DEFAULT_WORK_KIND;
+      if (kind !== "other" && !val.workPrimary?.trim()) {
+        const label = WORK_KIND_META[kind].primaryLabel;
+        ctx.addIssue({
+          code: "custom",
+          message: `请填写${label}`,
+          path: ["workPrimary"],
+        });
+      }
     }
   });
 
@@ -686,6 +799,9 @@ export function parseAppConfig(raw: unknown): AppConfig {
         tag === "game"
           ? migrateGamePlatform(it.gamePlatform) ?? it.gamePlatform
           : undefined,
+      workKind: tag === "work" ? (it.workKind ?? DEFAULT_WORK_KIND) : undefined,
+      workPrimary: tag === "work" ? it.workPrimary : undefined,
+      workSecondary: tag === "work" ? it.workSecondary : undefined,
       origin: tag === "commute" ? it.origin : undefined,
       destination: tag === "commute" ? it.destination : undefined,
     };

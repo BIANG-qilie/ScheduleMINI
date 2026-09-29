@@ -12,7 +12,8 @@ test.describe("小日程设置页", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "新建日程" }).click();
     await expect(page.getByRole("heading", { name: "新建日程" })).toBeVisible();
-    await expect(page.getByText("开始（24 小时）")).toBeVisible();
+    await expect(page.getByLabel("开始", { exact: true })).toBeVisible();
+    await expect(page.getByText("早于开始即跨日")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "工作", exact: true }),
     ).toBeVisible();
@@ -56,8 +57,9 @@ test.describe("小日程设置页", () => {
     const dialog = page.getByRole("dialog", { name: "新建日程" });
     await dialog.getByLabel(/标题/).fill("一起开黑");
     await dialog.getByRole("button", { name: "游戏", exact: true }).click();
-    await expect(dialog.getByRole("button", { name: "共同", exact: true })).toHaveClass(
-      /bg-\[var\(--color-accent\)\]/,
+    await expect(dialog.getByRole("button", { name: "共同", exact: true })).toHaveCSS(
+      "background-color",
+      "rgb(243, 166, 160)",
     );
     await dialog.getByRole("button", { name: "PC", exact: true }).click();
     await dialog.locator("#start").fill("21:00");
@@ -69,6 +71,24 @@ test.describe("小日程设置页", () => {
     await expect(row.getByText("PC", { exact: true })).toBeVisible();
     await expect(row.getByText("游戏", { exact: true })).toBeVisible();
     await expect(row.getByText("共同")).toBeVisible();
+  });
+
+  test("工作-上课用科目班级展示", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "新建日程" }).click();
+    const dialog = page.getByRole("dialog", { name: "新建日程" });
+    await dialog.getByRole("button", { name: "工作", exact: true }).click();
+    await dialog.getByRole("button", { name: "上课", exact: true }).click();
+    await dialog.getByLabel("科目").fill("数学");
+    await dialog.getByLabel(/班级/).fill("高一 1 班");
+    await dialog.locator("#start").fill("09:00");
+    await dialog.locator("#end").fill("10:00");
+    await dialog.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("已添加日程")).toBeVisible();
+    await page.getByRole("button", { name: "列表" }).click();
+    const row = page.locator("li").filter({ hasText: "数学 · 高一 1 班" });
+    await expect(row).toBeVisible();
+    await expect(row.getByText("上课", { exact: true })).toBeVisible();
   });
 
   test("同点起止被拒绝", async ({ page }) => {

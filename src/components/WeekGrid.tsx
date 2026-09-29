@@ -11,6 +11,7 @@ import {
   getWeekAnchor,
   gridDayHours,
   gridViewSpanHours,
+  itemDisplayTitle,
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
@@ -429,7 +430,9 @@ export function WeekGrid({
                                 aria-label="仅一次"
                               />
                             ) : null}
-                            <span className="truncate">{item.title}</span>
+                            <span className="truncate">
+                              {itemDisplayTitle(item)}
+                            </span>
                           </p>
                           {showSub ? (
                             subline ? (

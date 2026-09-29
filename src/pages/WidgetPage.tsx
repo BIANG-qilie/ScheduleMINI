@@ -12,6 +12,7 @@ import {
   getUpcomingItem,
   isItemNow,
   isPaired,
+  itemDisplayTitle,
   itemRecurrence,
   itemTag,
   msUntilDate,
@@ -95,7 +96,9 @@ function FullModeItemCard({
           ) : null}
         </div>
       </div>
-      <p className="mt-1 text-sm font-medium leading-snug">{item.title}</p>
+      <p className="mt-1 text-sm font-medium leading-snug">
+        {itemDisplayTitle(item)}
+      </p>
       {subline ? (
         <p className="mt-0.5 text-xs font-medium text-white/80">{subline}</p>
       ) : null}
@@ -166,7 +169,7 @@ function PersonColumn({
             </span>
           </div>
           <p className="mt-1.5 text-base font-semibold leading-snug tracking-tight">
-            {currentItem.title}
+            {itemDisplayTitle(currentItem)}
           </p>
           {subline ? (
             <p className="mt-0.5 text-[11px] font-medium text-current/70">
@@ -204,7 +207,7 @@ function PersonColumn({
             <span className="font-mono text-white/40">
               {upcomingLabel(upcoming, todayKey)}
             </span>{" "}
-            {upcoming.item.title}
+            {itemDisplayTitle(upcoming.item)}
             {nextSubline ? ` · ${nextSubline}` : ""}
           </p>
         </div>

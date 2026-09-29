@@ -24,15 +24,20 @@ import {
   APP_DISPLAY_NAME,
   CALL_CHANNEL_OPTIONS,
   DEFAULT_CALL_CHANNEL,
+  DEFAULT_WORK_KIND,
   GAME_PLATFORM_OPTIONS,
   SCHEDULE_TAG_OPTIONS,
   WEEKDAY_LABELS,
+  WORK_KIND_META,
+  WORK_KIND_OPTIONS,
   formatDateKey,
   formatScheduleScope,
   isPaired,
   itemCallChannel,
+  itemDisplayTitle,
   itemGamePlatform,
   itemSkippedDates,
+  itemWorkKind,
   ownerColor,
   ownerLabel,
   tagRespectsHolidays,
@@ -43,6 +48,7 @@ import {
   type ReminderMinutes,
   type ScheduleItem,
   type ScheduleTag,
+  type WorkKind,
 } from "@/lib/config";
 import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
@@ -83,6 +89,9 @@ type Draft = {
   destination: string;
   callChannel: CallChannel;
   gamePlatform: GamePlatform | "";
+  workKind: WorkKind;
+  workPrimary: string;
+  workSecondary: string;
   owner: ItemOwner;
 };
 
@@ -104,12 +113,16 @@ const emptyDraft = (): Draft => {
     destination: "",
     callChannel: DEFAULT_CALL_CHANNEL,
     gamePlatform: "",
+    workKind: DEFAULT_WORK_KIND,
+    workPrimary: "",
+    workSecondary: "",
     owner: "self",
   };
 };
 
 function itemToDraft(item: ScheduleItem): Draft {
   const today = formatDateKey(new Date());
+  const workKind = itemWorkKind(item) ?? DEFAULT_WORK_KIND;
   return {
     id: item.id,
     start: item.start,
@@ -127,6 +140,9 @@ function itemToDraft(item: ScheduleItem): Draft {
     destination: item.destination ?? "",
     callChannel: itemCallChannel(item) ?? DEFAULT_CALL_CHANNEL,
     gamePlatform: itemGamePlatform(item) ?? "",
+    workKind,
+    workPrimary: item.workPrimary ?? "",
+    workSecondary: item.workSecondary ?? "",
     owner: item.owner ?? "self",
   };
 }
@@ -174,6 +190,7 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [occurrenceDate, setOccurrenceDate] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [heartBurst, setHeartBurst] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
@@ -293,7 +310,14 @@ export function SettingsPage() {
 
   const saveDraft = async () => {
     setFormError(null);
-    if (!draft.title.trim()) {
+    const structuredWork =
+      draft.tag === "work" && draft.workKind !== "other";
+    if (structuredWork) {
+      if (!draft.workPrimary.trim()) {
+        setFormError(`请填写${WORK_KIND_META[draft.workKind].primaryLabel}`);
+        return;
+      }
+    } else if (!draft.title.trim()) {
       setFormError("请填写标题");
       return;
     }
@@ -327,7 +351,9 @@ export function SettingsPage() {
         id: draft.id,
         start: draft.start,
         end: draft.end,
-        title: draft.title,
+        title: structuredWork
+          ? draft.workPrimary.trim()
+          : draft.title.trim(),
         note: draft.note,
         weekdays: draft.recurrence === "weekly" ? draft.weekdays : [],
         enabled: draft.enabled,
@@ -356,6 +382,15 @@ export function SettingsPage() {
         gamePlatform:
           draft.tag === "game" && draft.gamePlatform
             ? draft.gamePlatform
+            : undefined,
+        workKind: draft.tag === "work" ? draft.workKind : undefined,
+        workPrimary:
+          draft.tag === "work" && draft.workKind !== "other"
+            ? draft.workPrimary
+            : undefined,
+        workSecondary:
+          draft.tag === "work" && draft.workKind !== "other"
+            ? draft.workSecondary
             : undefined,
       });
       setEditorOpen(false);
@@ -647,7 +682,9 @@ export function SettingsPage() {
                           <span className="text-xs opacity-60">已停用</span>
                         ) : null}
                       </div>
-                      <p className="truncate text-base font-medium">{item.title}</p>
+                      <p className="truncate text-base font-medium">
+                        {itemDisplayTitle(item)}
+                      </p>
                       {subline ? (
                         <p className="text-sm font-medium opacity-80">{subline}</p>
                       ) : null}
@@ -1232,30 +1269,57 @@ export function SettingsPage() {
       >
         <div className="space-y-2">
           <Label>归属</Label>
-          <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+          <div className="relative inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
             {(
               [
-                ["self", "自己"],
-                ["partner", "对方"],
-                ["shared", "共同"],
+                ["self", "自己", config.couple.selfColor] as const,
+                ["partner", "对方", config.couple.partnerColor] as const,
+                ["shared", "共同", "#f3a6a0"] as const,
               ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={cn(
-                  "h-8 rounded-[5px] px-3 text-xs",
-                  draft.owner === value
-                    ? "bg-[var(--color-accent)] text-white"
-                    : "text-[var(--color-ink-muted)]",
-                )}
-                onClick={() =>
-                  setDraft((prev) => ({ ...prev, owner: value }))
-                }
-              >
-                {label}
-              </button>
-            ))}
+            ).map(([value, label, color]) => {
+              const active = draft.owner === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  className={cn(
+                    "relative h-8 overflow-visible rounded-[5px] px-3 text-xs transition-colors",
+                    !active && "text-[var(--color-ink-muted)] hover:bg-black/[0.03]",
+                  )}
+                  style={
+                    active
+                      ? {
+                          backgroundColor: color,
+                          color: "#fff",
+                          boxShadow:
+                            value === "shared"
+                              ? "0 2px 10px -2px rgba(243,166,160,0.55)"
+                              : undefined,
+                        }
+                      : undefined
+                  }
+                  onClick={() => {
+                    setDraft((prev) => ({ ...prev, owner: value }));
+                    if (value === "shared") {
+                      setHeartBurst((n) => n + 1);
+                    }
+                  }}
+                >
+                  {label}
+                  {value === "shared" && heartBurst > 0 ? (
+                    <span
+                      key={heartBurst}
+                      className="owner-heart-burst pointer-events-none absolute inset-0"
+                      aria-hidden
+                    >
+                      <span className="owner-heart owner-heart-a">♥</span>
+                      <span className="owner-heart owner-heart-b">♥</span>
+                      <span className="owner-heart owner-heart-c">♥</span>
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1314,6 +1378,10 @@ export function SettingsPage() {
                       opt.id === "call"
                         ? prev.callChannel || DEFAULT_CALL_CHANNEL
                         : prev.callChannel,
+                    workKind:
+                      opt.id === "work"
+                        ? prev.workKind || DEFAULT_WORK_KIND
+                        : prev.workKind,
                     owner:
                       opt.id === "game" && prev.tag !== "game"
                         ? "shared"
@@ -1329,6 +1397,31 @@ export function SettingsPage() {
             <p className="text-xs text-[var(--color-ink-muted)]">放假日不出现</p>
           ) : null}
         </div>
+
+        {draft.tag === "work" ? (
+          <div className="space-y-2">
+            <Label>工作类型</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {WORK_KIND_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={cn(
+                    "h-8 rounded-md border px-2.5 text-xs",
+                    draft.workKind === opt.id
+                      ? cn(TAG_SURFACE.work.chip, "ring-2 ring-offset-1")
+                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
+                  )}
+                  onClick={() =>
+                    setDraft((prev) => ({ ...prev, workKind: opt.id }))
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {draft.tag === "call" ? (
           <div className="space-y-2">
@@ -1415,8 +1508,8 @@ export function SettingsPage() {
         ) : null}
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="start">开始（24 小时）</Label>
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="start">开始</Label>
             <Input
               id="start"
               type="time"
@@ -1426,9 +1519,10 @@ export function SettingsPage() {
                 setDraft((prev) => ({ ...prev, start: e.target.value }))
               }
             />
+            <p className="text-[11px] text-[var(--color-ink-muted)]">24 小时制</p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="end">结束（24 小时，早于开始表示跨日）</Label>
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="end">结束</Label>
             <Input
               id="end"
               type="time"
@@ -1438,6 +1532,9 @@ export function SettingsPage() {
                 setDraft((prev) => ({ ...prev, end: e.target.value }))
               }
             />
+            <p className="text-[11px] leading-snug text-[var(--color-ink-muted)]">
+              早于开始即跨日
+            </p>
           </div>
         </div>
 
@@ -1508,20 +1605,75 @@ export function SettingsPage() {
           </div>
         )}
 
-        <div className="space-y-2">
-          <Label htmlFor="title">标题 / 内容</Label>
-          <Input
-            id="title"
-            value={draft.title}
-            placeholder="例如：站会、深度工作、约谈"
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, title: e.target.value }))
-            }
-          />
-        </div>
+        {draft.tag === "work" && draft.workKind !== "other" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="work-primary">
+                {WORK_KIND_META[draft.workKind].primaryLabel}
+              </Label>
+              <Input
+                id="work-primary"
+                value={draft.workPrimary}
+                placeholder={WORK_KIND_META[draft.workKind].primaryPlaceholder}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    workPrimary: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="work-secondary">
+                {WORK_KIND_META[draft.workKind].secondaryLabel}
+                <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
+                  选填
+                </span>
+              </Label>
+              <Input
+                id="work-secondary"
+                value={draft.workSecondary}
+                placeholder={
+                  WORK_KIND_META[draft.workKind].secondaryPlaceholder
+                }
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    workSecondary: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="title">
+              {draft.tag === "work"
+                ? WORK_KIND_META.other.primaryLabel
+                : "标题"}
+            </Label>
+            <Input
+              id="title"
+              value={draft.title}
+              placeholder={
+                draft.tag === "work"
+                  ? WORK_KIND_META.other.primaryPlaceholder
+                  : "例如：站会、深度工作、约谈"
+              }
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, title: e.target.value }))
+              }
+            />
+          </div>
+        )}
 
-        <div className="space-y-2">
-          <Label htmlFor="note">备注（可选）</Label>
+        <div className="min-w-0 space-y-1.5">
+          <Label htmlFor="note">
+            备注
+            <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
+              选填
+            </span>
+          </Label>
           <Textarea
             id="note"
             value={draft.note}

@@ -169,12 +169,60 @@ body.widget-body #root {
   background: rgba(255, 190, 210, 0.18);
 }
 
+@keyframes owner-heart-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 20%) scale(0.4);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--hx), var(--hy)) scale(1.05);
+  }
+}
+
+.owner-heart-burst {
+  z-index: 2;
+}
+
+.owner-heart {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  font-size: 11px;
+  line-height: 1;
+  color: #ffe4e1;
+  text-shadow: 0 1px 2px rgba(180, 70, 90, 0.35);
+  animation: owner-heart-pop 700ms ease-out forwards;
+}
+
+.owner-heart-a {
+  --hx: -12px;
+  --hy: -18px;
+}
+
+.owner-heart-b {
+  --hx: 10px;
+  --hy: -22px;
+  animation-delay: 40ms;
+}
+
+.owner-heart-c {
+  --hx: 0px;
+  --hy: -28px;
+  animation-delay: 80ms;
+  font-size: 13px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .widget-current-pulse,
   .widget-now-surface,
   .coex-pulse,
   .coex-start-main:not(:hover):not(:active),
-  .coex-start-compact:not(:hover):not(:active) {
+  .coex-start-compact:not(:hover):not(:active),
+  .owner-heart {
     animation: none;
   }
 }

@@ -4,6 +4,7 @@ import {
   clockToCycleMinutes,
   emptyConfig,
   formatCallChannelLabel,
+  formatWorkDisplay,
   getCurrentItem,
   gridDayHours,
   gridViewSpanHours,
@@ -151,6 +152,41 @@ describe("call tag migrate", () => {
     expect(formatItemSubline(cfg.items[0])).toBe("PC");
     expect(cfg.items[1].gamePlatform).toBe("mobile");
     expect(formatItemSubline(cfg.items[1])).toBe("手游");
+  });
+});
+
+describe("work subtypes", () => {
+  it("formats 上课 as 科目 · 班级", () => {
+    expect(
+      formatWorkDisplay({
+        tag: "work",
+        workKind: "class",
+        workPrimary: "数学",
+        workSecondary: "高一 1 班",
+        title: "旧标题",
+      }),
+    ).toBe("数学 · 高一 1 班");
+  });
+
+  it("migrates old work items to other", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [
+        {
+          id: "w",
+          start: "09:00",
+          end: "10:00",
+          title: "站会",
+          weekdays: [1],
+          enabled: true,
+          tag: "work",
+        },
+      ],
+    });
+    expect(cfg.items[0].workKind).toBe("other");
+    expect(cfg.items[0].title).toBe("站会");
   });
 });
 

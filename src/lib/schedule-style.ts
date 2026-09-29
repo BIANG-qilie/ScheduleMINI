@@ -3,10 +3,13 @@ import {
   formatCallChannelLabel,
   formatGamePlatformLabel,
   formatTagLabel,
+  formatWorkKindLabel,
   itemCallChannel,
+  itemDisplayTitle,
   itemGamePlatform,
   itemRecurrence,
   itemTag,
+  itemWorkKind,
   type ScheduleItem,
   type ScheduleTag,
 } from "@/lib/config";
@@ -141,7 +144,7 @@ export function isGameItem(item: ScheduleItem) {
   return itemTag(item) === "game";
 }
 
-/** 周/列表/小窗副行：交通 / 通话渠道 / 游戏平台 */
+/** 周/列表/小窗副行：交通 / 通话 / 游戏 / 工作子类 */
 export function formatItemSubline(item: ScheduleItem): string | null {
   if (isCallItem(item)) {
     const ch = itemCallChannel(item);
@@ -152,6 +155,10 @@ export function formatItemSubline(item: ScheduleItem): string | null {
     return platform ? formatGamePlatformLabel(platform) : null;
   }
   if (isCommuteItem(item)) return formatRoute(item);
+  if (itemTag(item) === "work") {
+    const kind = itemWorkKind(item);
+    if (kind && kind !== "other") return formatWorkKindLabel(kind);
+  }
   return null;
 }
 
@@ -174,7 +181,7 @@ export function scheduleChipClass(tag: ScheduleTag) {
 export function itemHoverText(item: ScheduleItem) {
   const parts = [
     `${item.start}–${item.end} · ${formatTagLabel(itemTag(item))}`,
-    item.title,
+    itemDisplayTitle(item),
   ];
   const sub = formatItemSubline(item);
   if (sub) parts.push(sub);

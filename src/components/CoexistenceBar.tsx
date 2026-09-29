@@ -12,14 +12,29 @@ type Props = {
   compact?: boolean;
 };
 
-function TogetherMark({ className }: { className?: string }) {
+function TwinHearts({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn("relative inline-flex h-3.5 w-4 shrink-0", className)}
+      className={cn(
+        "relative inline-flex h-3.5 w-[1.15rem] shrink-0 items-center",
+        className,
+      )}
     >
-      <span className="absolute left-0 top-0.5 h-2.5 w-2.5 rounded-full bg-current opacity-80" />
-      <span className="absolute right-0 top-0.5 h-2.5 w-2.5 rounded-full bg-current opacity-55" />
+      <svg
+        viewBox="0 0 20 14"
+        className="h-3.5 w-[1.15rem]"
+        fill="currentColor"
+      >
+        <path
+          d="M5.2 1.2c-1.4 0-2.5 1.15-2.5 2.55 0 2.2 2.35 3.95 4.7 5.85 2.35-1.9 4.7-3.65 4.7-5.85 0-1.4-1.1-2.55-2.5-2.55-0.85 0-1.6.45-2.05 1.15C6.8 1.65 6.05 1.2 5.2 1.2z"
+          opacity="0.95"
+        />
+        <path
+          d="M12.4 1.2c-1.4 0-2.5 1.15-2.5 2.55 0 2.2 2.35 3.95 4.7 5.85 2.35-1.9 4.7-3.65 4.7-5.85 0-1.4-1.1-2.55-2.5-2.55-0.85 0-1.6.45-2.05 1.15-.45-.7-1.2-1.15-2.05-1.15z"
+          opacity="0.72"
+        />
+      </svg>
     </span>
   );
 }
@@ -68,10 +83,10 @@ export function CoexistenceBar({ className, compact }: Props) {
               : "coex-start-main bg-[linear-gradient(140deg,#f9cdd8_0%,#f2a8bb_52%,#e891a6_100%)] text-[#5a2438] hover:brightness-[1.03]",
           )}
         >
-          <TogetherMark
+          <TwinHearts
             className={cn(
               "transition-transform duration-300 group-hover:scale-110",
-              compact ? "text-white" : "text-[#c45a78]",
+              compact ? "text-white" : "text-[#e891a6]",
             )}
           />
           开启共处
