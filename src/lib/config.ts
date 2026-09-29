@@ -90,26 +90,41 @@ export const CALL_CHANNEL_OPTIONS = (
 ).map((id) => ({ id, ...CALL_CHANNEL_META[id] }));
 
 /** 游戏平台（仅 tag=game，可选） */
-export const GamePlatformSchema = z.enum([
-  "wechat",
-  "qq",
-  "steam",
-  "switch",
-  "other",
-]);
-export type GamePlatform = z.infer<typeof GamePlatformSchema>;
+export const GamePlatformValues = ["mobile", "pc", "switch", "other"] as const;
+export type GamePlatform = (typeof GamePlatformValues)[number];
+
+/** 旧枚举 → 新枚举 */
+const LEGACY_GAME_PLATFORM: Record<string, GamePlatform> = {
+  wechat: "mobile",
+  qq: "mobile",
+  steam: "pc",
+  switch: "switch",
+  other: "other",
+  mobile: "mobile",
+  pc: "pc",
+};
+
+export function migrateGamePlatform(raw: unknown): GamePlatform | undefined {
+  if (typeof raw !== "string") return undefined;
+  return LEGACY_GAME_PLATFORM[raw];
+}
+
+export const GamePlatformSchema = z.preprocess(
+  (val) => migrateGamePlatform(val) ?? val,
+  z.enum(GamePlatformValues),
+);
 
 export const GAME_PLATFORM_META: Record<GamePlatform, { label: string }> = {
-  wechat: { label: "微信" },
-  qq: { label: "QQ" },
-  steam: { label: "Steam" },
+  mobile: { label: "手游" },
+  pc: { label: "PC" },
   switch: { label: "Switch" },
   other: { label: "其他" },
 };
 
-export const GAME_PLATFORM_OPTIONS = (
-  Object.keys(GAME_PLATFORM_META) as GamePlatform[]
-).map((id) => ({ id, ...GAME_PLATFORM_META[id] }));
+export const GAME_PLATFORM_OPTIONS = GamePlatformValues.map((id) => ({
+  id,
+  ...GAME_PLATFORM_META[id],
+}));
 
 /** 标签展示名与是否随放假跳过 */
 export const SCHEDULE_TAG_META: Record<
@@ -265,8 +280,13 @@ export const AppConfigSchema = z
     remindersEnabled: z.boolean().default(true),
     reminderMinutesBefore: ReminderMinutesSchema.default(10),
     widgetOpacity: z.number().min(0.4).max(1).default(0.92),
-    gridStartHour: z.number().int().min(5).max(12).default(7),
-    gridEndHour: z.number().int().min(14).max(24).default(22),
+    /** 周列日周期起点（含）；网格按此时起绕满 24h，可滚动 */
+    gridStartHour: z.number().int().min(0).max(23).default(7),
+    /**
+     * 默认可视窗口终点（不含）。
+     * 若 ≤ start 则表示次日该点（如 7→2 = 07:00–次日 02:00）。
+     */
+    gridEndHour: z.number().int().min(0).max(23).default(2),
     dayOverrides: z.record(z.string(), DayOverrideSchema).default({}),
     couple: CoupleIdentitySchema.default(() => defaultCouple()),
     /** 单人模式：悬浮窗不强调对方栏；本地仍可编双方/共同日程 */
@@ -316,13 +336,6 @@ export const AppConfigSchema = z
     items: z.array(ScheduleItemSchema),
   })
   .superRefine((val, ctx) => {
-    if (val.gridEndHour <= val.gridStartHour) {
-      ctx.addIssue({
-        code: "custom",
-        message: "结束小时须晚于开始小时",
-        path: ["gridEndHour"],
-      });
-    }
     const seen = new Set<string>();
     for (let i = 0; i < val.items.length; i++) {
       const id = val.items[i].id;
@@ -532,6 +545,45 @@ export const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] 
 /** 课表列顺序：周一 → 周日 */
 export const WEEK_COLUMN_DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
 
+/**
+ * 周视图表视口跨度（小时）。
+ * end ≤ start 表示跨午夜到次日 end；相等为整日 24h。
+ */
+export function gridViewSpanHours(start: number, end: number): number {
+  if (start === end) return 24;
+  if (end > start) return end - start;
+  return 24 - start + end;
+}
+
+/** 从 cycleStart 起绕一圈的 24 个钟点 */
+export function gridDayHours(cycleStartHour: number): number[] {
+  return Array.from({ length: 24 }, (_, i) => (cycleStartHour + i) % 24);
+}
+
+/** 钟点相对日周期起点的分钟（0 … 24×60） */
+export function clockToCycleMinutes(
+  hhmm: string,
+  cycleStartHour: number,
+): number {
+  if (hhmm === "24:00") {
+    // 日历日末 = 次日 00:00
+    let delta = 0 - cycleStartHour * 60;
+    if (delta <= 0) delta += 24 * 60;
+    return delta;
+  }
+  const [h, m] = hhmm.split(":").map(Number);
+  let delta = h * 60 + m - cycleStartHour * 60;
+  if (delta < 0) delta += 24 * 60;
+  return delta;
+}
+
+export function formatGridHourLabel(hour: number, cycleStartHour: number) {
+  const label = `${String(hour).padStart(2, "0")}:00`;
+  // 周期内落到凌晨且钟点 < 起点 → 次日
+  if (hour < cycleStartHour) return `次日 ${label}`;
+  return label;
+}
+
 export function defaultConfig(): AppConfig {
   const couple = defaultCouple();
   const now = new Date().toISOString();
@@ -546,7 +598,7 @@ export function defaultConfig(): AppConfig {
     reminderMinutesBefore: 10,
     widgetOpacity: 0.92,
     gridStartHour: 7,
-    gridEndHour: 22,
+    gridEndHour: 2,
     dayOverrides: {},
     couple,
     soloMode: false,
@@ -630,7 +682,10 @@ export function parseAppConfig(raw: unknown): AppConfig {
       updatedAt: it.updatedAt || new Date().toISOString(),
       callChannel:
         tag === "call" ? (it.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
-      gamePlatform: tag === "game" ? it.gamePlatform : undefined,
+      gamePlatform:
+        tag === "game"
+          ? migrateGamePlatform(it.gamePlatform) ?? it.gamePlatform
+          : undefined,
       origin: tag === "commute" ? it.origin : undefined,
       destination: tag === "commute" ? it.destination : undefined,
     };

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   ScheduleItemSchema,
+  clockToCycleMinutes,
   emptyConfig,
   formatCallChannelLabel,
   getCurrentItem,
+  gridDayHours,
+  gridViewSpanHours,
   isItemNow,
   isOvernightItem,
   itemCallChannel,
@@ -115,7 +118,7 @@ describe("call tag migrate", () => {
     expect(cfg.items[0].callChannel).toBeUndefined();
   });
 
-  it("keeps optional gamePlatform on game tag", () => {
+  it("migrates legacy gamePlatform values", () => {
     const cfg = parseAppConfig({
       version: 1,
       showHolidays: true,
@@ -132,11 +135,42 @@ describe("call tag migrate", () => {
           gamePlatform: "steam",
           owner: "shared",
         },
+        {
+          id: "g2",
+          start: "20:00",
+          end: "21:00",
+          title: "手游",
+          weekdays: [6],
+          enabled: true,
+          tag: "game",
+          gamePlatform: "wechat",
+        },
       ],
     });
-    expect(cfg.items[0].tag).toBe("game");
-    expect(cfg.items[0].gamePlatform).toBe("steam");
-    expect(formatItemSubline(cfg.items[0])).toBe("Steam");
+    expect(cfg.items[0].gamePlatform).toBe("pc");
+    expect(formatItemSubline(cfg.items[0])).toBe("PC");
+    expect(cfg.items[1].gamePlatform).toBe("mobile");
+    expect(formatItemSubline(cfg.items[1])).toBe("手游");
+  });
+});
+
+describe("grid wrap window", () => {
+  it("defaults to 07 → next-day 02 (19h view, 24h cycle)", () => {
+    const cfg = emptyConfig();
+    expect(cfg.gridStartHour).toBe(7);
+    expect(cfg.gridEndHour).toBe(2);
+    expect(gridViewSpanHours(7, 2)).toBe(19);
+    expect(gridDayHours(7)).toHaveLength(24);
+    expect(gridDayHours(7)[0]).toBe(7);
+    expect(gridDayHours(7)[17]).toBe(0);
+  });
+
+  it("maps overnight clock into cycle offsets", () => {
+    expect(clockToCycleMinutes("22:00", 7)).toBe(15 * 60);
+    expect(clockToCycleMinutes("24:00", 7)).toBe(17 * 60);
+    expect(clockToCycleMinutes("00:00", 7)).toBe(17 * 60);
+    expect(clockToCycleMinutes("02:00", 7)).toBe(19 * 60);
+    expect(clockToCycleMinutes("09:00", 7)).toBe(2 * 60);
   });
 });
 

@@ -59,14 +59,14 @@ test.describe("小日程设置页", () => {
     await expect(dialog.getByRole("button", { name: "共同", exact: true })).toHaveClass(
       /bg-\[var\(--color-accent\)\]/,
     );
-    await dialog.getByRole("button", { name: "Steam", exact: true }).click();
+    await dialog.getByRole("button", { name: "PC", exact: true }).click();
     await dialog.locator("#start").fill("21:00");
     await dialog.locator("#end").fill("23:00");
     await dialog.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText("已添加日程")).toBeVisible();
     await page.getByRole("button", { name: "列表" }).click();
     const row = page.locator("li").filter({ hasText: "一起开黑" });
-    await expect(row.getByText("Steam")).toBeVisible();
+    await expect(row.getByText("PC", { exact: true })).toBeVisible();
     await expect(row.getByText("游戏", { exact: true })).toBeVisible();
     await expect(row.getByText("共同")).toBeVisible();
   });

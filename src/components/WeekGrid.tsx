@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
+  clockToCycleMinutes,
   compareTime,
   computeOverlapLayout,
   formatDateKey,
   formatWeekRangeLabel,
   getCurrentWeekColumns,
   getWeekAnchor,
+  gridDayHours,
+  gridViewSpanHours,
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
@@ -25,14 +28,11 @@ import {
 import { cn } from "@/lib/utils";
 
 const DAY_PX = 52;
+const CYCLE_MINUTES = 24 * 60;
 
-function timeToMinutes(hhmm: string) {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function minutesToTime(total: number) {
-  const h = Math.floor(total / 60);
+function minutesToClock(cycleStartHour: number, offsetMins: number) {
+  const total = cycleStartHour * 60 + offsetMins;
+  const h = Math.floor(total / 60) % 24;
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
@@ -91,13 +91,10 @@ export function WeekGrid({
   }, []);
 
   const hours = useMemo(
-    () =>
-      Array.from(
-        { length: Math.max(1, gridEndHour - gridStartHour) },
-        (_, i) => gridStartHour + i,
-      ),
-    [gridStartHour, gridEndHour],
+    () => gridDayHours(gridStartHour),
+    [gridStartHour],
   );
+  const viewSpan = gridViewSpanHours(gridStartHour, gridEndHour);
   const todayKey = formatDateKey(now);
   const columns = useMemo(
     () => getCurrentWeekColumns(getWeekAnchor(weekOffset, now)),
@@ -107,16 +104,16 @@ export function WeekGrid({
   const isCurrentWeek = weekOffset === 0;
   // 底边留白，避免贴底色块被圆角/滚动裁切
   const bottomPad = 12;
-  const totalHeight = (gridEndHour - gridStartHour) * DAY_PX + bottomPad;
+  const totalHeight = 24 * DAY_PX + bottomPad;
+  const viewHeight = viewSpan * DAY_PX + bottomPad;
 
   const nowLineTop = useMemo(() => {
     if (!isCurrentWeek) return null;
-    const mins = now.getHours() * 60 + now.getMinutes();
-    const start = gridStartHour * 60;
-    const end = gridEndHour * 60;
-    if (mins < start || mins > end) return null;
-    return ((mins - start) / 60) * DAY_PX;
-  }, [now, isCurrentWeek, gridStartHour, gridEndHour]);
+    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const offset = clockToCycleMinutes(hhmm, gridStartHour);
+    if (offset < 0 || offset > CYCLE_MINUTES) return null;
+    return (offset / 60) * DAY_PX;
+  }, [now, isCurrentWeek, gridStartHour]);
 
   const enabledItems = useMemo(
     () => items.filter((it) => it.enabled).sort((a, b) => compareTime(a.start, b.start)),
@@ -131,17 +128,6 @@ export function WeekGrid({
     return map;
   }, [columns, dayOverrides]);
 
-  const clampMinutes = (mins: number) => {
-    const min = gridStartHour * 60;
-    const max = gridEndHour * 60;
-    return Math.min(max, Math.max(min, mins));
-  };
-
-  const timeToClampedMinutes = (hhmm: string) => {
-    if (hhmm === "24:00") return gridEndHour * 60;
-    return clampMinutes(timeToMinutes(hhmm));
-  };
-
   const handleLaneClick = (
     weekday: number,
     dateKey: string,
@@ -150,12 +136,17 @@ export function WeekGrid({
     setMenu(null);
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const rawMins = gridStartHour * 60 + (y / DAY_PX) * 60;
-    const snapped = Math.floor(rawMins / 30) * 30;
-    const startMins = clampMinutes(snapped);
-    const endMins = clampMinutes(startMins + 60);
-    if (endMins <= startMins) return;
-    onCreateAt(weekday, dateKey, minutesToTime(startMins), minutesToTime(endMins));
+    const rawOffset = Math.floor((y / DAY_PX) * 60);
+    const snapped = Math.floor(rawOffset / 30) * 30;
+    const startOffset = Math.max(0, Math.min(CYCLE_MINUTES - 30, snapped));
+    const endOffset = Math.min(CYCLE_MINUTES, startOffset + 60);
+    if (endOffset <= startOffset) return;
+    onCreateAt(
+      weekday,
+      dateKey,
+      minutesToClock(gridStartHour, startOffset),
+      minutesToClock(gridStartHour, endOffset),
+    );
   };
 
   return (
@@ -205,11 +196,14 @@ export function WeekGrid({
         </div>
       </div>
 
-      <div className="overflow-auto">
+      <div
+        className="overflow-auto"
+        style={{ maxHeight: viewHeight + 52 }}
+      >
         <div
           className="grid min-w-[720px]"
           style={{
-            gridTemplateColumns: `48px repeat(7, minmax(0, 1fr))`,
+            gridTemplateColumns: `52px repeat(7, minmax(0, 1fr))`,
           }}
         >
           <div className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-surface)]" />
@@ -270,13 +264,17 @@ export function WeekGrid({
           })}
 
           <div className="relative" style={{ height: totalHeight }}>
-            {hours.map((h) => (
+            {hours.map((h, i) => (
               <div
-                key={`t-${h}`}
+                key={`t-${i}-${h}`}
                 className="absolute right-1 -translate-y-1/2 font-mono text-[10px] text-[var(--color-ink-muted)]"
-                style={{ top: (h - gridStartHour) * DAY_PX }}
+                style={{ top: i * DAY_PX }}
               >
-                {String(h).padStart(2, "0")}:00
+                {h < gridStartHour ? (
+                  <span title="次日">{String(h).padStart(2, "0")}</span>
+                ) : (
+                  String(h).padStart(2, "0")
+                )}
               </div>
             ))}
           </div>
@@ -300,18 +298,18 @@ export function WeekGrid({
                 style={{ height: totalHeight }}
                 onClick={(e) => handleLaneClick(col.weekday, col.dateKey, e)}
               >
-                {hours.map((h) => (
+                {hours.map((h, i) => (
                   <div
-                    key={`line-${col.dateKey}-${h}`}
+                    key={`line-${col.dateKey}-${i}-${h}`}
                     className="pointer-events-none absolute inset-x-0 border-t border-[var(--color-line)]/70"
-                    style={{ top: (h - gridStartHour) * DAY_PX }}
+                    style={{ top: i * DAY_PX }}
                   />
                 ))}
-                {hours.map((h) => (
+                {hours.map((h, i) => (
                   <div
-                    key={`half-${col.dateKey}-${h}`}
+                    key={`half-${col.dateKey}-${i}-${h}`}
                     className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[var(--color-line)]/40"
-                    style={{ top: (h - gridStartHour) * DAY_PX + DAY_PX / 2 }}
+                    style={{ top: i * DAY_PX + DAY_PX / 2 }}
                   />
                 ))}
 
@@ -324,20 +322,23 @@ export function WeekGrid({
                         col.weekday,
                       );
                       if (!segment) return null;
-                      let start = timeToClampedMinutes(segment.start);
-                      let end =
-                        segment.end === "24:00"
-                          ? gridEndHour * 60
-                          : timeToClampedMinutes(segment.end);
-                      // 贴网格下沿的跨日晚段（如 22:00–24:00 且网格止于 22）仍显示一小截
-                      if (end <= start && segment.end === "24:00") {
-                        end = gridEndHour * 60;
-                        start = Math.max(gridStartHour * 60, end - 40);
+                      let start = clockToCycleMinutes(
+                        segment.start,
+                        gridStartHour,
+                      );
+                      let end = clockToCycleMinutes(
+                        segment.end,
+                        gridStartHour,
+                      );
+                      // 跨周期边界（极少）：钳到日内
+                      if (end <= start) {
+                        if (segment.end === "24:00" || segment.end === "00:00") {
+                          end = Math.min(CYCLE_MINUTES, start + 40);
+                        } else {
+                          return null;
+                        }
                       }
-                      if (end <= start) return null;
-                      const top =
-                        ((start - gridStartHour * 60) / 60) * DAY_PX;
-                      // 严格按时长占位，不人为撑高以免压住下一段
+                      const top = (start / 60) * DAY_PX;
                       const height = Math.max(
                         10,
                         ((end - start) / 60) * DAY_PX - 1,

@@ -48,7 +48,13 @@ export function CoexistenceBar({ className, compact }: Props) {
 
   if (!current) {
     return (
-      <div className={cn("flex items-center gap-2", className)}>
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          compact && "h-full w-full justify-center",
+          className,
+        )}
+      >
         <button
           type="button"
           onClick={() => void startCoexistence()}

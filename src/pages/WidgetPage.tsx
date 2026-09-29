@@ -289,7 +289,7 @@ function DualFocusWidget({
           ) : null}
         </div>
 
-        <div className="px-2.5 pb-2">
+        <div className="flex min-h-10 items-center justify-center px-2.5 pb-2 pt-0.5">
           <CoexistenceBar compact />
         </div>
 

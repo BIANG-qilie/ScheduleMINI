@@ -1103,12 +1103,10 @@ export function SettingsPage() {
                 className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
                 value={config.gridStartHour}
                 onChange={(e) => {
-                  const start = Number(e.target.value);
-                  const end = Math.max(config.gridEndHour, start + 1);
-                  void setGridHours(start, end);
+                  void setGridHours(Number(e.target.value), config.gridEndHour);
                 }}
               >
-                {Array.from({ length: 8 }, (_, i) => 5 + i).map((h) => (
+                {Array.from({ length: 13 }, (_, i) => i).map((h) => (
                   <option key={`s-${h}`} value={h}>
                     {String(h).padStart(2, "0")}:00
                   </option>
@@ -1119,16 +1117,18 @@ export function SettingsPage() {
                 className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm"
                 value={config.gridEndHour}
                 onChange={(e) => {
-                  const end = Number(e.target.value);
-                  const start = Math.min(config.gridStartHour, end - 1);
-                  void setGridHours(start, end);
+                  void setGridHours(config.gridStartHour, Number(e.target.value));
                 }}
               >
-                {Array.from({ length: 11 }, (_, i) => 14 + i).map((h) => (
-                  <option key={`e-${h}`} value={h}>
-                    {String(h).padStart(2, "0")}:00
-                  </option>
-                ))}
+                {Array.from({ length: 24 }, (_, i) => i).map((h) => {
+                  const nextDay = h <= config.gridStartHour;
+                  return (
+                    <option key={`e-${h}`} value={h}>
+                      {nextDay ? "次日 " : ""}
+                      {String(h).padStart(2, "0")}:00
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
