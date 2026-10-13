@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { WeekGrid } from "@/components/WeekGrid";
+import { PhoneGlance } from "@/components/PhoneGlance";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 import { ScheduleEditor, type Draft } from "@/components/ScheduleEditor";
 import {
@@ -60,6 +61,7 @@ import {
   subscribeConfigChanges,
   useConfigStore,
 } from "@/store/config-store";
+import { useNarrow } from "@/lib/use-narrow";
 import { cn } from "@/lib/utils";
 
 const emptyDraft = (): Draft => {
@@ -179,6 +181,8 @@ export function SettingsPage() {
   const [prefsTab, setPrefsTab] = useState<"couple" | "display" | "data">(
     "couple",
   );
+  const narrow = useNarrow();
+  const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list">("now");
 
   useEffect(() => {
     void init();
@@ -449,6 +453,17 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full min-h-full flex-col">
+      {narrow ? (
+        <header className="flex shrink-0 items-baseline justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
+          <h1 className="font-display text-2xl font-medium leading-none tracking-tight">
+            {APP_DISPLAY_NAME}
+          </h1>
+          <p className="text-xs text-[var(--color-ink-muted)]">
+            共 {sortedItems.length} 条
+          </p>
+        </header>
+      ) : null}
+      {!narrow ? (
       <header className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-[var(--color-line)] px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <p className="kicker">双人日程</p>
@@ -532,6 +547,7 @@ export function SettingsPage() {
           </Button>
         </div>
       </header>
+      ) : null}
 
       {error ? (
         <div className="mx-4 mt-3 rounded-2xl border border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] px-4 py-3 text-sm text-[var(--color-danger)] sm:mx-6">
@@ -553,9 +569,23 @@ export function SettingsPage() {
         </div>
       ) : null}
 
-      <section className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
+      <section
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-3 px-4 py-4 sm:px-6",
+          narrow &&
+            "px-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))] pt-3",
+        )}
+      >
 
-          {selectedIds.size > 0 ? (
+          {narrow && phoneTab === "now" ? (
+            <PhoneGlance
+              couple={config.couple}
+              soloMode={config.soloMode}
+              showHolidays={config.showHolidays}
+            />
+          ) : null}
+
+          {selectedIds.size > 0 && !(narrow && phoneTab === "now") ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-sm shadow-[0_8px_24px_-18px_rgba(28,22,18,0.45)]">
               <span className="tabular px-1 text-xs tracking-wide text-[var(--color-ink-muted)]">
                 已选 {selectedIds.size}
@@ -616,8 +646,9 @@ export function SettingsPage() {
             </div>
           ) : null}
 
-          {config.settingsViewMode === "week" ? (
+          {(narrow ? phoneTab === "week" : config.settingsViewMode === "week") ? (
             <WeekGrid
+              layout={narrow ? "day" : "board"}
               items={config.items}
               couple={config.couple}
               showHolidays={config.showHolidays}
@@ -637,7 +668,7 @@ export function SettingsPage() {
                 void setDayOverride(dateKey, value)
               }
             />
-          ) : sortedItems.length === 0 ? (
+          ) : narrow && phoneTab === "now" ? null : sortedItems.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-16 text-center">
               <p className="font-display text-2xl text-[var(--color-ink)]">
                 还没有安排
@@ -666,7 +697,7 @@ export function SettingsPage() {
                     <label className="absolute left-2 top-4 flex items-center">
                       <input
                         type="checkbox"
-                        className="h-3.5 w-3.5"
+                        className={cn("h-3.5 w-3.5", narrow && "h-6 w-6")}
                         checked={selectedIds.has(item.id)}
                         onChange={() => toggleSelect(item.id)}
                       />
@@ -708,7 +739,7 @@ export function SettingsPage() {
                         {formatScheduleScope(item)}
                       </p>
                       {item.note?.trim() ? (
-                        <p className="hidden text-sm opacity-70 group-hover:block">
+                        <p className="text-sm leading-snug text-[var(--color-ink-muted)]">
                           {item.note.trim()}
                         </p>
                       ) : null}
@@ -743,6 +774,71 @@ export function SettingsPage() {
             </ul>
           )}
         </section>
+
+      {narrow ? (
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_92%,white)] px-1 pt-1 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-lg items-end justify-between gap-1">
+            {(
+              [
+                ["now", "此刻"],
+                ["week", "周"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={cn(
+                  "flex h-12 min-w-0 flex-1 items-center justify-center rounded-2xl text-sm",
+                  phoneTab === id
+                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                    : "text-[var(--color-ink-muted)]",
+                )}
+                onClick={() => setPhoneTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="mx-0.5 flex h-12 min-w-[4.5rem] items-center justify-center gap-1 rounded-2xl bg-[var(--color-accent)] px-3 text-sm font-medium text-white"
+              onClick={openCreate}
+              disabled={busy}
+            >
+              <Plus className="h-4 w-4" />
+              新建
+            </button>
+            {(
+              [
+                ["list", "列表"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={cn(
+                  "flex h-12 min-w-0 flex-1 items-center justify-center rounded-2xl text-sm",
+                  phoneTab === id
+                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                    : "text-[var(--color-ink-muted)]",
+                )}
+                onClick={() => setPhoneTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-2xl text-sm text-[var(--color-ink-muted)]"
+              onClick={() => {
+                setPrefsTab("couple");
+                setPrefsOpen(true);
+              }}
+            >
+              设置
+            </button>
+          </div>
+        </nav>
+      ) : null}
 
       <Dialog
         open={prefsOpen}
@@ -1077,25 +1173,29 @@ export function SettingsPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="widget-focus">悬浮窗聚焦当前</Label>
-              <Switch
-                id="widget-focus"
-                checked={config.widgetMode === "current"}
-                onCheckedChange={(v) =>
-                  void setWidgetMode(v ? "current" : "full")
-                }
-              />
-            </div>
+            {!narrow ? (
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="widget-focus">悬浮窗聚焦当前</Label>
+                <Switch
+                  id="widget-focus"
+                  checked={config.widgetMode === "current"}
+                  onCheckedChange={(v) =>
+                    void setWidgetMode(v ? "current" : "full")
+                  }
+                />
+              </div>
+            ) : null}
 
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="autostart">开机自启</Label>
-              <Switch
-                id="autostart"
-                checked={config.autostart}
-                onCheckedChange={(v) => void setAutostart(v)}
-              />
-            </div>
+            {!narrow ? (
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="autostart">开机自启</Label>
+                <Switch
+                  id="autostart"
+                  checked={config.autostart}
+                  onCheckedChange={(v) => void setAutostart(v)}
+                />
+              </div>
+            ) : null}
 
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1131,6 +1231,7 @@ export function SettingsPage() {
               </div>
             ) : null}
 
+            {!narrow ? (
             <div className="flex flex-wrap items-center gap-3">
               <Label htmlFor="widget-opacity">悬浮窗透明度</Label>
               <input
@@ -1149,6 +1250,7 @@ export function SettingsPage() {
                 {Math.round(config.widgetOpacity * 100)}%
               </span>
             </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
               <Label>周视图时段</Label>
@@ -1185,6 +1287,7 @@ export function SettingsPage() {
               </select>
             </div>
 
+            {!narrow ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
@@ -1205,6 +1308,7 @@ export function SettingsPage() {
                 )}
               </Button>
             </div>
+            ) : null}
           </TabsContent>
 
           <TabsContent value={prefsTab} when="data">
