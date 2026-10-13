@@ -17,19 +17,15 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { WeekGrid } from "@/components/WeekGrid";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
+import { ScheduleEditor, type Draft } from "@/components/ScheduleEditor";
 import {
   APP_DISPLAY_NAME,
-  CALL_CHANNEL_OPTIONS,
   DEFAULT_CALL_CHANNEL,
   DEFAULT_WORK_KIND,
-  GAME_PLATFORM_OPTIONS,
   SCHEDULE_TAG_OPTIONS,
-  WEEKDAY_LABELS,
   WORK_KIND_META,
-  WORK_KIND_OPTIONS,
   formatDateKey,
   formatScheduleScope,
   isPaired,
@@ -41,16 +37,11 @@ import {
   itemWorkKind,
   ownerColor,
   ownerLabel,
-  tagRespectsHolidays,
   workKindRequiredField,
-  type CallChannel,
-  type GamePlatform,
   type ItemOwner,
-  type Recurrence,
   type ReminderMinutes,
   type ScheduleItem,
   type ScheduleTag,
-  type WorkKind,
 } from "@/lib/config";
 import { getTodayLabel } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
@@ -58,9 +49,8 @@ import {
   formatItemSubline,
   itemHoverText,
   ownerChipStyle,
-  ownerSurfaceStyle,
+  ownerRailStyle,
   scheduleChipClass,
-  TAG_SURFACE,
 } from "@/lib/schedule-style";
 import { resolveRelayBaseUrl } from "@/lib/sync/relay";
 import { syncAutostart } from "@/lib/widget-chrome";
@@ -71,32 +61,6 @@ import {
   useConfigStore,
 } from "@/store/config-store";
 import { cn } from "@/lib/utils";
-
-type Draft = {
-  id?: string;
-  start: string;
-  end: string;
-  title: string;
-  note: string;
-  weekdays: number[];
-  enabled: boolean;
-  recurrence: Recurrence;
-  date: string;
-  /** 周循环生效日起（含） */
-  activeFrom: string;
-  /** 周循环失效日（含）；空=不限 */
-  activeUntil: string;
-  tag: ScheduleTag;
-  origin: string;
-  destination: string;
-  callChannel: CallChannel;
-  gamePlatform: GamePlatform | "";
-  workKind: WorkKind;
-  workPrimary: string;
-  workSecondary: string;
-  isCourseSwap: boolean;
-  owner: ItemOwner;
-};
 
 const emptyDraft = (): Draft => {
   const today = formatDateKey(new Date());
@@ -471,104 +435,131 @@ export function SettingsPage() {
 
   if (!hydrated || loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-[linear-gradient(160deg,#f7f3ea_0%,#e9f3ef_55%,#efe8db_100%)]">
-        <p className="text-sm text-[var(--color-ink-muted)]">正在加载…</p>
+      <div className="flex h-full items-center justify-center">
+        <p className="font-display text-lg text-[var(--color-ink-muted)]">
+          正在加载…
+        </p>
       </div>
     );
   }
 
+  const alertStatus =
+    !!status &&
+    (status.startsWith("导入失败") || status.startsWith("配置加载"));
+
   return (
-    <div className="min-h-full bg-[linear-gradient(160deg,#f7f3ea_0%,#e9f3ef_45%,#efe8db_100%)]">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-5 py-6">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-ink)]">
-            {APP_DISPLAY_NAME}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <CoexistenceBar />
-            <Button
+    <div className="flex h-full min-h-full flex-col">
+      <header className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-[var(--color-line)] px-4 py-4 sm:px-6">
+        <div className="min-w-0">
+          <p className="kicker">双人日程</p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h1 className="font-display text-[2rem] font-medium leading-none tracking-tight text-[var(--color-ink)]">
+              {APP_DISPLAY_NAME}
+            </h1>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              共 {sortedItems.length} 条
+              {todayLabel.kind !== "none" ? ` · ${todayLabel.name}` : ""}
+            </p>
+          </div>
+          {!config.soloMode ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[var(--color-ink-muted)]">
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: config.couple.selfColor }}
+                />
+                {config.couple.selfName}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: config.couple.partnerColor }}
+                />
+                {config.couple.partnerName}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: "#f3a6a0" }}
+                />
+                共同
+              </span>
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-full border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_80%,white)] p-1">
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPrefsOpen(true)}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs tracking-wide",
+                config.settingsViewMode === "week"
+                  ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                  : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]",
+              )}
+              onClick={() => void setSettingsViewMode("week")}
             >
-              <Settings className="h-4 w-4" />
-              设置
-            </Button>
+              <CalendarRange className="h-3.5 w-3.5" />
+              周视图
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs tracking-wide",
+                config.settingsViewMode === "list"
+                  ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                  : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]",
+              )}
+              onClick={() => void setSettingsViewMode("list")}
+            >
+              <List className="h-3.5 w-3.5" />
+              列表
+            </button>
           </div>
-        </header>
-
-        {error ? (
-          <div className="rounded-lg border border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] px-4 py-3 text-sm text-[var(--color-danger)]">
-            配置加载失败：{error}。已使用空日程，请修复配置文件或重新导入。
-          </div>
-        ) : null}
-
-        {status ? (
-          <div
-            role={
-              status.startsWith("导入失败") || status.startsWith("配置加载")
-                ? "alert"
-                : undefined
-            }
-            className={cn(
-              "rounded-lg border px-4 py-3 text-sm",
-              status.startsWith("导入失败") || status.startsWith("配置加载")
-                ? "border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] text-[var(--color-danger)]"
-                : "border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)]",
-            )}
+          <CoexistenceBar />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPrefsOpen(true)}
           >
-            {status}
-          </div>
-        ) : null}
+            <Settings className="h-4 w-4" />
+            设置
+          </Button>
+          <Button type="button" onClick={openCreate} disabled={busy}>
+            <Plus className="h-4 w-4" />
+            新建日程
+          </Button>
+        </div>
+      </header>
 
-        <section className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_88%,white)] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">日程</h2>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                共 {sortedItems.length} 条
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 items-center gap-1 rounded-[5px] px-2.5 text-xs",
-                    config.settingsViewMode === "week"
-                      ? "bg-[var(--color-accent)] text-white"
-                      : "text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() => void setSettingsViewMode("week")}
-                >
-                  <CalendarRange className="h-3.5 w-3.5" />
-                  周视图
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 items-center gap-1 rounded-[5px] px-2.5 text-xs",
-                    config.settingsViewMode === "list"
-                      ? "bg-[var(--color-accent)] text-white"
-                      : "text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() => void setSettingsViewMode("list")}
-                >
-                  <List className="h-3.5 w-3.5" />
-                  列表
-                </button>
-              </div>
-              <Button type="button" onClick={openCreate} disabled={busy}>
-                <Plus className="h-4 w-4" />
-                新建日程
-              </Button>
-            </div>
-          </div>
+      {error ? (
+        <div className="mx-4 mt-3 rounded-2xl border border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] px-4 py-3 text-sm text-[var(--color-danger)] sm:mx-6">
+          配置加载失败：{error}。已使用空日程，请修复配置文件或重新导入。
+        </div>
+      ) : null}
+
+      {status ? (
+        <div
+          role={alertStatus ? "alert" : "status"}
+          className={cn(
+            "mx-4 mt-3 rounded-2xl border px-4 py-2.5 text-sm sm:mx-6",
+            alertStatus
+              ? "border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] text-[var(--color-danger)]"
+              : "border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)]",
+          )}
+        >
+          {status}
+        </div>
+      ) : null}
+
+      <section className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
 
           {selectedIds.size > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg-deep)] px-3 py-2 text-sm">
-              <span>已选 {selectedIds.size}</span>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-sm shadow-[0_8px_24px_-18px_rgba(28,22,18,0.45)]">
+              <span className="tabular px-1 text-xs tracking-wide text-[var(--color-ink-muted)]">
+                已选 {selectedIds.size}
+              </span>
               <Button
                 type="button"
                 size="sm"
@@ -582,7 +573,7 @@ export function SettingsPage() {
                 删除
               </Button>
               <select
-                className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+                className="h-8 rounded-full border border-[var(--color-line)] bg-[var(--color-bg)] px-3 text-xs"
                 defaultValue=""
                 onChange={(e) => {
                   const tag = e.target.value as ScheduleTag;
@@ -601,7 +592,7 @@ export function SettingsPage() {
                 ))}
               </select>
               <select
-                className="h-8 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+                className="h-8 rounded-full border border-[var(--color-line)] bg-[var(--color-bg)] px-3 text-xs"
                 defaultValue=""
                 onChange={(e) => {
                   const owner = e.target.value as ItemOwner;
@@ -647,13 +638,13 @@ export function SettingsPage() {
               }
             />
           ) : sortedItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-10 text-center">
-              <p className="text-sm font-medium text-[var(--color-ink)]">
+            <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-16 text-center">
+              <p className="font-display text-2xl text-[var(--color-ink)]">
                 还没有安排
               </p>
             </div>
           ) : (
-            <ul className="space-y-3">
+            <ul className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
               {sortedItems.map((item) => {
                 const tag = item.tag ?? "work";
                 const subline = formatItemSubline(item);
@@ -665,11 +656,12 @@ export function SettingsPage() {
                     key={item.id}
                     title={itemHoverText(item)}
                     className={cn(
-                      "group relative flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:justify-between",
-                      (once || courseSwap) && "border-dashed border-amber-400/55",
-                      selectedIds.has(item.id) && "ring-2 ring-[var(--color-accent)]",
+                      "group relative flex flex-col gap-3 rounded-2xl border p-4 transition-[transform,box-shadow] duration-200 hover:-translate-y-px hover:shadow-[0_14px_30px_-22px_rgba(28,22,18,0.55)] sm:flex-row sm:items-start sm:justify-between",
+                      (once || courseSwap) && "border-dashed border-[#d7b15a]",
+                      selectedIds.has(item.id) &&
+                        "ring-2 ring-[var(--color-ink)] ring-offset-2 ring-offset-[var(--color-bg)]",
                     )}
-                    style={ownerSurfaceStyle(color)}
+                    style={ownerRailStyle(color)}
                   >
                     <label className="absolute left-2 top-4 flex items-center">
                       <input
@@ -681,11 +673,11 @@ export function SettingsPage() {
                     </label>
                     <div className="min-w-0 space-y-1 pl-7">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm opacity-80">
+                        <span className="tabular font-mono text-sm tracking-tight text-[var(--color-ink)]">
                           {item.start}–{item.end}
                         </span>
                         <span
-                          className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium"
+                          className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide"
                           style={ownerChipStyle(color)}
                         >
                           {ownerLabel(item, config.couple)}
@@ -694,11 +686,11 @@ export function SettingsPage() {
                           {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
                         </span>
                         {courseSwap ? (
-                          <span className="rounded border border-amber-400/50 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                          <span className="rounded-full border border-[#e4c98a] bg-[#fbf6ea] px-2 py-0.5 text-[10px] text-[#7a5a22]">
                             换课
                           </span>
                         ) : once ? (
-                          <span className="rounded border border-amber-400/50 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                          <span className="rounded-full border border-[#e4c98a] bg-[#fbf6ea] px-2 py-0.5 text-[10px] text-[#7a5a22]">
                             仅一次
                           </span>
                         ) : null}
@@ -706,7 +698,7 @@ export function SettingsPage() {
                           <span className="text-xs opacity-60">已停用</span>
                         ) : null}
                       </div>
-                      <p className="truncate text-base font-medium">
+                      <p className="truncate font-display text-lg leading-snug">
                         {itemDisplayTitle(item)}
                       </p>
                       {subline ? (
@@ -751,7 +743,6 @@ export function SettingsPage() {
             </ul>
           )}
         </section>
-      </div>
 
       <Dialog
         open={prefsOpen}
@@ -760,7 +751,8 @@ export function SettingsPage() {
           if (open) setPrefsTab("couple");
         }}
         title="设置"
-        className="max-w-2xl"
+        eyebrow="偏好"
+        className="sm:max-w-3xl"
       >
         <Tabs
           value={prefsTab}
@@ -798,7 +790,7 @@ export function SettingsPage() {
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+              <div className="space-y-2 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_30%,var(--color-surface))] p-3.5">
                 <Label htmlFor="self-name">我的名字</Label>
                 <div className="flex gap-2">
                   <Input
@@ -821,7 +813,7 @@ export function SettingsPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-2 rounded-xl border border-[var(--color-line)] p-3">
+              <div className="space-y-2 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_30%,var(--color-surface))] p-3.5">
                 <Label htmlFor="partner-name">对方怎么称呼</Label>
                 <div className="flex gap-2">
                   <Input
@@ -876,7 +868,7 @@ export function SettingsPage() {
               </p>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-[var(--color-line)] p-4">
+            <div className="space-y-3 rounded-2xl border border-[var(--color-line)] p-4">
               <h3 className="text-sm font-semibold">邀请对方</h3>
               {isPaired(config.couple) ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -967,7 +959,7 @@ export function SettingsPage() {
               )}
             </div>
 
-            <div className="space-y-3 rounded-xl border border-[var(--color-line)] p-4">
+            <div className="space-y-3 rounded-2xl border border-[var(--color-line)] p-4">
               <h3 className="text-sm font-semibold">多端同步</h3>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -1243,9 +1235,9 @@ export function SettingsPage() {
       <Dialog
         open={editorOpen}
         onOpenChange={setEditorOpen}
-        dense
+        panel
+        eyebrow="安排"
         title={draft.id ? "编辑日程" : "新建日程"}
-        description="一栏填完，保存即生效"
         footer={
           <>
             {draft.id &&
@@ -1294,563 +1286,18 @@ export function SettingsPage() {
           </>
         }
       >
-        {!config.soloMode ? (
-          <section className="flex flex-col gap-2">
-            <Label>归属</Label>
-            <div className="relative inline-flex self-start rounded-lg border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_55%,var(--color-surface))] p-0.5">
-              {(
-                [
-                  ["self", "自己", config.couple.selfColor] as const,
-                  ["partner", "对方", config.couple.partnerColor] as const,
-                  ["shared", "共同", "#f3a6a0"] as const,
-                ] as const
-              ).map(([value, label, color]) => {
-                const active = draft.owner === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    className={cn(
-                      "relative h-8 overflow-visible rounded-md px-3 text-xs transition-colors",
-                      !active &&
-                        "text-[var(--color-ink-muted)] hover:bg-black/[0.03]",
-                    )}
-                    style={
-                      active
-                        ? {
-                            backgroundColor: color,
-                            color: "#fff",
-                            boxShadow:
-                              value === "shared"
-                                ? "0 2px 10px -2px rgba(243,166,160,0.55)"
-                                : undefined,
-                          }
-                        : undefined
-                    }
-                    onClick={() => {
-                      setDraft((prev) => ({ ...prev, owner: value }));
-                      if (value === "shared") {
-                        setHeartBurst((n) => n + 1);
-                      }
-                    }}
-                  >
-                    {label}
-                    {value === "shared" && heartBurst > 0 ? (
-                      <span
-                        key={heartBurst}
-                        className="owner-heart-burst pointer-events-none absolute inset-0"
-                        aria-hidden
-                      >
-                        <span className="owner-heart owner-heart-a">♥</span>
-                        <span className="owner-heart owner-heart-b">♥</span>
-                        <span className="owner-heart owner-heart-c">♥</span>
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="flex flex-col gap-2">
-          <Label>标签</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {SCHEDULE_TAG_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={cn(
-                  "h-8 rounded-lg border px-2.5 text-xs",
-                  draft.tag === opt.id
-                    ? cn(TAG_SURFACE[opt.id].chip, "ring-1 ring-[var(--color-accent)]/35")
-                    : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
-                )}
-                onClick={() =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    tag: opt.id,
-                    callChannel:
-                      opt.id === "call"
-                        ? prev.callChannel || DEFAULT_CALL_CHANNEL
-                        : prev.callChannel,
-                    workKind:
-                      opt.id === "work"
-                        ? prev.workKind || DEFAULT_WORK_KIND
-                        : prev.workKind,
-                    isCourseSwap:
-                      opt.id === "work" ? prev.isCourseSwap : false,
-                    owner:
-                      opt.id === "game" && prev.tag !== "game"
-                        ? "shared"
-                        : prev.owner,
-                  }))
-                }
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {tagRespectsHolidays(draft.tag) &&
-          draft.recurrence === "weekly" &&
-          !draft.isCourseSwap ? (
-            <p className="text-xs leading-normal text-[var(--color-ink-muted)]">
-              放假日不出现
-            </p>
-          ) : null}
-        </section>
-
-        {draft.tag === "work" ? (
-          <section className="flex flex-col gap-2">
-            <Label>工作类型</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {WORK_KIND_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={cn(
-                    "h-8 rounded-lg border px-2.5 text-xs",
-                    draft.workKind === opt.id
-                      ? cn(
-                          TAG_SURFACE.work.chip,
-                          "ring-1 ring-[var(--color-accent)]/35",
-                        )
-                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      workKind: opt.id,
-                      isCourseSwap:
-                        opt.id === "class" ? prev.isCourseSwap : false,
-                      recurrence:
-                        opt.id === "class" && prev.isCourseSwap
-                          ? "once"
-                          : prev.recurrence,
-                    }))
-                  }
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {draft.workKind === "class" ? (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300/50 bg-amber-50/70 px-3 py-2.5">
-                <div className="min-w-0">
-                  <Label htmlFor="course-swap" className="text-sm">
-                    换课
-                  </Label>
-                  <p className="mt-0.5 text-[11px] leading-normal text-amber-900/70">
-                    开启后固定为仅一次，周循环不可用
-                  </p>
-                </div>
-                <Switch
-                  id="course-swap"
-                  checked={draft.isCourseSwap}
-                  onCheckedChange={(on) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      isCourseSwap: on,
-                      recurrence: on ? "once" : prev.recurrence,
-                      date: on && !prev.date ? formatDateKey(new Date()) : prev.date,
-                    }))
-                  }
-                />
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {draft.tag === "call" ? (
-          <section className="flex flex-col gap-2">
-            <Label>通话渠道</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {CALL_CHANNEL_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={cn(
-                    "h-8 rounded-lg border px-2.5 text-xs",
-                    draft.callChannel === opt.id
-                      ? cn(
-                          TAG_SURFACE.call.chip,
-                          "ring-1 ring-[var(--color-accent)]/35",
-                        )
-                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() =>
-                    setDraft((prev) => ({ ...prev, callChannel: opt.id }))
-                  }
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {draft.tag === "game" ? (
-          <section className="flex flex-col gap-2">
-            <Label>平台</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {GAME_PLATFORM_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={cn(
-                    "h-8 rounded-lg border px-2.5 text-xs",
-                    draft.gamePlatform === opt.id
-                      ? cn(
-                          TAG_SURFACE.game.chip,
-                          "ring-1 ring-[var(--color-accent)]/35",
-                        )
-                      : "border-[var(--color-line)] text-[var(--color-ink-muted)]",
-                  )}
-                  onClick={() =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      gamePlatform:
-                        prev.gamePlatform === opt.id ? "" : opt.id,
-                    }))
-                  }
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {draft.tag === "commute" ? (
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label htmlFor="origin">出发地</Label>
-              <Input
-                id="origin"
-                value={draft.origin}
-                placeholder="例如：大旺"
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, origin: e.target.value }))
-                }
-              />
-            </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label htmlFor="destination">目的地</Label>
-              <Input
-                id="destination"
-                value={draft.destination}
-                placeholder="例如：学校"
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    destination: e.target.value,
-                  }))
-                }
-              />
-            </div>
-          </section>
-        ) : null}
-
-        <section className="flex flex-col gap-3">
-          <Label>时间</Label>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label htmlFor="start" className="text-xs text-[var(--color-ink-muted)]">
-                开始
-              </Label>
-              <Input
-                id="start"
-                type="time"
-                step={60}
-                value={draft.start}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, start: e.target.value }))
-                }
-              />
-              <p className="text-[11px] leading-normal text-[var(--color-ink-muted)]">
-                24 小时制
-              </p>
-            </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label htmlFor="end" className="text-xs text-[var(--color-ink-muted)]">
-                结束
-              </Label>
-              <Input
-                id="end"
-                type="time"
-                step={60}
-                value={draft.end}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, end: e.target.value }))
-                }
-              />
-              <p className="text-[11px] leading-normal text-[var(--color-ink-muted)]">
-                早于开始即跨日
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-2">
-          <Label>重复方式</Label>
-          <div className="inline-flex self-start rounded-lg border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_55%,var(--color-surface))] p-0.5">
-            <button
-              type="button"
-              disabled={draft.isCourseSwap}
-              className={cn(
-                "h-8 rounded-md px-3 text-xs",
-                draft.recurrence === "weekly" && !draft.isCourseSwap
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-muted)]",
-                draft.isCourseSwap && "cursor-not-allowed opacity-40",
-              )}
-              onClick={() =>
-                setDraft((prev) => ({ ...prev, recurrence: "weekly" }))
-              }
-            >
-              每周重复
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "h-8 rounded-md px-3 text-xs",
-                draft.recurrence === "once" || draft.isCourseSwap
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-muted)]",
-              )}
-              onClick={() =>
-                setDraft((prev) => ({ ...prev, recurrence: "once" }))
-              }
-            >
-              仅一次
-            </button>
-          </div>
-          {draft.isCourseSwap ? (
-            <p className="text-xs leading-normal text-amber-800/80">
-              换课中：已锁定为仅一次
-            </p>
-          ) : null}
-
-          {draft.recurrence === "once" || draft.isCourseSwap ? (
-            <div className="flex min-w-0 flex-col gap-1.5 pt-1">
-              <Label htmlFor="once-date">日期</Label>
-              <Input
-                id="once-date"
-                type="date"
-                value={draft.date}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, date: e.target.value }))
-                }
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 pt-1">
-              <Label>每周重复</Label>
-              <div className="flex flex-wrap gap-2">
-                {WEEKDAY_LABELS.map((label, day) => {
-                  const active = draft.weekdays.includes(day);
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => toggleWeekday(day)}
-                      className={
-                        active
-                          ? "h-9 min-w-9 rounded-lg bg-[var(--color-accent)] px-3 text-sm text-white"
-                          : "h-9 min-w-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
-                      }
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="active-from">生效</Label>
-                  <Input
-                    id="active-from"
-                    type="date"
-                    value={draft.activeFrom}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        activeFrom: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="active-until">失效</Label>
-                  <Input
-                    id="active-until"
-                    type="date"
-                    value={draft.activeUntil}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        activeUntil: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {draft.tag === "work" && draft.workKind !== "other" ? (
-          <section className="flex flex-col gap-3">
-            <Label>内容</Label>
-            {(() => {
-              const meta = WORK_KIND_META[draft.workKind];
-              const required = workKindRequiredField(draft.workKind);
-              const primaryOptional = required !== "primary";
-              const secondaryOptional = required !== "secondary";
-              const primaryFirst = required !== "secondary";
-              const primaryField = (
-                <div className="flex min-w-0 flex-col gap-1.5" key="primary">
-                  <Label htmlFor="work-primary">
-                    {meta.primaryLabel}
-                    {primaryOptional ? (
-                      <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
-                        选填
-                      </span>
-                    ) : null}
-                  </Label>
-                  <Input
-                    id="work-primary"
-                    value={draft.workPrimary}
-                    placeholder={meta.primaryPlaceholder}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        workPrimary: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              );
-              const secondaryField = (
-                <div className="flex min-w-0 flex-col gap-1.5" key="secondary">
-                  <Label htmlFor="work-secondary">
-                    {meta.secondaryLabel}
-                    {secondaryOptional ? (
-                      <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
-                        选填
-                      </span>
-                    ) : null}
-                  </Label>
-                  <Input
-                    id="work-secondary"
-                    value={draft.workSecondary}
-                    placeholder={meta.secondaryPlaceholder}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        workSecondary: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              );
-              return (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {primaryFirst ? (
-                    <>
-                      {primaryField}
-                      {secondaryField}
-                    </>
-                  ) : (
-                    <>
-                      {secondaryField}
-                      {primaryField}
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-          </section>
-        ) : (
-          <section className="flex min-w-0 flex-col gap-1.5">
-            <Label htmlFor="title">
-              {draft.tag === "work"
-                ? WORK_KIND_META.other.primaryLabel
-                : "标题"}
-            </Label>
-            <Input
-              id="title"
-              value={draft.title}
-              placeholder={
-                draft.tag === "work"
-                  ? WORK_KIND_META.other.primaryPlaceholder
-                  : "例如：站会、深度工作、约谈"
-              }
-              onChange={(e) =>
-                setDraft((prev) => ({ ...prev, title: e.target.value }))
-              }
-            />
-          </section>
-        )}
-
-        <section className="flex min-w-0 flex-col gap-1.5">
-          <Label htmlFor="note">
-            备注
-            <span className="ml-1 font-normal text-[var(--color-ink-muted)]">
-              选填
-            </span>
-          </Label>
-          <Textarea
-            id="note"
-            value={draft.note}
-            placeholder="补充说明"
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, note: e.target.value }))
-            }
-          />
-        </section>
-
-        <section className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-line)]/80 px-3 py-2.5">
-          <Label htmlFor="enabled">启用此日程</Label>
-          <Switch
-            id="enabled"
-            checked={draft.enabled}
-            onCheckedChange={(enabled) =>
-              setDraft((prev) => ({ ...prev, enabled }))
-            }
-          />
-        </section>
-
-        {draft.id && draft.recurrence === "weekly" && !draft.isCourseSwap
-          ? (() => {
-              const existing = config.items.find((it) => it.id === draft.id);
-              const skipped = existing ? itemSkippedDates(existing) : [];
-              if (skipped.length === 0) return null;
-              return (
-                <section className="flex flex-col gap-2">
-                  <Label>已取消的日期</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {skipped.map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--color-line)] px-2 font-mono text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                        title="恢复该次"
-                        onClick={() => void unskipOccurrence(draft.id!, d)}
-                      >
-                        {d}
-                        <span aria-hidden>×</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              );
-            })()
-          : null}
-
-        {formError ? (
-          <p className="text-sm text-[var(--color-danger)]">{formError}</p>
-        ) : null}
+        <ScheduleEditor
+          draft={draft}
+          setDraft={setDraft}
+          soloMode={config.soloMode}
+          couple={config.couple}
+          items={config.items}
+          heartBurst={heartBurst}
+          onHeart={() => setHeartBurst((n) => n + 1)}
+          formError={formError}
+          onToggleWeekday={toggleWeekday}
+          onUnskip={(id, date) => void unskipOccurrence(id, date)}
+        />
       </Dialog>
     </div>
   );

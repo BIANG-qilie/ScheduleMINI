@@ -65,17 +65,17 @@ function FullModeItemCard({
   return (
     <div
       className={cn(
-        "rounded-xl border px-3 py-2.5",
+        "rounded-2xl border px-3 py-2.5",
         style.card,
-        current && "ring-1 ring-white/35",
+        current && "widget-now-surface ring-1 ring-white/30",
         (once || courseSwap) && "border-dashed",
       )}
       style={{
-        boxShadow: `inset 3px 0 0 ${current ? line : `${line}55`}`,
+        boxShadow: `inset 3px 0 0 ${current ? line : `${line}66`}`,
       }}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-white/70">
+        <span className="tabular font-mono text-xs text-white/65">
           {item.start}–{item.end}
         </span>
         <div className="flex items-center gap-1.5">
@@ -99,7 +99,7 @@ function FullModeItemCard({
           ) : null}
         </div>
       </div>
-      <p className="mt-1 text-sm font-medium leading-snug">
+      <p className="font-display mt-1 text-[15px] leading-snug">
         {itemDisplayTitle(item)}
       </p>
       {subline ? (
@@ -156,13 +156,13 @@ function PersonColumn({
 
       {currentItem ? (
         <div
-          className="relative overflow-hidden rounded-xl px-2.5 py-3 text-[#041510]"
+          className="widget-now-surface relative overflow-hidden rounded-2xl px-2.5 py-3 text-[#1a120e]"
           style={{
-            background: `linear-gradient(145deg, ${color}cc 0%, ${color} 55%, ${color}99 100%)`,
+            background: `linear-gradient(160deg, color-mix(in oklab, ${color} 78%, white) 0%, ${color} 62%, color-mix(in oklab, ${color} 70%, black) 100%)`,
           }}
         >
           <div className="flex items-center justify-between gap-1">
-            <span className="rounded bg-black/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-current/80">
+            <span className="rounded-full bg-black/12 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-current/80">
               NOW
             </span>
             <span className="font-mono text-[10px] tabular-nums text-current/70">
@@ -171,7 +171,7 @@ function PersonColumn({
                 : "进行中"}
             </span>
           </div>
-          <p className="mt-1.5 text-base font-semibold leading-snug tracking-tight">
+          <p className="font-display mt-1.5 text-[17px] font-medium leading-snug tracking-tight">
             {itemDisplayTitle(currentItem)}
           </p>
           {subline ? (
@@ -190,11 +190,11 @@ function PersonColumn({
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-2.5 py-3">
-          <span className="text-[9px] font-semibold tracking-[0.12em] text-white/35">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.035] px-2.5 py-3">
+          <span className="text-[9px] font-semibold tracking-[0.18em] text-white/38">
             FREE
           </span>
-          <p className="mt-1 text-sm text-white/55">空闲中</p>
+          <p className="font-display mt-1 text-base text-white/70">空闲中</p>
           {emptyHint ? (
             <p className="mt-1 text-[10px] text-white/30">{emptyHint}</p>
           ) : null}
@@ -202,7 +202,7 @@ function PersonColumn({
       )}
 
       {upcoming && untilNext != null ? (
-        <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+        <div className="rounded-xl bg-white/[0.04] px-2 py-1.5">
           <p className="truncate text-[10px] text-white/35">
             <span className="font-semibold tracking-wider text-white/25">
               NEXT{" "}
@@ -256,7 +256,7 @@ function DualFocusWidget({
 
   return (
     <div className="h-full p-1">
-      <div className="relative flex h-full flex-col overflow-hidden rounded-[22px] border border-white/[0.08] bg-[rgba(8,14,16,0.72)] text-white shadow-[0_18px_48px_rgba(0,0,0,0.42)] backdrop-blur-xl">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-white/[0.1] bg-[rgba(22,16,14,0.78)] text-white shadow-[0_22px_50px_rgba(20,10,8,0.48)] backdrop-blur-xl">
         <div
           data-tauri-drag-region
           className="absolute inset-x-0 top-0 z-10 flex h-6 cursor-grab items-center justify-center active:cursor-grabbing"
@@ -453,7 +453,7 @@ export function WidgetPage() {
   if (!hydrated || loading) {
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <div className="w-full rounded-2xl bg-[color-mix(in_oklab,#10231f_88%,black)] px-4 py-6 text-center text-sm text-white/80">
+        <div className="w-full rounded-[26px] bg-[rgba(22,16,14,0.88)] px-4 py-6 text-center font-display text-base text-white/80">
           加载中…
         </div>
       </div>
@@ -487,7 +487,7 @@ export function WidgetPage() {
 
   return (
     <div className="h-full p-2">
-      <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/15 bg-[linear-gradient(165deg,rgba(16,35,31,0.92),rgba(20,48,42,0.88))] text-white shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-md">
+      <div className="flex h-full flex-col overflow-hidden rounded-[26px] border border-white/12 bg-[linear-gradient(168deg,rgba(28,20,16,0.94),rgba(18,14,12,0.9))] text-white shadow-[0_22px_48px_rgba(20,10,8,0.4)] backdrop-blur-md">
         <div
           data-tauri-drag-region
           className="flex cursor-grab items-center gap-2 border-b border-white/10 px-3 py-2 active:cursor-grabbing"
@@ -511,15 +511,15 @@ export function WidgetPage() {
         </div>
 
         {config.showHolidays && holiday.kind !== "none" ? (
-          <div className="border-b border-white/10 bg-emerald-400/15 px-3 py-2 text-xs text-emerald-100">
+          <div className="border-b border-white/10 bg-[#c47a32]/18 px-3 py-2 text-xs tracking-wide text-[#f6e6d0]">
             {holiday.name}
           </div>
         ) : null}
 
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/35 px-3 py-8 text-center">
-              <p className="text-sm font-medium text-white/90">今天都空着</p>
+            <div className="rounded-2xl border border-dashed border-white/25 px-3 py-10 text-center">
+              <p className="font-display text-lg text-white/85">今天都空着</p>
             </div>
           ) : (
             items.map((item) => {

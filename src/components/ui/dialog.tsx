@@ -10,8 +10,12 @@ type DialogProps = {
   children: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
-  /** 编辑器等长表单：收紧内边距、粘性底栏 */
+  /** 标题上方的短标；缺省不显示 */
+  eyebrow?: string;
+  /** 编辑器等长表单：收紧滚动区、粘性底栏 */
   dense?: boolean;
+  /** 宽幅组合面板（编辑器） */
+  panel?: boolean;
 };
 
 export function Dialog({
@@ -22,16 +26,18 @@ export function Dialog({
   children,
   footer,
   className,
+  eyebrow,
   dense = false,
+  panel = false,
 }: DialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-label={`关闭${title}`}
-        className="absolute inset-0 bg-[color-mix(in_oklab,var(--color-ink)_42%,transparent)]"
+        className="absolute inset-0 bg-[color-mix(in_oklab,var(--color-ink)_46%,transparent)] backdrop-blur-[2px]"
         onClick={() => onOpenChange(false)}
       />
       <div
@@ -39,25 +45,35 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "relative z-10 flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_64px_-28px_rgba(28,36,48,0.45)]",
-          dense
-            ? "max-h-[min(92vh,820px)] max-w-md"
-            : "max-h-[min(90vh,780px)] max-w-lg p-5",
+          "sheet-in relative z-10 flex w-full flex-col overflow-hidden border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sheet)]",
+          "max-h-[min(94vh,900px)] rounded-t-3xl sm:rounded-3xl",
+          panel
+            ? "sm:max-w-[920px]"
+            : dense
+              ? "sm:max-w-md"
+              : "sm:max-w-lg",
+          !panel && !dense && "p-5 sm:p-6",
           className,
         )}
       >
         <div
           className={cn(
-            "flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-line)]/70",
-            dense ? "px-4 py-3.5" : "mb-4",
+            "flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-line)]",
+            panel || dense ? "px-5 py-4 sm:px-7" : "mb-5",
           )}
         >
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-ink)]">
+          <div className="min-w-0 pt-0.5">
+            {eyebrow ? <p className="kicker">{eyebrow}</p> : null}
+            <h2
+              className={cn(
+                "font-display text-[1.65rem] font-medium leading-none tracking-tight text-[var(--color-ink)]",
+                eyebrow && "mt-1",
+              )}
+            >
               {title}
             </h2>
             {description ? (
-              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              <p className="mt-2 text-sm leading-relaxed text-[var(--color-ink-muted)]">
                 {description}
               </p>
             ) : null}
@@ -72,15 +88,14 @@ export function Dialog({
             关闭
           </Button>
         </div>
-        {/*
-          gap（非 space-y）+ 上下内边距：滚动容器不裁切中文 label 字顶
-        */}
         <div
           className={cn(
             "min-h-0 flex-1 overflow-x-hidden overflow-y-auto",
-            dense
-              ? "flex flex-col gap-5 px-4 py-4"
-              : "flex flex-col gap-4 py-1",
+            panel
+              ? "px-5 py-5 sm:px-7 sm:py-6"
+              : dense
+                ? "flex flex-col gap-5 px-4 py-4"
+                : "flex flex-col gap-4 py-1",
           )}
         >
           {children}
@@ -88,8 +103,8 @@ export function Dialog({
         {footer ? (
           <div
             className={cn(
-              "flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--color-line)]/70 bg-[color-mix(in_oklab,var(--color-surface)_92%,var(--color-bg-deep))]",
-              dense ? "px-4 py-3" : "mt-5 pt-4",
+              "flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_35%,var(--color-surface))]",
+              panel || dense ? "px-5 py-3.5 sm:px-7" : "mt-5 pt-4",
             )}
           >
             {footer}

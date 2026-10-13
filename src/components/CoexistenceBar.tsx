@@ -80,7 +80,7 @@ export function CoexistenceBar({ className, compact }: Props) {
             "hover:-translate-y-px active:translate-y-0",
             compact
               ? "coex-start-compact bg-[linear-gradient(135deg,#f7a8bc_0%,#e8799a_55%,#d65a82_100%)] text-white hover:brightness-110"
-              : "coex-start-main bg-[linear-gradient(140deg,#f9cdd8_0%,#f2a8bb_52%,#e891a6_100%)] text-[#5a2438] hover:brightness-[1.03]",
+              : "coex-start-main border border-[#f0c4ce] bg-[linear-gradient(160deg,#fff8f6_0%,#f8d5de_100%)] text-[#5c2433] hover:brightness-[1.02]",
           )}
         >
           <TwinHearts

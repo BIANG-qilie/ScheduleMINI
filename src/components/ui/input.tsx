@@ -8,7 +8,7 @@ export const Input = React.forwardRef<
   <input
     type={type}
     className={cn(
-      "flex h-9 w-full rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1 text-sm shadow-none transition-colors placeholder:text-[var(--color-ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50",
+      "flex h-10 w-full rounded-xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_28%,var(--color-surface))] px-3 py-1 text-sm shadow-none transition-[border-color,background-color] placeholder:text-[color-mix(in_oklab,var(--color-ink-muted)_75%,white)] focus-visible:border-[var(--color-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
     ref={ref}
