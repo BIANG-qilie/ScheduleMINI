@@ -152,15 +152,27 @@ export function WeekGrid({
 
   return (
     <div
-      className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]"
+      className="paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl"
       onClick={() => setMenu(null)}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-line)] px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
+        <div>
+          <p className="font-display text-2xl leading-none tracking-tight text-[var(--color-ink)]">
+            {isCurrentWeek
+              ? "本周"
+              : weekOffset > 0
+                ? `往后第 ${weekOffset} 周`
+                : `往前第 ${-weekOffset} 周`}
+          </p>
+          <p className="mt-1 font-mono text-[11px] tracking-wide text-[var(--color-ink-muted)]">
+            {rangeLabel}
+          </p>
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
             aria-label="上一周"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
             onClick={() => setWeekOffset((o) => o - 1)}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -168,7 +180,7 @@ export function WeekGrid({
           <button
             type="button"
             aria-label="下一周"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
             onClick={() => setWeekOffset((o) => o + 1)}
           >
             <ChevronRight className="h-4 w-4" />
@@ -176,30 +188,18 @@ export function WeekGrid({
           {!isCurrentWeek ? (
             <button
               type="button"
-              className="ml-1 inline-flex h-8 items-center rounded-md border border-[var(--color-line)] px-2.5 text-xs text-[var(--color-ink-muted)] transition hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-accent)]"
+              className="ml-1 inline-flex h-8 items-center rounded-full border border-[var(--color-line)] px-3 text-xs tracking-wide text-[var(--color-ink-muted)] transition hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-ink)]"
               onClick={() => setWeekOffset(0)}
             >
               回到本周
             </button>
           ) : null}
         </div>
-        <div className="text-right">
-          <p className="text-sm font-medium text-[var(--color-ink)]">
-            {isCurrentWeek
-              ? "本周"
-              : weekOffset > 0
-                ? `往后第 ${weekOffset} 周`
-                : `往前第 ${-weekOffset} 周`}
-          </p>
-          <p className="font-mono text-[11px] text-[var(--color-ink-muted)]">
-            {rangeLabel}
-          </p>
-        </div>
       </div>
 
       <div
-        className="overflow-auto"
-        style={{ maxHeight: viewHeight + 52 }}
+        className="min-h-0 flex-1 overflow-auto"
+        style={{ maxHeight: viewHeight + 8 }}
       >
         <div
           className="grid min-w-[720px]"
@@ -216,12 +216,11 @@ export function WeekGrid({
                 key={`h-${col.dateKey}`}
                 type="button"
                 className={cn(
-                  "sticky top-0 z-20 border-b border-l border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-2 text-center text-xs font-medium",
-                  col.dateKey === todayKey &&
-                    "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
+                  "sticky top-0 z-20 border-b border-l border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-2.5 text-center",
+                  col.dateKey === todayKey && "bg-[var(--color-accent-soft)]",
                   off &&
                     showHolidays &&
-                    "bg-[color-mix(in_oklab,#b45309_8%,var(--color-surface))]",
+                    "bg-[color-mix(in_oklab,var(--color-warn)_8%,var(--color-surface))]",
                 )}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -243,8 +242,22 @@ export function WeekGrid({
                   });
                 }}
               >
-                <div>周{WEEKDAY_LABELS[col.weekday]}</div>
-                <div className="mt-0.5 font-mono text-[10px] font-normal opacity-70">
+                <div
+                  className={cn(
+                    "text-[11px] tracking-[0.14em] text-[var(--color-ink-muted)]",
+                    col.dateKey === todayKey && "text-[var(--color-accent)]",
+                  )}
+                >
+                  周{WEEKDAY_LABELS[col.weekday]}
+                </div>
+                <div
+                  className={cn(
+                    "font-display mt-0.5 text-lg font-medium leading-none tabular-nums",
+                    col.dateKey === todayKey
+                      ? "text-[var(--color-accent)]"
+                      : "text-[var(--color-ink)]",
+                  )}
+                >
                   {col.monthDay}
                 </div>
                 {showHolidays && label && label.kind !== "none" ? (
@@ -268,8 +281,8 @@ export function WeekGrid({
             {hours.map((h, i) => (
               <div
                 key={`t-${i}-${h}`}
-                className="absolute right-1 -translate-y-1/2 font-mono text-[10px] text-[var(--color-ink-muted)]"
-                style={{ top: i * DAY_PX }}
+                className="absolute right-1.5 font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]"
+                style={{ top: i === 0 ? 4 : i * DAY_PX - 7 }}
               >
                 {h < gridStartHour ? (
                   <span title="次日">{String(h).padStart(2, "0")}</span>
@@ -378,11 +391,11 @@ export function WeekGrid({
                         type="button"
                         title={itemHoverText(item)}
                         className={cn(
-                          "group absolute overflow-hidden rounded border text-left transition hover:brightness-[0.97]",
+                          "group absolute overflow-hidden rounded-md border text-left transition-[transform,filter] duration-150 hover:z-20 hover:brightness-[0.98]",
                           height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
                           (once || courseSwap) && "border-dashed",
                           selectedIds?.has(item.id) &&
-                            "ring-2 ring-[var(--color-accent)] ring-offset-1",
+                            "ring-2 ring-[var(--color-ink)] ring-offset-1",
                         )}
                         style={{
                           top,
@@ -421,7 +434,7 @@ export function WeekGrid({
                           <p
                             className={cn(
                               "flex items-center gap-0.5 truncate font-semibold leading-tight",
-                              height < 18 ? "text-[10px]" : "text-[11px]",
+                              height < 18 ? "text-[10px]" : "text-xs",
                             )}
                           >
                             {courseSwap || once ? (
@@ -462,9 +475,7 @@ export function WeekGrid({
                     className="pointer-events-none absolute inset-x-0 z-30"
                     style={{ top: nowLineTop }}
                   >
-                    <div className="relative border-t-2 border-rose-500">
-                      <span className="absolute -left-1 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-rose-500 shadow" />
-                    </div>
+                    <div className="now-line relative" />
                   </div>
                 ) : null}
               </div>
@@ -475,7 +486,7 @@ export function WeekGrid({
 
       {menu ? (
         <div
-          className="fixed z-50 min-w-[140px] rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] py-1 shadow-lg"
+          className="fixed z-50 min-w-[148px] overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] py-1 shadow-[0_16px_40px_-24px_rgba(28,22,18,0.6)]"
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -483,7 +494,7 @@ export function WeekGrid({
             <>
               <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSkipOccurrence(menu.item, menu.dateKey);
                   setMenu(null);
@@ -493,7 +504,7 @@ export function WeekGrid({
               </button>
               <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onEditItem(menu.item, menu.dateKey);
                   setMenu(null);
@@ -506,7 +517,7 @@ export function WeekGrid({
             <>
               <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSetDayOverride(menu.dateKey, "off");
                   setMenu(null);
@@ -516,7 +527,7 @@ export function WeekGrid({
               </button>
               <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSetDayOverride(menu.dateKey, "work");
                   setMenu(null);
@@ -526,7 +537,7 @@ export function WeekGrid({
               </button>
               <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSetDayOverride(menu.dateKey, null);
                   setMenu(null);

@@ -21,51 +21,44 @@ export const TAG_SURFACE: Record<
   { block: string; chip: string; bar: string }
 > = {
   work: {
-    block:
-      "border border-teal-600/30 bg-teal-50 text-teal-950",
-    chip: "bg-teal-100 text-teal-800 border-teal-200",
-    bar: "bg-teal-500",
+    block: "border border-[#9ec9be] bg-[#e7f3ef] text-[#143f38]",
+    chip: "border-[#b7d5cc] bg-[#d7ebe4] text-[#14584c]",
+    bar: "bg-[#1f8a78]",
   },
   commute: {
-    block:
-      "border border-violet-600/30 bg-violet-50 text-violet-950",
-    chip: "bg-violet-100 text-violet-800 border-violet-200",
-    bar: "bg-violet-500",
+    block: "border border-[#c7b6de] bg-[#f3eef8] text-[#3d2a58]",
+    chip: "border-[#d4c4e6] bg-[#e7dcf3] text-[#4c3470]",
+    bar: "bg-[#7c5cbf]",
   },
   study: {
-    block: "border border-sky-600/30 bg-sky-50 text-sky-950",
-    chip: "bg-sky-100 text-sky-800 border-sky-200",
-    bar: "bg-sky-500",
+    block: "border border-[#b7cbe0] bg-[#eef4f8] text-[#1d3a52]",
+    chip: "border-[#c5d6e6] bg-[#dce8f2] text-[#24506e]",
+    bar: "bg-[#3d7ea6]",
   },
   rest: {
-    block:
-      "border border-emerald-600/30 bg-emerald-50 text-emerald-950",
-    chip: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    bar: "bg-emerald-500",
+    block: "border border-[#b7d4c0] bg-[#eef6f0] text-[#1d4330]",
+    chip: "border-[#c5e0ce] bg-[#dceddf] text-[#246044]",
+    bar: "bg-[#3d8f62]",
   },
   life: {
-    block:
-      "border border-orange-600/30 bg-orange-50 text-orange-950",
-    chip: "bg-orange-100 text-orange-800 border-orange-200",
-    bar: "bg-orange-500",
+    block: "border border-[#e4c7a4] bg-[#fbf3e8] text-[#5c3a16]",
+    chip: "border-[#edd4b4] bg-[#f6e6d0] text-[#7a4e1c]",
+    bar: "bg-[#c47a32]",
   },
   call: {
-    block:
-      "border border-rose-600/30 bg-rose-50 text-rose-950",
-    chip: "bg-rose-100 text-rose-800 border-rose-200",
-    bar: "bg-rose-500",
+    block: "border border-[#e7c0c6] bg-[#fbf1f2] text-[#5c2430]",
+    chip: "border-[#f0cdd2] bg-[#f8e0e4] text-[#7a3140]",
+    bar: "bg-[#c45d6e]",
   },
   game: {
-    block:
-      "border border-indigo-600/30 bg-indigo-50 text-indigo-950",
-    chip: "bg-indigo-100 text-indigo-800 border-indigo-200",
-    bar: "bg-indigo-500",
+    block: "border border-[#c5c6e4] bg-[#f1f1f8] text-[#2e3160]",
+    chip: "border-[#d2d3ec] bg-[#e4e5f4] text-[#3a3e78]",
+    bar: "bg-[#5c62b8]",
   },
   other: {
-    block:
-      "border border-stone-400/40 bg-stone-100 text-stone-900",
-    chip: "bg-stone-200 text-stone-700 border-stone-300",
-    bar: "bg-stone-500",
+    block: "border border-[#d5cec4] bg-[#f4f0ea] text-[#3a342c]",
+    chip: "border-[#ddd6cc] bg-[#eae4db] text-[#4a433a]",
+    bar: "bg-[#8a8176]",
   },
 };
 
@@ -174,7 +167,7 @@ export function scheduleBlockClass(item: ScheduleItem) {
 
 export function scheduleChipClass(tag: ScheduleTag) {
   return cn(
-    "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium",
+    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide",
     TAG_SURFACE[tag].chip,
   );
 }
@@ -195,8 +188,17 @@ export function itemHoverText(item: ScheduleItem) {
 /** 按所属人着色（周视图 / 列表）；左侧色条强化归属 */
 export function ownerSurfaceStyle(hex: string): CSSProperties {
   return {
-    borderColor: `${hex}55`,
-    backgroundColor: `${hex}18`,
+    borderColor: `${hex}44`,
+    backgroundColor: `${hex}22`,
+    boxShadow: `inset 3px 0 0 ${hex}`,
+  };
+}
+
+/** 列表等大卡片：纸色底，只留归属色条 */
+export function ownerRailStyle(hex: string): CSSProperties {
+  return {
+    backgroundColor: "var(--color-surface)",
+    borderColor: "var(--color-line)",
     boxShadow: `inset 3px 0 0 ${hex}`,
   };
 }

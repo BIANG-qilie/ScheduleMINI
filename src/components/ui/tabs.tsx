@@ -25,7 +25,7 @@ export function Tabs({
     <div className={cn("space-y-4", className)}>
       <div
         role="tablist"
-        className="flex gap-0.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg-deep)] p-0.5"
+        className="flex gap-1 border-b border-[var(--color-line)]"
       >
         {items.map((item) => {
           const active = item.value === value;
@@ -36,10 +36,10 @@ export function Tabs({
               role="tab"
               aria-selected={active}
               className={cn(
-                "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                "-mb-px flex-1 border-b-2 px-3 py-2.5 text-sm tracking-wide transition-colors",
                 active
-                  ? "bg-[var(--color-surface)] text-[var(--color-ink)] shadow-sm"
-                  : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]",
+                  ? "border-[var(--color-ink)] font-medium text-[var(--color-ink)]"
+                  : "border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]",
               )}
               onClick={() => onValueChange(item.value)}
             >
