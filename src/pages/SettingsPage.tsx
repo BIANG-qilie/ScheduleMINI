@@ -563,6 +563,20 @@ export function SettingsPage() {
               列表
             </button>
           </div>
+          {syncStatus?.startsWith("同步失败") ? (
+            <button
+              type="button"
+              role="status"
+              className="max-w-64 truncate text-xs text-red-700 underline-offset-2 hover:underline"
+              title={syncStatus}
+              onClick={() => {
+                setPrefsTab("couple");
+                setPrefsOpen(true);
+              }}
+            >
+              {syncStatus}
+            </button>
+          ) : null}
           <CoexistenceBar />
           <Button
             type="button"
