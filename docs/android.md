@@ -47,7 +47,11 @@ npm run tauri android build -- --apk --target aarch64
 adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
 ```
 
-正式包把前端打进 APK，从 `tauri.localhost` 本地加载。仓库没有发布密钥，所以 release 用调试签名，可以直接安装；上架前换成自己的 keystore。
+正式包把前端打进 APK，从 `tauri.localhost` 本地加载。设置了 `ANDROID_KEYSTORE_PATH` 等环境变量时用发布密钥签名，否则用本机调试签名。应用内更新要求新旧包签名一致，发给别人的包统一走 Release workflow（见 [release.md](release.md)）。
+
+## 应用内更新
+
+启动时检查 GitHub 最新 Release，找到 `.apk` 附件后弹窗。点「更新」：未允许安装未知应用时提示「去开启」并跳到系统设置；已允许则下载到应用目录，完成后打开系统安装界面。清单权限 `REQUEST_INSTALL_PACKAGES`，经 `FileProvider` 交给安装器。
 
 不要把 `--debug` 包发给别人。debug 包不带前端，启动时去连电脑上的开发服务器 `127.0.0.1:45231`，没有电脑就一直停在启动画面。
 
