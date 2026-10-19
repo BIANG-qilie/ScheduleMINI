@@ -885,3 +885,21 @@ body.widget-body #root {
   color: var(--color-danger);
   box-shadow: none;
 }
+
+.phone-toast {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: 16px;
+  left: 16px;
+  z-index: 45;
+  margin: 0 !important;
+  box-shadow: 0 16px 34px -22px rgba(28, 22, 18, 0.6);
+  animation: phone-rise 320ms var(--ease-out) both;
+}
+.phone-coex .coex-running {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.phone-coex .coex-running > :first-child {
+  margin-right: auto;
+}

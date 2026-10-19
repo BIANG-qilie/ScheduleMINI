@@ -193,6 +193,16 @@ export function SettingsPage() {
     void init();
   }, [init]);
 
+  const alertStatus =
+    !!status &&
+    (status.startsWith("导入失败") || status.startsWith("配置加载"));
+
+  useEffect(() => {
+    if (!narrow || !status || alertStatus) return;
+    const id = window.setTimeout(() => setStatus(null), 2600);
+    return () => window.clearTimeout(id);
+  }, [narrow, status, alertStatus]);
+
   const [holidayTick, setHolidayTick] = useState(0);
   useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
@@ -470,9 +480,6 @@ export function SettingsPage() {
     );
   }
 
-  const alertStatus =
-    !!status &&
-    (status.startsWith("导入失败") || status.startsWith("配置加载"));
 
   return (
     <div className={cn("flex h-full min-h-full flex-col", narrow && "phone-shell")}>
@@ -585,6 +592,7 @@ export function SettingsPage() {
           role={alertStatus ? "alert" : "status"}
           className={cn(
             "mx-4 mt-3 rounded-2xl border px-4 py-2.5 text-sm sm:mx-6",
+            narrow && !alertStatus && "phone-toast",
             alertStatus
               ? "border-[color-mix(in_oklab,var(--color-danger)_35%,white)] bg-[color-mix(in_oklab,var(--color-danger)_8%,white)] text-[var(--color-danger)]"
               : "border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)]",
