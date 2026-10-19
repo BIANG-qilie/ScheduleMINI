@@ -56,6 +56,9 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "wix": {
+        "language": "zh-CN"
       }
     },
     "createUpdaterArtifacts": true
