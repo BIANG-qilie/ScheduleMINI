@@ -17,7 +17,8 @@ declare global {
 export type InstallEvent =
   | { kind: "progress"; percent: number | null }
   | { kind: "needs-permission" }
-  | { kind: "handed-off" };
+  | { kind: "handed-off"; target: "installer" | "browser" }
+  | { kind: "failed" };
 
 export function updatePlatform() {
   if (typeof window !== "undefined" && window.SmInstaller) return "android";
@@ -43,7 +44,7 @@ async function installDesktop(
   if (!update) {
     // Release 未附带当前平台的签名包时改为打开发布页
     await openExternal(release.htmlUrl);
-    onEvent({ kind: "handed-off" });
+    onEvent({ kind: "handed-off", target: "browser" });
     return;
   }
   let total = 0;
@@ -73,6 +74,16 @@ function installAndroid(
     onEvent({ kind: "needs-permission" });
     return;
   }
+  window.addEventListener(
+    "sm-apk",
+    (e) =>
+      onEvent(
+        (e as CustomEvent<string>).detail === "installer"
+          ? { kind: "handed-off", target: "installer" }
+          : { kind: "failed" },
+      ),
+    { once: true },
+  );
   installer.download(apk.url, `ScheduleMINI-${release.version}.apk`);
   onEvent({ kind: "progress", percent: null });
 }
@@ -87,7 +98,7 @@ export async function installRelease(
     return installAndroid(release, window.SmInstaller!, onEvent);
   }
   await openExternal(release.htmlUrl);
-  onEvent({ kind: "handed-off" });
+  onEvent({ kind: "handed-off", target: "browser" });
 }
 
 export function openInstallPermissionSettings() {
