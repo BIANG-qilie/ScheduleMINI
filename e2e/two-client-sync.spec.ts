@@ -12,7 +12,7 @@ test.beforeAll(async () => {
     stdio: "ignore",
   });
   await expect
-    .poll(async () => (await fetch(`${RELAY}/health`).catch(() => null))?.ok)
+    .poll(async () => (await fetch(`${RELAY}/health`).catch(() => null))?.ok, { timeout: 30_000 })
     .toBe(true);
 });
 
@@ -79,6 +79,9 @@ test("伴侣配对：A 的新建与删除到达 B，B 的新建回到 A", async 
   await a.reload();
   await expect.poll(() => titles(a)).toEqual(["A 早餐", "B 健身"]);
 
+  // 离开应用页再改存储，避免运行中的同步把手动修改写回去
+  await a.route("**/__blank", (r) => r.fulfill({ contentType: "text/html", body: "<html></html>" }));
+  await a.goto("/__blank");
   await a.evaluate(async (key) => {
     const cfg = JSON.parse(localStorage.getItem(key)!);
     const victim = cfg.items.find((it: { title: string }) => it.title === "A 早餐");
@@ -86,7 +89,7 @@ test("伴侣配对：A 的新建与删除到达 B，B 的新建回到 A", async 
     cfg.deletedItems = { [victim.id]: new Date().toISOString() };
     localStorage.setItem(key, JSON.stringify(cfg));
   }, KEY);
-  await a.reload();
+  await a.goto("/");
   await expect.poll(() => titles(a)).toEqual(["B 健身"]);
   await b.reload();
   await expect.poll(() => titles(b)).toEqual(["B 健身"]);
