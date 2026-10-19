@@ -1054,7 +1054,14 @@ export function SettingsPage() {
             </div>
 
             {syncStatus ? (
-              <p className="text-xs text-[var(--color-ink-muted)]">
+              <p
+                role="status"
+                className={
+                  syncStatus.startsWith("同步失败")
+                    ? "text-xs text-red-700"
+                    : "text-xs text-[var(--color-ink-muted)]"
+                }
+              >
                 {syncStatus}
               </p>
             ) : null}
