@@ -39,8 +39,6 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "notification:default",
-    "updater:default",
-    "process:allow-restart",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
     "core:window:allow-outer-position",

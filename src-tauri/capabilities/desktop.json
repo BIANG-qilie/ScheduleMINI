@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Desktop-only plugins (updater/process are not built for mobile)",
+  "platforms": ["linux", "macOS", "windows"],
+  "windows": ["settings", "widget"],
+  "permissions": ["updater:default", "process:allow-restart"]
+}
