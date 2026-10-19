@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { WidgetPage } from "@/pages/WidgetPage";
 import { resolveView } from "@/lib/windows";
+import { UpdatePrompt, useAutoUpdateCheck } from "@/components/UpdatePrompt";
 
 export default function App() {
   const view = resolveView();
@@ -14,5 +15,15 @@ export default function App() {
   if (view === "widget") {
     return <WidgetPage />;
   }
-  return <SettingsPage />;
+  return <MainWindow />;
+}
+
+function MainWindow() {
+  useAutoUpdateCheck();
+  return (
+    <>
+      <SettingsPage />
+      <UpdatePrompt />
+    </>
+  );
 }
