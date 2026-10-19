@@ -34,20 +34,26 @@ npm install
 npm run tauri android init
 ```
 
-## 调试包
+## 装到手机的包
 
 ```bash
 npm install
-npm run tauri android build -- --debug --target aarch64
+npm run tauri android build -- --apk --target aarch64
 ```
 
-只编 arm64 时，debug 包在：
-
-`src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+产物：`src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
 
 ```bash
-adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
 ```
+
+正式包把前端打进 APK，从 `tauri.localhost` 本地加载。仓库没有发布密钥，所以 release 用调试签名，可以直接安装；上架前换成自己的 keystore。
+
+不要把 `--debug` 包发给别人。debug 包不带前端，启动时去连电脑上的开发服务器 `127.0.0.1:45231`，没有电脑就一直停在启动画面。
+
+启动顺序：系统先画纸色启动底和图标，HTML 里内联同色的「小日程」，React 挂上后直接出「此刻」。节假日数据、编辑器、提醒和同步都在首屏之后再加载。字体不阻塞首屏，拿不到 Google Fonts 时用系统字体。
+
+## 开发
 
 连着电脑看界面、改前端：
 
