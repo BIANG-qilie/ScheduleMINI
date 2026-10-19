@@ -9,7 +9,32 @@ export type PersonSlice = {
   selfColor: string;
   /** shared-v2 = 全量共享文档 */
   doc?: "shared-v2";
+  /** 删除墓碑：条目 id → 删除时间；晚于条目 updatedAt 则视为已删 */
+  deletedItems?: Record<string, string>;
 };
+
+export type Tombstones = Record<string, string>;
+
+const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+export function mergeTombstones(...sources: (Tombstones | undefined)[]) {
+  const out: Tombstones = {};
+  const cutoff = new Date(Date.now() - TOMBSTONE_TTL_MS).toISOString();
+  for (const src of sources) {
+    for (const [id, at] of Object.entries(src ?? {})) {
+      if (at < cutoff) continue;
+      if (!out[id] || at > out[id]) out[id] = at;
+    }
+  }
+  return out;
+}
+
+export function applyTombstones(items: ScheduleItem[], tombstones: Tombstones) {
+  return items.filter((it) => {
+    const at = tombstones[it.id];
+    return !at || itemUpdatedAt(it) > at;
+  });
+}
 
 /** @deprecated 用 PersonSlice */
 export type PartnerSlice = PersonSlice;
@@ -100,6 +125,7 @@ export async function buildEncryptedSelfSlice(
   inviteCode: string,
   couple: CoupleIdentity,
   items: ScheduleItem[],
+  deletedItems: Tombstones = {},
 ) {
   // 联合维护：推送完整日程（相对本机归属）
   const all = items.map((it) => ({
@@ -111,11 +137,13 @@ export async function buildEncryptedSelfSlice(
     selfName: couple.selfName,
     selfColor: couple.selfColor,
     doc: "shared-v2",
+    deletedItems,
   };
   const payload = await encryptPayload(inviteCode, slice);
   return {
     payload,
-    updatedAt: maxUpdatedAt(all) || new Date().toISOString(),
+    // 槽位版本 = 推送时刻：删除不会抬高条目最大时间，用它会被中继判旧拒收
+    updatedAt: new Date().toISOString(),
     itemCount: all.length,
   };
 }
@@ -129,9 +157,11 @@ export async function pullAndMergePartner(args: {
   inviteCode: string;
   couple: CoupleIdentity;
   items: ScheduleItem[];
+  deletedItems?: Tombstones;
   baseUrl?: string | null;
 }): Promise<{
   items: ScheduleItem[];
+  deletedItems: Tombstones;
   couple: CoupleIdentity;
   partnerOnline: boolean;
   selfSliceMerged: boolean;
@@ -143,6 +173,7 @@ export async function pullAndMergePartner(args: {
   if (!room.ok) {
     return {
       items: args.items,
+      deletedItems: args.deletedItems ?? {},
       couple: args.couple,
       partnerOnline: false,
       selfSliceMerged: false,
@@ -154,6 +185,7 @@ export async function pullAndMergePartner(args: {
   const others = room.data.members.filter((m) => m.memberId !== selfId);
 
   let merged = [...args.items];
+  let tombstones = mergeTombstones(args.deletedItems);
   let selfSliceMerged = false;
   let nextCouple: CoupleIdentity = {
     ...args.couple,
@@ -168,7 +200,8 @@ export async function pullAndMergePartner(args: {
         owner: (it.owner ?? "self") as ItemOwner,
       }));
       merged = mergeItemsLww(merged, remote);
-      selfSliceMerged = remote.length > 0;
+      tombstones = mergeTombstones(tombstones, slice.deletedItems);
+      selfSliceMerged = true;
     } catch {
       // keep local
     }
@@ -176,7 +209,8 @@ export async function pullAndMergePartner(args: {
 
   if (others.length === 0) {
     return {
-      items: merged,
+      items: applyTombstones(merged, tombstones),
+      deletedItems: tombstones,
       couple: {
         ...nextCouple,
         partnerMemberId: null,
@@ -193,7 +227,8 @@ export async function pullAndMergePartner(args: {
     slice = await decryptPayload<PersonSlice>(code, partner.payload);
   } catch {
     return {
-      items: merged,
+      items: applyTombstones(merged, tombstones),
+      deletedItems: tombstones,
       couple: nextCouple,
       partnerOnline: false,
       selfSliceMerged,
@@ -207,9 +242,11 @@ export async function pullAndMergePartner(args: {
     ownerId: it.ownerId || partner.memberId,
   }));
   merged = mergeItemsLww(merged, fromPartner);
+  tombstones = mergeTombstones(tombstones, slice.deletedItems);
 
   return {
-    items: merged,
+    items: applyTombstones(merged, tombstones),
+    deletedItems: tombstones,
     couple: {
       ...nextCouple,
       partnerMemberId: partner.memberId,
@@ -226,6 +263,7 @@ export async function pushSelfSlice(args: {
   inviteCode: string;
   couple: CoupleIdentity;
   items: ScheduleItem[];
+  deletedItems?: Tombstones;
   baseUrl?: string | null;
 }) {
   const code = normalizeInviteCode(args.inviteCode);
@@ -233,6 +271,7 @@ export async function pushSelfSlice(args: {
     code,
     args.couple,
     args.items,
+    args.deletedItems,
   );
   return pushMemberSlice({
     inviteCode: code,
@@ -243,4 +282,52 @@ export async function pushSelfSlice(args: {
     updatedAt,
     baseUrl: args.baseUrl,
   });
+}
+
+export type SyncOnceResult = {
+  items: ScheduleItem[];
+  deletedItems: Tombstones;
+  couple: CoupleIdentity;
+  partnerOnline: boolean;
+  selfSliceMerged: boolean;
+  error?: string;
+};
+
+/**
+ * 一次完整同步：拉取 → 合并 → 推送。
+ * latest() 返回推送前的最新本地状态，避免覆盖同步期间的本地编辑。
+ */
+export async function syncRoomOnce(args: {
+  inviteCode: string;
+  couple: CoupleIdentity;
+  items: ScheduleItem[];
+  deletedItems: Tombstones;
+  baseUrl?: string | null;
+  latest?: () => { items: ScheduleItem[]; deletedItems: Tombstones };
+}): Promise<SyncOnceResult> {
+  const pulled = await pullAndMergePartner(args);
+  if (pulled.error && !pulled.selfSliceMerged && !pulled.partnerOnline) {
+    return { ...pulled, items: args.items, deletedItems: args.deletedItems };
+  }
+
+  const now = args.latest?.() ?? args;
+  const deletedItems = mergeTombstones(pulled.deletedItems, now.deletedItems);
+  const items = applyTombstones(
+    mergeItemsLww(pulled.items, now.items),
+    deletedItems,
+  );
+
+  const pushed = await pushSelfSlice({
+    inviteCode: args.inviteCode,
+    couple: pulled.couple,
+    items,
+    deletedItems,
+    baseUrl: args.baseUrl,
+  });
+  const error = !pushed.ok
+    ? pushed.error
+    : pushed.data.rejected
+      ? "中继拒收（本机时间可能偏慢），稍后重试"
+      : pulled.error;
+  return { ...pulled, items, deletedItems, error };
 }

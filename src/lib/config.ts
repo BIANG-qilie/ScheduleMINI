@@ -460,6 +460,8 @@ export const AppConfigSchema = z
      * 解析顺序为 设置值 > VITE_SYNC_RELAY_URL > 内置 Railway 默认。
      */
     syncRelayUrl: z.string().default(""),
+    /** 同步删除墓碑：条目 id → 删除时间（ISO） */
+    deletedItems: z.record(z.string(), z.string()).default({}),
     /** 共处模式：当前会话 + 本地日志 */
     coexistence: z
       .object({
@@ -767,6 +769,7 @@ export function defaultConfig(): AppConfig {
     couple,
     soloMode: false,
     syncRelayUrl: "",
+    deletedItems: {},
     coexistence: { current: null, log: [] },
     items: [
       {
