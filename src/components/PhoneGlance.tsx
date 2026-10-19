@@ -126,6 +126,7 @@ export function PhoneGlance({
 }) {
   const items = useConfigStore((s) => s.config.items);
   const dayOverrides = useConfigStore((s) => s.config.dayOverrides);
+  const syncStatus = useConfigStore((s) => s.syncStatus);
   const [now, setNow] = useState(() => new Date());
   const [holidayTick, setHolidayTick] = useState(0);
 
@@ -169,6 +170,11 @@ export function PhoneGlance({
 
   return (
     <div className="phone-now">
+      {syncStatus?.startsWith("同步失败") ? (
+        <p role="status" className="text-xs text-red-700">
+          {syncStatus}
+        </p>
+      ) : null}
       <header className="now-hero">
         <p className="kicker">此刻</p>
         <h2 className="now-date">
