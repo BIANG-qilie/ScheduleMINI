@@ -12,6 +12,8 @@ export type RelayRoom = {
   code: string;
   updatedAt: string | null;
   members: RelayMember[];
+  /** 中继认为本次推送比已存槽位旧而未写入 */
+  rejected?: boolean;
 };
 
 /** 内置默认中继（Railway） */
@@ -62,17 +64,14 @@ async function request<T>(
       return {
         ok: false,
         status: res.status,
-        error: data.message || data.error || `HTTP ${res.status}`,
+        error: data.message || `中继返回 ${res.status}`,
       };
     }
     return { ok: true, data };
   } catch (e) {
     return {
       ok: false,
-      error:
-        e instanceof Error
-          ? `中继不可达（${root}）：${e.message}`
-          : "中继不可达",
+      error: `连不上中继（${root.replace(/^https?:\/\//, "")}），请检查网络`,
     };
   }
 }

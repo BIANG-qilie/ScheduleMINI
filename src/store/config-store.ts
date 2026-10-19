@@ -36,11 +36,7 @@ import {
   normalizeInviteCode,
   parseDeviceSyncCode,
 } from "@/lib/sync/crypto";
-import {
-  pullAndMergePartner,
-  pushSelfSlice,
-  rekeyAuthoredItems,
-} from "@/lib/sync/couple";
+import { rekeyAuthoredItems, syncRoomOnce } from "@/lib/sync/couple";
 import { createId, isTauriRuntime } from "@/lib/utils";
 
 type ConfigState = {
@@ -120,6 +116,61 @@ async function broadcastConfig(config: AppConfig) {
       new CustomEvent(CONFIG_CHANGED_EVENT, { detail: config }),
     );
   }
+}
+
+let syncInFlight: Promise<void> | null = null;
+let syncQueued = false;
+
+async function runSyncOnce() {
+  const { config } = useConfigStore.getState();
+  const set = useConfigStore.setState;
+  const code = config.couple.inviteCode;
+  if (!code) {
+    set({ syncStatus: null });
+    return;
+  }
+  set({ syncStatus: "同步中…" });
+
+  const result = await syncRoomOnce({
+    inviteCode: code,
+    couple: config.couple,
+    items: config.items,
+    deletedItems: config.deletedItems,
+    baseUrl: config.syncRelayUrl,
+    latest: () => {
+      const c = useConfigStore.getState().config;
+      return { items: c.items, deletedItems: c.deletedItems };
+    },
+  });
+
+  const latest = useConfigStore.getState().config;
+  if (latest.couple.inviteCode !== code) return;
+  if (result.partnerOnline || result.selfSliceMerged || !result.error) {
+    await useConfigStore.getState().setConfig({
+      ...latest,
+      couple: {
+        ...latest.couple,
+        partnerMemberId: result.couple.partnerMemberId,
+        partnerName: result.couple.partnerName,
+        partnerColor: result.couple.partnerColor,
+        pairedAt: result.couple.pairedAt,
+      },
+      items: result.items,
+      deletedItems: result.deletedItems,
+    });
+  }
+
+  if (result.error) {
+    set({ syncStatus: `同步失败：${result.error}` });
+    return;
+  }
+  set({
+    syncStatus: result.partnerOnline
+      ? `已同步 · 与「${result.couple.partnerName}」互知`
+      : result.selfSliceMerged
+        ? "已同步 · 多端"
+        : "已同步 · 等待对方加入",
+  });
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -251,9 +302,13 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     if (ids.length === 0) return;
     const { config, setConfig, syncNow } = get();
     const drop = new Set(ids);
+    const deletedAt = new Date().toISOString();
+    const deletedItems = { ...config.deletedItems };
+    for (const id of ids) deletedItems[id] = deletedAt;
     await setConfig({
       ...config,
       items: config.items.filter((it) => !drop.has(it.id)),
+      deletedItems,
     });
     if (config.couple.inviteCode) void syncNow();
   },
@@ -536,54 +591,19 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   syncNow: async () => {
-    const { config, setConfig } = get();
-    const code = config.couple.inviteCode;
-    if (!code) {
-      set({ syncStatus: null });
-      return;
+    if (syncInFlight) {
+      syncQueued = true;
+      return syncInFlight;
     }
-    set({ syncStatus: "同步中…" });
-
-    const pulled = await pullAndMergePartner({
-      inviteCode: code,
-      couple: config.couple,
-      items: config.items,
-      baseUrl: config.syncRelayUrl,
+    syncInFlight = (async () => {
+      do {
+        syncQueued = false;
+        await runSyncOnce();
+      } while (syncQueued);
+    })().finally(() => {
+      syncInFlight = null;
     });
-    if (pulled.error && !pulled.selfSliceMerged && !pulled.partnerOnline) {
-      set({ syncStatus: pulled.error });
-      return;
-    }
-
-    await setConfig({
-      ...get().config,
-      couple: pulled.couple,
-      items: pulled.items,
-    });
-
-    const pushed = await pushSelfSlice({
-      inviteCode: code,
-      couple: get().config.couple,
-      items: get().config.items,
-      baseUrl: get().config.syncRelayUrl,
-    });
-    if (!pushed.ok) {
-      set({ syncStatus: pushed.error });
-      return;
-    }
-
-    if (pulled.error) {
-      set({ syncStatus: pulled.error });
-      return;
-    }
-
-    set({
-      syncStatus: pulled.partnerOnline
-        ? `已同步 · 与「${pulled.couple.partnerName}」互知`
-        : pulled.selfSliceMerged
-          ? "已同步 · 多端"
-          : "已同步",
-    });
+    return syncInFlight;
   },
 
   startCoexistence: async () => {
