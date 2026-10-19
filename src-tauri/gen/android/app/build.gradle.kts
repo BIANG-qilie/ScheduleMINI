@@ -37,6 +37,8 @@ android {
             }
         }
         getByName("release") {
+            // 仓库没有发布密钥；用调试签名让正式包可以直接安装
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

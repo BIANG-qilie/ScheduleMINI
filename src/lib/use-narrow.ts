@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-/** 手机宽度。桌面窗口最小 860，不会误入这套布局。 */
+/** 手机：竖屏按宽度，横屏按触屏矮窗。桌面窗口最小 860 且是鼠标，不会误入。 */
 function mediaQuery(query: string) {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
     return null;
@@ -8,7 +8,9 @@ function mediaQuery(query: string) {
   return window.matchMedia(query);
 }
 
-export function useNarrow(query = "(max-width: 760px)") {
+export function useNarrow(
+  query = "(max-width: 760px), (max-height: 520px) and (orientation: landscape) and (pointer: coarse)",
+) {
   const [narrow, setNarrow] = useState(
     () => mediaQuery(query)?.matches ?? false,
   );

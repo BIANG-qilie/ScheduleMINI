@@ -9,14 +9,26 @@
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- 字体不阻塞首屏：国内网络下 Google Fonts 可能挂很久 -->
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <meta name="theme-color" content="#efe6d8" />
+    <style>
+      html,body{margin:0;height:100%;background:#efe6d8;color:#1c1612}
+      #boot{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-family:"Noto Serif SC","Songti SC",serif}
+      #boot p{margin:0;font:600 11px/1 system-ui,sans-serif;letter-spacing:.32em;color:#7a6c5f}
+      #boot h1{margin:0;font-size:34px;font-weight:500;letter-spacing:.08em}
+      #boot i{width:44px;height:2px;border-radius:2px;background:#8f3d2e;animation:boot 1.1s ease-in-out infinite alternate}
+      @keyframes boot{from{transform:scaleX(.3);opacity:.4}to{transform:scaleX(1);opacity:1}}
+    </style>
     <title>小日程</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="boot"><p>双人日程</p><h1>小日程</h1><i></i></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

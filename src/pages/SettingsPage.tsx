@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   CalendarRange,
   Download,
@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   Settings,
+  Sun,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -20,7 +21,11 @@ import { Switch } from "@/components/ui/switch";
 import { WeekGrid } from "@/components/WeekGrid";
 import { PhoneGlance } from "@/components/PhoneGlance";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
-import { ScheduleEditor, type Draft } from "@/components/ScheduleEditor";
+import type { Draft } from "@/components/ScheduleEditor";
+
+const ScheduleEditor = lazy(() =>
+  import("@/components/ScheduleEditor").then((m) => ({ default: m.ScheduleEditor })),
+);
 import {
   APP_DISPLAY_NAME,
   DEFAULT_CALL_CHANNEL,
@@ -44,7 +49,7 @@ import {
   type ScheduleItem,
   type ScheduleTag,
 } from "@/lib/config";
-import { getTodayLabel } from "@/lib/holidays";
+import { ensureHolidayData, getTodayLabel, onHolidayData } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
   formatItemSubline,
@@ -188,14 +193,31 @@ export function SettingsPage() {
     void init();
   }, [init]);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    return startReminderLoop(() => useConfigStore.getState().config);
-  }, [hydrated]);
+  const [holidayTick, setHolidayTick] = useState(0);
+  useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
+  // 首屏先画出来，再拉节假日、提醒和同步
   useEffect(() => {
     if (!hydrated) return;
-    return startCoupleSyncLoop(() => useConfigStore.getState().config);
+    const stops: Array<() => void> = [];
+    let cancelled = false;
+    const start = () => {
+      if (cancelled) return;
+      void ensureHolidayData();
+      stops.push(startReminderLoop(() => useConfigStore.getState().config));
+      stops.push(startCoupleSyncLoop(() => useConfigStore.getState().config));
+    };
+    const ric =
+      "requestIdleCallback" in window ? window.requestIdleCallback : null;
+    const handle = ric
+      ? ric(start, { timeout: 700 })
+      : window.setTimeout(start, 350);
+    return () => {
+      cancelled = true;
+      if (ric) window.cancelIdleCallback(handle);
+      else window.clearTimeout(handle);
+      for (const stop of stops) stop();
+    };
   }, [hydrated]);
 
   useEffect(() => {
@@ -223,7 +245,8 @@ export function SettingsPage() {
 
   const todayLabel = useMemo(
     () => getTodayLabel(new Date(), config.dayOverrides),
-    [config.dayOverrides],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.dayOverrides, holidayTick],
   );
   const sortedItems = useMemo(
     () =>
@@ -439,10 +462,10 @@ export function SettingsPage() {
 
   if (!hydrated || loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="font-display text-lg text-[var(--color-ink-muted)]">
-          正在加载…
-        </p>
+      <div className="boot-screen" aria-busy="true">
+        <p className="kicker">双人日程</p>
+        <h1>{APP_DISPLAY_NAME}</h1>
+        <span aria-hidden />
       </div>
     );
   }
@@ -452,14 +475,16 @@ export function SettingsPage() {
     (status.startsWith("导入失败") || status.startsWith("配置加载"));
 
   return (
-    <div className="flex h-full min-h-full flex-col">
+    <div className={cn("flex h-full min-h-full flex-col", narrow && "phone-shell")}>
       {narrow ? (
-        <header className="flex shrink-0 items-baseline justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
-          <h1 className="font-display text-2xl font-medium leading-none tracking-tight">
-            {APP_DISPLAY_NAME}
-          </h1>
-          <p className="text-xs text-[var(--color-ink-muted)]">
-            共 {sortedItems.length} 条
+        <header className="phone-top">
+          <h1>{APP_DISPLAY_NAME}</h1>
+          <p>
+            {phoneTab === "now"
+              ? config.soloMode
+                ? "一个人"
+                : `${config.couple.selfName} · ${config.couple.partnerName}`
+              : `共 ${sortedItems.length} 条`}
           </p>
         </header>
       ) : null}
@@ -573,7 +598,7 @@ export function SettingsPage() {
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-3 px-4 py-4 sm:px-6",
           narrow &&
-            "px-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))] pt-3",
+            "phone-main px-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-2",
         )}
       >
 
@@ -673,9 +698,15 @@ export function SettingsPage() {
               <p className="font-display text-2xl text-[var(--color-ink)]">
                 还没有安排
               </p>
+              {narrow ? (
+                <Button type="button" className="mt-5" onClick={openCreate}>
+                  <Plus className="h-4 w-4" />
+                  写下第一条
+                </Button>
+              ) : null}
             </div>
           ) : (
-            <ul className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+            <ul className={cn("min-h-0 flex-1 space-y-2 overflow-auto pr-1", narrow && "phone-list")}>
               {sortedItems.map((item) => {
                 const tag = item.tag ?? "work";
                 const subline = formatItemSubline(item);
@@ -687,6 +718,7 @@ export function SettingsPage() {
                     key={item.id}
                     title={itemHoverText(item)}
                     className={cn(
+                      narrow && "phone-card",
                       "group relative flex flex-col gap-3 rounded-2xl border p-4 transition-[transform,box-shadow] duration-200 hover:-translate-y-px hover:shadow-[0_14px_30px_-22px_rgba(28,22,18,0.55)] sm:flex-row sm:items-start sm:justify-between",
                       (once || courseSwap) && "border-dashed border-[#d7b15a]",
                       selectedIds.has(item.id) &&
@@ -776,64 +808,52 @@ export function SettingsPage() {
         </section>
 
       {narrow ? (
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface)_92%,white)] px-1 pt-1 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto flex max-w-lg items-end justify-between gap-1">
+        <nav className="phone-dock" aria-label="主导航">
+          <div className="phone-dock-inner">
             {(
               [
-                ["now", "此刻"],
-                ["week", "周"],
+                ["now", "此刻", Sun],
+                ["week", "周", CalendarRange],
               ] as const
-            ).map(([id, label]) => (
+            ).map(([id, label, Icon]) => (
               <button
                 key={id}
                 type="button"
-                className={cn(
-                  "flex h-12 min-w-0 flex-1 items-center justify-center rounded-2xl text-sm",
-                  phoneTab === id
-                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
-                    : "text-[var(--color-ink-muted)]",
-                )}
+                aria-current={phoneTab === id ? "page" : undefined}
+                className={cn("phone-tab", phoneTab === id && "phone-tab-on")}
                 onClick={() => setPhoneTab(id)}
               >
+                <Icon aria-hidden />
                 {label}
               </button>
             ))}
             <button
               type="button"
-              className="mx-0.5 flex h-12 min-w-[4.5rem] items-center justify-center gap-1 rounded-2xl bg-[var(--color-accent)] px-3 text-sm font-medium text-white"
+              className="phone-create"
               onClick={openCreate}
               disabled={busy}
             >
-              <Plus className="h-4 w-4" />
+              <Plus aria-hidden />
               新建
             </button>
-            {(
-              [
-                ["list", "列表"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={cn(
-                  "flex h-12 min-w-0 flex-1 items-center justify-center rounded-2xl text-sm",
-                  phoneTab === id
-                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
-                    : "text-[var(--color-ink-muted)]",
-                )}
-                onClick={() => setPhoneTab(id)}
-              >
-                {label}
-              </button>
-            ))}
             <button
               type="button"
-              className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-2xl text-sm text-[var(--color-ink-muted)]"
+              aria-current={phoneTab === "list" ? "page" : undefined}
+              className={cn("phone-tab", phoneTab === "list" && "phone-tab-on")}
+              onClick={() => setPhoneTab("list")}
+            >
+              <List aria-hidden />
+              列表
+            </button>
+            <button
+              type="button"
+              className="phone-tab"
               onClick={() => {
                 setPrefsTab("couple");
                 setPrefsOpen(true);
               }}
             >
+              <Settings aria-hidden />
               设置
             </button>
           </div>
@@ -848,7 +868,7 @@ export function SettingsPage() {
         }}
         title="设置"
         eyebrow="偏好"
-        className="sm:max-w-3xl"
+        className={cn("sm:max-w-3xl", narrow && "phone-sheet")}
       >
         <Tabs
           value={prefsTab}
@@ -1340,6 +1360,7 @@ export function SettingsPage() {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         panel
+        className={narrow ? "phone-sheet" : undefined}
         eyebrow="安排"
         title={draft.id ? "编辑日程" : "新建日程"}
         footer={
@@ -1390,18 +1411,20 @@ export function SettingsPage() {
           </>
         }
       >
+        <Suspense fallback={<p className="editor-loading">正在打开…</p>}>
         <ScheduleEditor
-          draft={draft}
-          setDraft={setDraft}
-          soloMode={config.soloMode}
-          couple={config.couple}
-          items={config.items}
-          heartBurst={heartBurst}
-          onHeart={() => setHeartBurst((n) => n + 1)}
-          formError={formError}
-          onToggleWeekday={toggleWeekday}
-          onUnskip={(id, date) => void unskipOccurrence(id, date)}
-        />
+            draft={draft}
+            setDraft={setDraft}
+            soloMode={config.soloMode}
+            couple={config.couple}
+            items={config.items}
+            heartBurst={heartBurst}
+            onHeart={() => setHeartBurst((n) => n + 1)}
+            formError={formError}
+            onToggleWeekday={toggleWeekday}
+            onUnskip={(id, date) => void unskipOccurrence(id, date)}
+          />
+        </Suspense>
       </Dialog>
     </div>
   );

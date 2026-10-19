@@ -26,7 +26,7 @@ import {
   type DayOverride,
   type ScheduleItem,
 } from "@/lib/config";
-import { resolveDayState, type DayLabel } from "@/lib/holidays";
+import { onHolidayData, resolveDayState, type DayLabel } from "@/lib/holidays";
 import {
   formatItemSubline,
   itemHoverText,
@@ -97,6 +97,10 @@ export function WeekGrid({
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const pressTimer = useRef<number | null>(null);
   const suppressClick = useRef(false);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const [holidayTick, setHolidayTick] = useState(0);
+
+  useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
@@ -166,7 +170,20 @@ export function WeekGrid({
       map.set(col.dateKey, resolveDayState(col.dateKey, dayOverrides));
     }
     return map;
-  }, [columns, dayOverrides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, dayOverrides, holidayTick]);
+
+  const stepDay = (dir: 1 | -1) => {
+    if (!focusCol) return;
+    const idx = columns.findIndex((c) => c.dateKey === focusCol.dateKey);
+    const next = columns[idx + dir];
+    if (next) {
+      setFocusKey(next.dateKey);
+      return;
+    }
+    setWeekOffset((o) => o + dir);
+    setFocusKey(null);
+  };
 
   const handleLaneClick = (
     weekday: number,
@@ -191,8 +208,25 @@ export function WeekGrid({
 
   return (
     <div
-      className="paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl"
+      className={cn(
+        "paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl",
+        dayLayout && "phone-week",
+      )}
       onClick={() => setMenu(null)}
+      onPointerDown={(e) => {
+        if (dayLayout) swipe.current = { x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={(e) => {
+        const from = swipe.current;
+        swipe.current = null;
+        if (!dayLayout || !from) return;
+        const dx = e.clientX - from.x;
+        const dy = e.clientY - from.y;
+        if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+        suppressClick.current = true;
+        window.setTimeout(() => (suppressClick.current = false), 0);
+        stepDay(dx < 0 ? 1 : -1);
+      }}
     >
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
         <div>
@@ -237,7 +271,7 @@ export function WeekGrid({
       </div>
 
       {dayLayout ? (
-        <div className="flex shrink-0 gap-1 overflow-x-auto px-2 py-2">
+        <div className="phone-days flex shrink-0 gap-1 overflow-x-auto px-2 py-2">
           {columns.map((col) => {
             const label = dayLabels.get(col.dateKey);
             const active = col.dateKey === focusCol?.dateKey;
@@ -268,13 +302,17 @@ export function WeekGrid({
                 <span className="text-[10px] tracking-wide">
                   周{WEEKDAY_LABELS[col.weekday]}
                 </span>
-                <span className="font-display text-base leading-none tabular-nums">
-                  {col.monthDay}
+                <span className="mt-0.5 font-display text-lg leading-none tabular-nums">
+                  {Number(col.dateKey.slice(8, 10))}
                 </span>
                 {showHolidays && label && label.kind !== "none" ? (
-                  <span className="mt-0.5 max-w-full truncate text-[9px]">
-                    {label.name}
-                  </span>
+                  <span
+                    className={cn(
+                      "mt-1 h-1 w-1 rounded-full",
+                      label.isOff ? "bg-[var(--color-warn)]" : "bg-current opacity-50",
+                    )}
+                    title={label.name}
+                  />
                 ) : null}
               </button>
             );

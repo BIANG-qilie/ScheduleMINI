@@ -15,125 +15,101 @@ import {
   type ScheduleItem,
   type UpcomingRef,
 } from "@/lib/config";
-import { getTodayLabel } from "@/lib/holidays";
+import { getTodayLabel, onHolidayData } from "@/lib/holidays";
 import { formatItemSubline } from "@/lib/schedule-style";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import { useConfigStore } from "@/store/config-store";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
-import { cn } from "@/lib/utils";
 
 function upcomingWhen(ref: UpcomingRef, todayKey: string) {
   if (ref.dateKey === todayKey) return ref.item.start;
   return `周${WEEKDAY_LABELS[ref.at.getDay()]} ${ref.item.start}`;
 }
 
-function Lane({
+function greeting(now: Date) {
+  const h = now.getHours();
+  if (h < 5) return "夜深了";
+  if (h < 11) return "早上好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+}
+
+function Half({
   name,
   color,
   current,
   upcoming,
-  remaining,
-  untilNext,
-  progress,
+  now,
   todayKey,
 }: {
   name: string;
   color: string;
   current: ScheduleItem | null;
   upcoming: UpcomingRef | null;
-  remaining: number | null;
-  untilNext: number | null;
-  progress: number;
+  now: Date;
   todayKey: string;
 }) {
   const subline = current ? formatItemSubline(current) : null;
-  const nextSub = upcoming ? formatItemSubline(upcoming.item) : null;
+  const remaining = current ? msUntilTime(current.end, now) : null;
+  const untilNext = upcoming ? msUntilDate(upcoming.at, now) : null;
+  const progress = current ? progressThroughItem(current, now) : 0;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col gap-2">
-      <div className="flex items-center gap-1.5 px-0.5">
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: color }}
-        />
-        <h2 className="truncate text-sm font-medium">{name}</h2>
-      </div>
+    <section
+      className="ticket-half"
+      data-busy={current ? "" : undefined}
+      style={{ ["--lane" as string]: color }}
+    >
+      <header className="ticket-head">
+        <h2>
+          <span className="ticket-dot" aria-hidden />
+          {name}
+        </h2>
+        <span className="ticket-state">
+          {current
+            ? remaining != null && remaining > 0
+              ? `还剩 ${formatDurationCompact(remaining)}`
+              : "进行中"
+            : "空闲"}
+        </span>
+      </header>
 
+      <p className="ticket-title">
+        {current ? itemDisplayTitle(current) : "这一段是空的"}
+      </p>
       {current ? (
-        <div
-          className="rounded-3xl px-3.5 py-3.5 text-[#1c1612]"
-          style={{
-            background: `linear-gradient(165deg, color-mix(in oklab, ${color} 55%, white), color-mix(in oklab, ${color} 78%, white))`,
-            boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 35%, white)`,
-          }}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-semibold tracking-[0.16em]">
-              现在
-            </span>
-            <span className="font-mono text-[11px] tabular-nums">
-              {remaining != null && remaining > 0
-                ? `剩 ${formatDurationCompact(remaining)}`
-                : "进行中"}
-            </span>
-          </div>
-          <p className="font-display mt-1.5 text-xl leading-snug">
-            {itemDisplayTitle(current)}
-          </p>
-          {subline ? (
-            <p className="mt-1 text-xs font-medium opacity-75">{subline}</p>
-          ) : null}
-          {current.note?.trim() ? (
-            <p className="mt-1 text-xs leading-snug opacity-70">
-              {current.note.trim()}
-            </p>
-          ) : null}
-          <p className="mt-1.5 font-mono text-[11px] tabular-nums opacity-60">
+        <p className="ticket-meta">
+          <span className="font-mono tabular">
             {current.start}–{current.end}
-          </p>
-          <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-black/10">
-            <div
-              className="h-full rounded-full bg-black/35"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
-          </div>
+          </span>
+          {subline ? <span>{subline}</span> : null}
+        </p>
+      ) : null}
+      {current?.note?.trim() ? (
+        <p className="ticket-note">{current.note.trim()}</p>
+      ) : null}
+      {current ? (
+        <div className="ticket-progress" aria-hidden>
+          <i style={{ transform: `scaleX(${progress})` }} />
         </div>
-      ) : (
-        <div className="rounded-3xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] px-3.5 py-4">
-          <p className="text-[10px] font-semibold tracking-[0.16em] text-[var(--color-ink-muted)]">
-            现在
-          </p>
-          <p className="font-display mt-1 text-lg">空闲</p>
-        </div>
-      )}
+      ) : null}
 
       {upcoming && untilNext != null ? (
-        <div className="rounded-2xl bg-[var(--color-surface)] px-3 py-2.5">
-          <p className="text-[10px] font-semibold tracking-[0.14em] text-[var(--color-ink-muted)]">
-            下一程
-          </p>
-          <p className="mt-1 text-sm leading-snug">
-            <span className="font-mono text-xs tabular-nums text-[var(--color-ink-muted)]">
-              {upcomingWhen(upcoming, todayKey)}
-            </span>{" "}
+        <div className="ticket-next">
+          <span className="ticket-next-label">下一程</span>
+          <span className="ticket-next-title">
             {itemDisplayTitle(upcoming.item)}
-          </p>
-          {nextSub ? (
-            <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-              {nextSub}
-            </p>
-          ) : null}
-          {upcoming.item.note?.trim() ? (
-            <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-              {upcoming.item.note.trim()}
-            </p>
-          ) : null}
-          <p className="mt-1 font-mono text-[10px] tabular-nums text-[var(--color-ink-muted)]">
-            {formatDurationCompact(untilNext)}后
-          </p>
+          </span>
+          <span className="font-mono tabular ticket-next-when">
+            {upcomingWhen(upcoming, todayKey)} · {formatDurationCompact(untilNext)}后
+          </span>
         </div>
       ) : (
-        <p className="px-1 text-xs text-[var(--color-ink-muted)]">没有下一程</p>
+        <div className="ticket-next">
+          <span className="ticket-next-label">下一程</span>
+          <span className="ticket-next-title muted">暂时没有</span>
+        </div>
       )}
     </section>
   );
@@ -151,16 +127,20 @@ export function PhoneGlance({
   const items = useConfigStore((s) => s.config.items);
   const dayOverrides = useConfigStore((s) => s.config.dayOverrides);
   const [now, setNow] = useState(() => new Date());
+  const [holidayTick, setHolidayTick] = useState(0);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1_000);
+    const id = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
   const todayKey = formatDateKey(now);
   const holiday = useMemo(
     () => getTodayLabel(now, dayOverrides),
-    [now, dayOverrides],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [now, dayOverrides, holidayTick],
   );
   const mine = useMemo(() => laneSelfItems(items), [items]);
   const theirs = useMemo(
@@ -185,60 +165,55 @@ export function PhoneGlance({
     [theirs, now, dayOverrides],
   );
 
-  const dateText = format(now, "M月d日 EEEE", { locale: zhCN });
+  const bothFree = !soloMode && !selfCurrent && !partnerCurrent;
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto">
-      <div>
+    <div className="phone-now">
+      <header className="now-hero">
         <p className="kicker">此刻</p>
-        <p className="font-display mt-1 text-2xl leading-none">{dateText}</p>
-        {showHolidays && holiday.kind !== "none" ? (
-          <p className="mt-2 text-sm text-[var(--color-warn)]">{holiday.name}</p>
-        ) : null}
-      </div>
+        <h2 className="now-date">
+          {format(now, "M月d日", { locale: zhCN })}
+          <span>{format(now, "EEEE", { locale: zhCN })}</span>
+        </h2>
+        <p className="now-greet">
+          {greeting(now)}
+          {showHolidays && holiday.kind !== "none" ? (
+            <em>{holiday.name}</em>
+          ) : null}
+        </p>
+      </header>
 
-      <div className={cn("flex gap-3", soloMode ? "flex-col" : "flex-row")}>
-        <Lane
+      <div className={soloMode ? "ticket solo" : "ticket"}>
+        <Half
           name={soloMode ? "今日" : couple.selfName}
           color={couple.selfColor}
           current={selfCurrent}
           upcoming={selfUpcoming}
-          remaining={
-            selfCurrent != null ? msUntilTime(selfCurrent.end, now) : null
-          }
-          untilNext={
-            selfUpcoming != null ? msUntilDate(selfUpcoming.at, now) : null
-          }
-          progress={
-            selfCurrent ? progressThroughItem(selfCurrent, now) : 0
-          }
+          now={now}
           todayKey={todayKey}
         />
         {soloMode ? null : (
-          <Lane
-            name={couple.partnerName}
-            color={couple.partnerColor}
-            current={partnerCurrent}
-            upcoming={partnerUpcoming}
-            remaining={
-              partnerCurrent != null
-                ? msUntilTime(partnerCurrent.end, now)
-                : null
-            }
-            untilNext={
-              partnerUpcoming != null
-                ? msUntilDate(partnerUpcoming.at, now)
-                : null
-            }
-            progress={
-              partnerCurrent ? progressThroughItem(partnerCurrent, now) : 0
-            }
-            todayKey={todayKey}
-          />
+          <>
+            <div className="ticket-seam" aria-hidden>
+              <span>♡</span>
+            </div>
+            <Half
+              name={couple.partnerName}
+              color={couple.partnerColor}
+              current={partnerCurrent}
+              upcoming={partnerUpcoming}
+              now={now}
+              todayKey={todayKey}
+            />
+          </>
         )}
       </div>
 
-      <CoexistenceBar className="[&_button]:h-12 [&_button]:px-5 [&_button]:text-sm" />
+      {bothFree ? <p className="now-hint">你们现在都空着</p> : null}
+
+      <div className="phone-coex">
+        <CoexistenceBar />
+      </div>
     </div>
   );
 }
