@@ -10,7 +10,8 @@
         "height": 844,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true
+        "decorations": true,
+        "backgroundColor": "#efe6d8"
       }
     ]
   },
