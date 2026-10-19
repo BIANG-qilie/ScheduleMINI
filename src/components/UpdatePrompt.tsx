@@ -26,8 +26,17 @@ function installLabel(status: string, percent: number | null) {
 }
 
 export function UpdatePrompt() {
-  const { release, status, percent, error, promptOpen, install, later, skip } =
-    useUpdateStore();
+  const {
+    release,
+    status,
+    percent,
+    error,
+    handedOffTo,
+    promptOpen,
+    install,
+    later,
+    skip,
+  } = useUpdateStore();
   if (!release) return null;
   const notes = summarizeNotes(release.notes);
   const android = updatePlatform() === "android";
@@ -81,7 +90,13 @@ export function UpdatePrompt() {
             </Button>
           </div>
         )}
-        {status === "handed-off" && <p>已在浏览器打开下载页。</p>}
+        {status === "handed-off" && (
+          <p>
+            {handedOffTo === "installer"
+              ? "已打开系统安装界面。"
+              : "已在浏览器打开下载页。"}
+          </p>
+        )}
         {status === "error" && error && (
           <p className="text-[var(--color-danger)]">{error}</p>
         )}

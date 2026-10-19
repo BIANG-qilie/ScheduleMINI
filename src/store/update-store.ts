@@ -24,6 +24,7 @@ type UpdateState = {
   release: ReleaseInfo | null;
   percent: number | null;
   error: string | null;
+  handedOffTo: "installer" | "browser" | null;
   promptOpen: boolean;
   check: (opts?: { manual?: boolean }) => Promise<void>;
   install: () => Promise<void>;
@@ -36,6 +37,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   release: null,
   percent: null,
   error: null,
+  handedOffTo: null,
   promptOpen: false,
 
   async check({ manual = false } = {}) {
@@ -65,7 +67,12 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       await installRelease(release, (e) => {
         if (e.kind === "progress") set({ percent: e.percent });
         if (e.kind === "needs-permission") set({ status: "needs-permission" });
-        if (e.kind === "handed-off") set({ status: "handed-off" });
+        if (e.kind === "handed-off") {
+          set({ status: "handed-off", handedOffTo: e.target });
+        }
+        if (e.kind === "failed") {
+          set({ status: "error", error: "下载失败，请稍后重试" });
+        }
       });
     } catch (e) {
       set({ status: "error", error: (e as Error).message });
