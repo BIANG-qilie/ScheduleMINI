@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { AboutSection } from "@/components/UpdatePrompt";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -1381,6 +1382,7 @@ export function SettingsPage() {
                 导入 JSON
               </Button>
             </div>
+            <AboutSection />
           </TabsContent>
         </Tabs>
       </Dialog>

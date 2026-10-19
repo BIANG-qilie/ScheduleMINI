@@ -140,6 +140,9 @@ pub fn run() {
             let _ = &app;
             #[cfg(desktop)]
             {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
                 if let Some(settings) = app.get_webview_window("settings") {
                     intercept_settings_close(&settings);
                 }

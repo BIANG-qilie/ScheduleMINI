@@ -44,6 +44,10 @@ npm run sync-relay
 
 Windows 托盘 / 自启 / 通知 / 拖拽记忆：见 [docs/acceptance.md](docs/acceptance.md) 勾选表（须本机点验）。
 
+## 自动更新
+
+应用启动时检查 GitHub 最新 Release，桌面端一键下载安装并重启。发版流程与签名密钥配置见 [docs/release.md](docs/release.md)。
+
 ## 环境要求
 
 - Node.js 20+

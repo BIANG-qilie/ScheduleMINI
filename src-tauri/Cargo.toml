@@ -1,6 +1,6 @@
 [package]
 name = "desktop-schedule-widget"
-version = "0.1.0"
+version = "0.2.0"
 description = "小日程 — 桌面周循环日程与悬浮窗"
 authors = ["desktop-schedule"]
 edition = "2021"
@@ -21,6 +21,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-notification = "2.4.0"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [profile.release]
 codegen-units = 1
