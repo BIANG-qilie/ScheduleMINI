@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   ScheduleItemSchema,
   clockToCycleMinutes,
@@ -18,7 +18,11 @@ import {
   safeParseAppConfig,
 } from "@/lib/config";
 import { formatItemSubline } from "@/lib/schedule-style";
-import { resolveDayState } from "@/lib/holidays";
+import { ensureHolidayData, resolveDayState } from "@/lib/holidays";
+
+beforeAll(async () => {
+  await ensureHolidayData();
+});
 
 const overnightWeekly = {
   id: "night",

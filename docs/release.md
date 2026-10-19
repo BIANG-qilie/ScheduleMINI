@@ -30,9 +30,28 @@ Tauri updater 只安装用私钥签过名的包。公钥已写入 `src-tauri/tau
 
 换密钥：`npx tauri signer generate -w ~/.tauri/schedulemini.key`，把新公钥写进 `tauri.conf.json`。换钥后旧版本无法自动升级到新签名的包，需要手动装一次。
 
+## 一次性配置：安卓发布密钥
+
+安卓只接受同一签名的覆盖安装。生成一次 keystore 并长期保存：
+
+```bash
+keytool -genkeypair -v -keystore schedulemini-release.jks -alias schedulemini \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 schedulemini-release.jks   # macOS: base64 -i schedulemini-release.jks
+```
+
+| Secret | 值 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 上面 base64 输出 |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore 密码 |
+| `ANDROID_KEY_ALIAS` | `schedulemini` |
+| `ANDROID_KEY_PASSWORD` | 密钥密码 |
+
+已装调试签名包（如 `android-debug-ff4f`）的手机需卸载后装一次正式签名包，之后即可应用内更新。
+
 ## 发版
 
 1. 改版本号并提交（见上），合入 `main`。
 2. `git tag v0.3.0 && git push origin v0.3.0`。
-3. `Release` workflow 构建 Windows（NSIS/MSI）与 macOS（universal）并生成草稿 Release，附 `latest.json`。
+3. `Release` workflow 构建 Windows（NSIS/MSI）与 macOS（universal）并生成草稿 Release，附 `latest.json`；随后构建安卓 `ScheduleMINI-<版本>-universal.apk` 上传到同一 Release。
 4. 在 GitHub 编辑草稿 Release 的说明（首几行会显示在更新弹窗里），点 **Publish**。发布后客户端即可检测到。

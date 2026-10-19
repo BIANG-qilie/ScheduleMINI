@@ -1,7 +1,10 @@
+use tauri::{AppHandle, Manager};
+
+#[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, WebviewWindow,
+    WebviewWindow,
 };
 
 #[tauri::command]
@@ -16,6 +19,7 @@ fn set_widget_visible(app: AppHandle, visible: bool) -> Result<(), String> {
     };
     if visible {
         widget.show().map_err(|e| e.to_string())?;
+        #[cfg(desktop)]
         widget
             .set_always_on_top(true)
             .map_err(|e| e.to_string())?;
@@ -36,6 +40,7 @@ fn toggle_widget(app: AppHandle) -> Result<bool, String> {
         Ok(false)
     } else {
         widget.show().map_err(|e| e.to_string())?;
+        #[cfg(desktop)]
         widget
             .set_always_on_top(true)
             .map_err(|e| e.to_string())?;
@@ -57,6 +62,7 @@ fn show_settings_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_settings_i = MenuItem::with_id(app, "show_settings", "打开小日程", true, None::<&str>)?;
     let toggle_widget_i =
@@ -97,6 +103,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn intercept_settings_close(window: &WebviewWindow) {
     let window_ = window.clone();
     window.on_window_event(move |event| {
@@ -109,15 +116,19 @@ fn intercept_settings_close(window: &WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None::<Vec<&str>>,
-        ))
+        .plugin(tauri_plugin_notification::init());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_autostart::init(
+        tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+        None::<Vec<&str>>,
+    ));
+
+    builder
         .invoke_handler(tauri::generate_handler![
             show_settings,
             set_widget_visible,
@@ -125,25 +136,27 @@ pub fn run() {
             quit_app
         ])
         .setup(|app| {
+            #[cfg(not(desktop))]
+            let _ = &app;
             #[cfg(desktop)]
             {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.handle().plugin(tauri_plugin_process::init())?;
+                if let Some(settings) = app.get_webview_window("settings") {
+                    intercept_settings_close(&settings);
+                }
+                if let Some(widget) = app.get_webview_window("widget") {
+                    let widget_ = widget.clone();
+                    widget.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                            let _ = widget_.hide();
+                        }
+                    });
+                }
+                setup_tray(app.handle())?;
             }
-            if let Some(settings) = app.get_webview_window("settings") {
-                intercept_settings_close(&settings);
-            }
-            if let Some(widget) = app.get_webview_window("widget") {
-                let widget_ = widget.clone();
-                widget.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = widget_.hide();
-                    }
-                });
-            }
-            setup_tray(app.handle())?;
             Ok(())
         })
         .run(tauri::generate_context!())

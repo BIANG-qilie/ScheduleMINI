@@ -30,6 +30,8 @@ export function Dialog({
   dense = false,
   panel = false,
 }: DialogProps) {
+  const dragStart = React.useRef<number | null>(null);
+  const [dragY, setDragY] = React.useState(0);
   if (!open) return null;
 
   return (
@@ -55,7 +57,32 @@ export function Dialog({
           !panel && !dense && "p-5 sm:p-6",
           className,
         )}
+        style={dragY > 0 ? { transform: `translateY(${dragY}px)` } : undefined}
       >
+        <div
+          className="sheet-grip"
+          aria-hidden
+          onPointerDown={(e) => {
+            dragStart.current = e.clientY;
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            if (dragStart.current == null) return;
+            setDragY(Math.max(0, e.clientY - dragStart.current));
+          }}
+          onPointerUp={() => {
+            const pulled = dragY;
+            dragStart.current = null;
+            setDragY(0);
+            if (pulled > 90) onOpenChange(false);
+          }}
+          onPointerCancel={() => {
+            dragStart.current = null;
+            setDragY(0);
+          }}
+        >
+          <span />
+        </div>
         <div
           className={cn(
             "flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-line)]",

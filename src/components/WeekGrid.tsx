@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
@@ -20,7 +26,7 @@ import {
   type DayOverride,
   type ScheduleItem,
 } from "@/lib/config";
-import { resolveDayState, type DayLabel } from "@/lib/holidays";
+import { onHolidayData, resolveDayState, type DayLabel } from "@/lib/holidays";
 import {
   formatItemSubline,
   itemHoverText,
@@ -56,6 +62,8 @@ type WeekGridProps = {
   onEditItem: (item: ScheduleItem, dateKey?: string) => void;
   onSkipOccurrence: (item: ScheduleItem, dateKey: string) => void;
   onSetDayOverride: (dateKey: string, value: DayOverride | null) => void;
+  /** board：七列周历。day：一次看一天，给手机用。 */
+  layout?: "board" | "day";
 };
 
 type GridMenu =
@@ -81,10 +89,18 @@ export function WeekGrid({
   onEditItem,
   onSkipOccurrence,
   onSetDayOverride,
+  layout = "board",
 }: WeekGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [menu, setMenu] = useState<GridMenu | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const pressTimer = useRef<number | null>(null);
+  const suppressClick = useRef(false);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const [holidayTick, setHolidayTick] = useState(0);
+
+  useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
@@ -103,6 +119,33 @@ export function WeekGrid({
   );
   const rangeLabel = formatWeekRangeLabel(columns);
   const isCurrentWeek = weekOffset === 0;
+  const dayLayout = layout === "day";
+  const focusCol =
+    columns.find((col) => col.dateKey === focusKey) ??
+    columns.find((col) => col.dateKey === todayKey) ??
+    columns[0];
+  const shown = dayLayout && focusCol ? [focusCol] : columns;
+
+  useEffect(() => {
+    if (!dayLayout) return;
+    if (columns.some((col) => col.dateKey === focusKey)) return;
+    const today = columns.find((col) => col.dateKey === todayKey);
+    setFocusKey((today ?? columns[0])?.dateKey ?? null);
+  }, [columns, dayLayout, focusKey, todayKey]);
+
+  const clearPress = () => {
+    if (pressTimer.current != null) window.clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  };
+
+  const placeMenu = (x: number, y: number) => {
+    const width = 220;
+    const height = 220;
+    return {
+      x: Math.max(8, Math.min(x, window.innerWidth - width)),
+      y: Math.max(8, Math.min(y, window.innerHeight - height)),
+    };
+  };
   // 底边留白，避免贴底色块被圆角/滚动裁切
   const bottomPad = 12;
   const totalHeight = 24 * DAY_PX + bottomPad;
@@ -127,7 +170,20 @@ export function WeekGrid({
       map.set(col.dateKey, resolveDayState(col.dateKey, dayOverrides));
     }
     return map;
-  }, [columns, dayOverrides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, dayOverrides, holidayTick]);
+
+  const stepDay = (dir: 1 | -1) => {
+    if (!focusCol) return;
+    const idx = columns.findIndex((c) => c.dateKey === focusCol.dateKey);
+    const next = columns[idx + dir];
+    if (next) {
+      setFocusKey(next.dateKey);
+      return;
+    }
+    setWeekOffset((o) => o + dir);
+    setFocusKey(null);
+  };
 
   const handleLaneClick = (
     weekday: number,
@@ -152,8 +208,25 @@ export function WeekGrid({
 
   return (
     <div
-      className="paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl"
+      className={cn(
+        "paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl",
+        dayLayout && "phone-week",
+      )}
       onClick={() => setMenu(null)}
+      onPointerDown={(e) => {
+        if (dayLayout) swipe.current = { x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={(e) => {
+        const from = swipe.current;
+        swipe.current = null;
+        if (!dayLayout || !from) return;
+        const dx = e.clientX - from.x;
+        const dy = e.clientY - from.y;
+        if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+        suppressClick.current = true;
+        window.setTimeout(() => (suppressClick.current = false), 0);
+        stepDay(dx < 0 ? 1 : -1);
+      }}
     >
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
         <div>
@@ -197,18 +270,70 @@ export function WeekGrid({
         </div>
       </div>
 
+      {dayLayout ? (
+        <div className="phone-days flex shrink-0 gap-1 overflow-x-auto px-2 py-2">
+          {columns.map((col) => {
+            const label = dayLabels.get(col.dateKey);
+            const active = col.dateKey === focusCol?.dateKey;
+            return (
+              <button
+                key={`chip-${col.dateKey}`}
+                type="button"
+                className={cn(
+                  "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5",
+                  active
+                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                    : "text-[var(--color-ink)]",
+                  !active &&
+                    col.dateKey === todayKey &&
+                    "bg-[var(--color-accent-soft)]",
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFocusKey(col.dateKey);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const pos = placeMenu(e.clientX, e.clientY);
+                  setMenu({ kind: "day", dateKey: col.dateKey, ...pos });
+                }}
+              >
+                <span className="text-[10px] tracking-wide">
+                  周{WEEKDAY_LABELS[col.weekday]}
+                </span>
+                <span className="mt-0.5 font-display text-lg leading-none tabular-nums">
+                  {Number(col.dateKey.slice(8, 10))}
+                </span>
+                {showHolidays && label && label.kind !== "none" ? (
+                  <span
+                    className={cn(
+                      "mt-1 h-1 w-1 rounded-full",
+                      label.isOff ? "bg-[var(--color-warn)]" : "bg-current opacity-50",
+                    )}
+                    title={label.name}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div
         className="min-h-0 flex-1 overflow-auto"
         style={{ maxHeight: viewHeight + 8 }}
       >
         <div
-          className="grid min-w-[720px]"
+          className={cn("grid", dayLayout ? "min-w-0" : "min-w-[720px]")}
           style={{
-            gridTemplateColumns: `52px repeat(7, minmax(0, 1fr))`,
+            gridTemplateColumns: dayLayout
+              ? "52px minmax(0, 1fr)"
+              : "52px repeat(7, minmax(0, 1fr))",
           }}
         >
           <div className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-surface)]" />
-          {columns.map((col) => {
+          {shown.map((col) => {
             const label = dayLabels.get(col.dateKey);
             const off = label?.isOff;
             return (
@@ -234,11 +359,11 @@ export function WeekGrid({
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  const pos = placeMenu(e.clientX, e.clientY);
                   setMenu({
                     kind: "day",
                     dateKey: col.dateKey,
-                    x: e.clientX,
-                    y: e.clientY,
+                    ...pos,
                   });
                 }}
               >
@@ -293,7 +418,7 @@ export function WeekGrid({
             ))}
           </div>
 
-          {columns.map((col) => {
+          {shown.map((col) => {
             const label = dayLabels.get(col.dateKey);
             const dayItems = enabledItems.filter((it) =>
               itemOccursOnDate(it, col.dateKey, col.weekday, dayOverrides),
@@ -377,7 +502,8 @@ export function WeekGrid({
                       segment.end === "24:00" || segment.start === "00:00";
                     // 短块优先标题；完整信息靠 hover
                     const showSub = height >= 28;
-                    const showOvernight = overnight && height >= 40;
+                    const showNote = !!item.note?.trim() && height >= 52;
+                    const showOvernight = overnight && height >= 40 && !showNote;
                     const color = ownerColor(item, couple);
                     const slot = layout.get(item.id) ?? {
                       column: 0,
@@ -408,25 +534,45 @@ export function WeekGrid({
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (suppressClick.current) {
+                            suppressClick.current = false;
+                            return;
+                          }
                           if (e.shiftKey && onToggleSelect) {
                             onToggleSelect(item.id);
                             return;
                           }
                           onEditItem(item, col.dateKey);
                         }}
+                        onPointerDown={(e) => {
+                          if (e.pointerType === "mouse" && e.button !== 0) return;
+                          const el = e.currentTarget;
+                          clearPress();
+                          pressTimer.current = window.setTimeout(() => {
+                            suppressClick.current = true;
+                            const rect = el.getBoundingClientRect();
+                            const pos = placeMenu(rect.left + 8, rect.bottom);
+                            setMenu({
+                              kind: "item",
+                              item,
+                              dateKey: col.dateKey,
+                              ...pos,
+                            });
+                          }, 480);
+                        }}
+                        onPointerUp={clearPress}
+                        onPointerCancel={clearPress}
+                        onPointerLeave={clearPress}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (once || courseSwap) {
-                            onEditItem(item, col.dateKey);
-                            return;
-                          }
+                          clearPress();
+                          const pos = placeMenu(e.clientX, e.clientY);
                           setMenu({
                             kind: "item",
                             item,
                             dateKey: col.dateKey,
-                            x: e.clientX,
-                            y: e.clientY,
+                            ...pos,
                           });
                         }}
                       >
@@ -458,6 +604,11 @@ export function WeekGrid({
                                 {item.start}–{item.end}
                               </p>
                             )
+                          ) : null}
+                          {showNote ? (
+                            <p className="truncate text-[10px] leading-tight opacity-70">
+                              {item.note?.trim()}
+                            </p>
                           ) : null}
                           {showOvernight ? (
                             <p className="truncate text-[9px] leading-tight opacity-55">
@@ -492,19 +643,14 @@ export function WeekGrid({
         >
           {menu.kind === "item" ? (
             <>
+              {menu.item.note?.trim() ? (
+                <p className="border-b border-[var(--color-line)] px-3 py-2 text-xs leading-snug text-[var(--color-ink-muted)]">
+                  {menu.item.note.trim()}
+                </p>
+              ) : null}
               <button
                 type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
-                onClick={() => {
-                  onSkipOccurrence(menu.item, menu.dateKey);
-                  setMenu(null);
-                }}
-              >
-                取消本次
-              </button>
-              <button
-                type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block min-h-11 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onEditItem(menu.item, menu.dateKey);
                   setMenu(null);
@@ -512,12 +658,37 @@ export function WeekGrid({
               >
                 编辑
               </button>
+              {onToggleSelect ? (
+                <button
+                  type="button"
+                  className="block min-h-11 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                  onClick={() => {
+                    onToggleSelect(menu.item.id);
+                    setMenu(null);
+                  }}
+                >
+                  {selectedIds?.has(menu.item.id) ? "取消选择" : "选择"}
+                </button>
+              ) : null}
+              {itemRecurrence(menu.item) === "weekly" &&
+              !menu.item.isCourseSwap ? (
+                <button
+                  type="button"
+                  className="block min-h-11 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                  onClick={() => {
+                    onSkipOccurrence(menu.item, menu.dateKey);
+                    setMenu(null);
+                  }}
+                >
+                  取消本次
+                </button>
+              ) : null}
             </>
           ) : (
             <>
               <button
                 type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block min-h-11 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSetDayOverride(menu.dateKey, "off");
                   setMenu(null);
@@ -527,7 +698,7 @@ export function WeekGrid({
               </button>
               <button
                 type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block min-h-11 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSetDayOverride(menu.dateKey, "work");
                   setMenu(null);
@@ -537,7 +708,7 @@ export function WeekGrid({
               </button>
               <button
                 type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                className="block min-h-11 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
                 onClick={() => {
                   onSetDayOverride(menu.dateKey, null);
                   setMenu(null);

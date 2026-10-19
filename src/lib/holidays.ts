@@ -1,17 +1,32 @@
-import chineseDays from "chinese-days";
 import type { DayOverride } from "@/lib/config";
 
-const {
-  getDayDetail,
-  isHoliday,
-  isInLieu,
-  isWorkday,
-} = chineseDays as {
+type HolidayApi = {
   getDayDetail: (date: string) => { date: string; work: boolean; name: string };
   isHoliday: (date: string) => boolean;
   isInLieu: (date: string) => boolean;
   isWorkday: (date: string) => boolean;
 };
+
+let api: HolidayApi | null = null;
+let loading: Promise<void> | null = null;
+const listeners = new Set<() => void>();
+
+/** chinese-days 体积大，首屏后再加载；加载前所有日期按普通日处理 */
+export function ensureHolidayData(): Promise<void> {
+  if (api) return Promise.resolve();
+  loading ??= import("chinese-days").then((mod) => {
+    api = (mod.default ?? mod) as unknown as HolidayApi;
+    for (const fn of listeners) fn();
+  });
+  return loading;
+}
+
+export function onHolidayData(fn: () => void) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
 
 export type DayLabelKind =
   | "holiday"
@@ -37,11 +52,12 @@ function formatDate(date = new Date()) {
 
 function extractChineseName(raw: string) {
   const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
-  const chinese = parts.find((p) => /[\u4e00-\u9fff]/.test(p));
-  return chinese ?? parts[0] ?? raw;
+  return parts.find((p) => /[\u4e00-\u9fff]/.test(p)) ?? "";
 }
 
 function calendarLabel(dateKey: string): DayLabel {
+  if (!api) return { kind: "none", name: "", rawName: "", isOff: false };
+  const { getDayDetail, isHoliday, isInLieu, isWorkday } = api;
   let detail: { date: string; work: boolean; name: string } | null = null;
   try {
     detail = getDayDetail(dateKey);
@@ -64,6 +80,10 @@ function calendarLabel(dateKey: string): DayLabel {
 
   try {
     if (isHoliday(dateKey) && !isWorkday(dateKey)) {
+      // 普通周末：照样放假，但不挂标签
+      if (weekend && !name) {
+        return { kind: "none", name: "", rawName, isOff: true };
+      }
       return {
         kind: "holiday",
         name: name || "法定节假日",
