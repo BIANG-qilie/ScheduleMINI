@@ -6,6 +6,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 const match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version);
 if (!match) {
+  writeFileSync(
+    "src-tauri/ci-version.json",
+    JSON.stringify({ version: pkg.version }, null, 2) + "\n",
+  );
   console.log(`bundle version unchanged (${pkg.version})`);
   process.exit(0);
 }
