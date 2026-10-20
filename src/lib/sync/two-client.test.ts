@@ -135,4 +135,35 @@ describe("two clients against a local relay", () => {
     await sync(phone);
     expect(titles(phone)).toEqual(["带读", "手机新建"]);
   });
+
+  it("delete after skip-once tombstones the series on both devices", async () => {
+    const code = generateInviteCode(6);
+    const desk = client({ inviteCode: code });
+    add(desk, "w1", "周会");
+    await sync(desk);
+
+    const phone = client({ inviteCode: code, memberId: desk.couple.memberId });
+    await sync(phone);
+    expect(titles(phone)).toEqual(["周会"]);
+
+    desk.items = desk.items.map((it) =>
+      it.id === "w1"
+        ? { ...it, skippedDates: ["2026-10-20"], updatedAt: stamp() }
+        : it,
+    );
+    await sync(desk);
+    await sync(phone);
+    expect(phone.items.find((it) => it.id === "w1")?.skippedDates).toEqual([
+      "2026-10-20",
+    ]);
+
+    remove(desk, "w1");
+    await sync(desk);
+    await sync(phone);
+    await sync(desk);
+    expect(titles(desk)).toEqual([]);
+    expect(titles(phone)).toEqual([]);
+    expect(desk.deletedItems.w1).toBeTruthy();
+    expect(phone.deletedItems.w1).toBeTruthy();
+  });
 });

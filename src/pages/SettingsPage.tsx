@@ -712,6 +712,21 @@ export function SettingsPage() {
                   setStatus(`已取消「${item.title}」该次`);
                 });
               }}
+              onDeleteItem={(item) => {
+                if (!window.confirm(`确定删除「${item.title}」？`)) return;
+                void deleteItem(item.id).then(() => {
+                  setSelectedIds((prev) => {
+                    if (!prev.has(item.id)) return prev;
+                    const next = new Set(prev);
+                    next.delete(item.id);
+                    return next;
+                  });
+                  if (draft.id === item.id) {
+                    setEditorOpen(false);
+                    setOccurrenceDate(null);
+                  }
+                });
+              }}
               onSetDayOverride={(dateKey, value) =>
                 void setDayOverride(dateKey, value)
               }
@@ -1396,6 +1411,7 @@ export function SettingsPage() {
         title={draft.id ? "编辑日程" : "新建日程"}
         footer={
           <>
+            <div className="mr-auto flex flex-wrap gap-2">
             {draft.id &&
             draft.recurrence === "weekly" &&
             !draft.isCourseSwap &&
@@ -1404,7 +1420,6 @@ export function SettingsPage() {
                 type="button"
                 variant="outline"
                 disabled={busy}
-                className="mr-auto"
                 onClick={() => {
                   void (async () => {
                     setBusy(true);
@@ -1426,6 +1441,30 @@ export function SettingsPage() {
                 取消本次
               </Button>
             ) : null}
+            {draft.id ? (
+              <Button
+                type="button"
+                variant="danger"
+                disabled={busy}
+                onClick={() => {
+                  const title = draft.title.trim() || "此日程";
+                  if (!window.confirm(`确定删除「${title}」？`)) return;
+                  void deleteItem(draft.id!).then(() => {
+                    setEditorOpen(false);
+                    setOccurrenceDate(null);
+                    setSelectedIds((prev) => {
+                      if (!draft.id || !prev.has(draft.id)) return prev;
+                      const next = new Set(prev);
+                      next.delete(draft.id);
+                      return next;
+                    });
+                  });
+                }}
+              >
+                删除
+              </Button>
+            ) : null}
+            </div>
             <Button
               type="button"
               variant="outline"

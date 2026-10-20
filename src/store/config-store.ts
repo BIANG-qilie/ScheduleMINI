@@ -36,7 +36,11 @@ import {
   normalizeInviteCode,
   parseDeviceSyncCode,
 } from "@/lib/sync/crypto";
-import { rekeyAuthoredItems, syncRoomOnce } from "@/lib/sync/couple";
+import {
+  reconcileSyncResult,
+  rekeyAuthoredItems,
+  syncRoomOnce,
+} from "@/lib/sync/couple";
 import { createId, isTauriRuntime } from "@/lib/utils";
 
 type ConfigState = {
@@ -121,6 +125,18 @@ async function broadcastConfig(config: AppConfig) {
 let syncInFlight: Promise<void> | null = null;
 let syncQueued = false;
 
+/** 日程写入串行。单次取消的保存若与删除重叠，后完成的那次会把整段写回来。 */
+let configWrite: Promise<unknown> = Promise.resolve();
+
+function enqueueConfigWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = configWrite.then(task, task);
+  configWrite = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function runSyncOnce() {
   const { config } = useConfigStore.getState();
   const set = useConfigStore.setState;
@@ -143,20 +159,23 @@ async function runSyncOnce() {
     },
   });
 
-  const latest = useConfigStore.getState().config;
-  if (latest.couple.inviteCode !== code) return;
   if (result.partnerOnline || result.selfSliceMerged || !result.error) {
-    await useConfigStore.getState().setConfig({
-      ...latest,
-      couple: {
-        ...latest.couple,
-        partnerMemberId: result.couple.partnerMemberId,
-        partnerName: result.couple.partnerName,
-        partnerColor: result.couple.partnerColor,
-        pairedAt: result.couple.pairedAt,
-      },
-      items: result.items,
-      deletedItems: result.deletedItems,
+    await enqueueConfigWrite(async () => {
+      const latest = useConfigStore.getState().config;
+      if (latest.couple.inviteCode !== code) return;
+      const reconciled = reconcileSyncResult(latest, result);
+      await useConfigStore.getState().setConfig({
+        ...latest,
+        couple: {
+          ...latest.couple,
+          partnerMemberId: result.couple.partnerMemberId,
+          partnerName: result.couple.partnerName,
+          partnerColor: result.couple.partnerColor,
+          pairedAt: result.couple.pairedAt,
+        },
+        items: reconciled.items,
+        deletedItems: reconciled.deletedItems,
+      });
     });
   }
 
@@ -214,84 +233,95 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   upsertItem: async (item) => {
-    const { config, setConfig, syncNow } = get();
-    const couple = config.couple;
-    const recurrence = item.recurrence ?? "weekly";
-    const owner = (item.owner ?? "self") as ItemOwner;
-    const tag = item.tag ?? "work";
-    const workKind =
-      tag === "work"
-        ? ((item.workKind ?? DEFAULT_WORK_KIND) as WorkKind)
-        : undefined;
-    const workPrimary =
-      tag === "work" && workKind && workKind !== "other"
-        ? item.workPrimary?.trim() || undefined
-        : undefined;
-    const workSecondary =
-      tag === "work" && workKind && workKind !== "other"
-        ? item.workSecondary?.trim() || undefined
-        : undefined;
-    const isCourseSwap =
-      tag === "work" && workKind === "class" && !!item.isCourseSwap;
-    const effectiveRecurrence = isCourseSwap ? "once" : recurrence;
-    const title =
-      tag === "work" && workKind && workKind !== "other"
-        ? formatWorkDisplay({
-            tag,
-            workKind,
-            workPrimary,
-            workSecondary,
-            title:
-              item.title?.trim() ||
-              workPrimary ||
-              workSecondary ||
-              "工作",
-          })
-        : item.title.trim();
-    const nextItem: ScheduleItem = {
-      ...item,
-      id: item.id ?? createId(),
-      note: item.note?.trim() ? item.note.trim() : undefined,
-      title,
-      recurrence: effectiveRecurrence,
-      weekdays: effectiveRecurrence === "weekly" ? item.weekdays : [],
-      date: effectiveRecurrence === "once" ? item.date : undefined,
-      tag,
-      skippedDates:
-        effectiveRecurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
-      activeFrom:
-        effectiveRecurrence === "weekly" && item.activeFrom
-          ? item.activeFrom
-          : undefined,
-      activeUntil:
-        effectiveRecurrence === "weekly" && item.activeUntil
-          ? item.activeUntil
-          : undefined,
-      origin:
-        tag === "commute" && item.origin?.trim()
-          ? item.origin.trim()
-          : undefined,
-      destination:
-        tag === "commute" && item.destination?.trim()
-          ? item.destination.trim()
-          : undefined,
-      callChannel:
-        tag === "call" ? (item.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
-      gamePlatform: tag === "game" ? item.gamePlatform : undefined,
-      workKind,
-      workPrimary,
-      workSecondary,
-      isCourseSwap: isCourseSwap ? true : undefined,
-      owner,
-      ownerId: couple.memberId,
-      updatedAt: new Date().toISOString(),
-    };
-    const exists = config.items.some((it) => it.id === nextItem.id);
-    const items = exists
-      ? config.items.map((it) => (it.id === nextItem.id ? nextItem : it))
-      : [...config.items, nextItem];
-    await setConfig({ ...config, items });
-    if (config.couple.inviteCode) void syncNow();
+    let shouldSync = false;
+    await enqueueConfigWrite(async () => {
+      const { config, setConfig } = get();
+      if (
+        item.id &&
+        config.deletedItems[item.id] &&
+        !config.items.some((it) => it.id === item.id)
+      ) {
+        return;
+      }
+      const couple = config.couple;
+      const recurrence = item.recurrence ?? "weekly";
+      const owner = (item.owner ?? "self") as ItemOwner;
+      const tag = item.tag ?? "work";
+      const workKind =
+        tag === "work"
+          ? ((item.workKind ?? DEFAULT_WORK_KIND) as WorkKind)
+          : undefined;
+      const workPrimary =
+        tag === "work" && workKind && workKind !== "other"
+          ? item.workPrimary?.trim() || undefined
+          : undefined;
+      const workSecondary =
+        tag === "work" && workKind && workKind !== "other"
+          ? item.workSecondary?.trim() || undefined
+          : undefined;
+      const isCourseSwap =
+        tag === "work" && workKind === "class" && !!item.isCourseSwap;
+      const effectiveRecurrence = isCourseSwap ? "once" : recurrence;
+      const title =
+        tag === "work" && workKind && workKind !== "other"
+          ? formatWorkDisplay({
+              tag,
+              workKind,
+              workPrimary,
+              workSecondary,
+              title:
+                item.title?.trim() ||
+                workPrimary ||
+                workSecondary ||
+                "工作",
+            })
+          : item.title.trim();
+      const nextItem: ScheduleItem = {
+        ...item,
+        id: item.id ?? createId(),
+        note: item.note?.trim() ? item.note.trim() : undefined,
+        title,
+        recurrence: effectiveRecurrence,
+        weekdays: effectiveRecurrence === "weekly" ? item.weekdays : [],
+        date: effectiveRecurrence === "once" ? item.date : undefined,
+        tag,
+        skippedDates:
+          effectiveRecurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],
+        activeFrom:
+          effectiveRecurrence === "weekly" && item.activeFrom
+            ? item.activeFrom
+            : undefined,
+        activeUntil:
+          effectiveRecurrence === "weekly" && item.activeUntil
+            ? item.activeUntil
+            : undefined,
+        origin:
+          tag === "commute" && item.origin?.trim()
+            ? item.origin.trim()
+            : undefined,
+        destination:
+          tag === "commute" && item.destination?.trim()
+            ? item.destination.trim()
+            : undefined,
+        callChannel:
+          tag === "call" ? (item.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
+        gamePlatform: tag === "game" ? item.gamePlatform : undefined,
+        workKind,
+        workPrimary,
+        workSecondary,
+        isCourseSwap: isCourseSwap ? true : undefined,
+        owner,
+        ownerId: couple.memberId,
+        updatedAt: new Date().toISOString(),
+      };
+      const exists = config.items.some((it) => it.id === nextItem.id);
+      const items = exists
+        ? config.items.map((it) => (it.id === nextItem.id ? nextItem : it))
+        : [...config.items, nextItem];
+      await setConfig({ ...config, items });
+      shouldSync = Boolean(config.couple.inviteCode);
+    });
+    if (shouldSync) void get().syncNow();
   },
 
   deleteItem: async (id) => {
@@ -300,17 +330,21 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   deleteItems: async (ids) => {
     if (ids.length === 0) return;
-    const { config, setConfig, syncNow } = get();
-    const drop = new Set(ids);
-    const deletedAt = new Date().toISOString();
-    const deletedItems = { ...config.deletedItems };
-    for (const id of ids) deletedItems[id] = deletedAt;
-    await setConfig({
-      ...config,
-      items: config.items.filter((it) => !drop.has(it.id)),
-      deletedItems,
+    let shouldSync = false;
+    await enqueueConfigWrite(async () => {
+      const { config, setConfig } = get();
+      const drop = new Set(ids);
+      const deletedAt = new Date().toISOString();
+      const deletedItems = { ...config.deletedItems };
+      for (const id of ids) deletedItems[id] = deletedAt;
+      await setConfig({
+        ...config,
+        items: config.items.filter((it) => !drop.has(it.id)),
+        deletedItems,
+      });
+      shouldSync = Boolean(config.couple.inviteCode);
     });
-    if (config.couple.inviteCode) void syncNow();
+    if (shouldSync) void get().syncNow();
   },
 
   patchItems: async (ids, patch) => {

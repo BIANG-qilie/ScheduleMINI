@@ -61,6 +61,7 @@ type WeekGridProps = {
   ) => void;
   onEditItem: (item: ScheduleItem, dateKey?: string) => void;
   onSkipOccurrence: (item: ScheduleItem, dateKey: string) => void;
+  onDeleteItem: (item: ScheduleItem) => void;
   onSetDayOverride: (dateKey: string, value: DayOverride | null) => void;
   /** board：七列周历。day：一次看一天，给手机用。 */
   layout?: "board" | "day";
@@ -88,6 +89,7 @@ export function WeekGrid({
   onCreateAt,
   onEditItem,
   onSkipOccurrence,
+  onDeleteItem,
   onSetDayOverride,
   layout = "board",
 }: WeekGridProps) {
@@ -683,6 +685,16 @@ export function WeekGrid({
                   取消本次
                 </button>
               ) : null}
+              <button
+                type="button"
+                className="block min-h-11 w-full px-3 py-2 text-left text-sm text-[var(--color-danger)] hover:bg-[var(--color-accent-soft)]"
+                onClick={() => {
+                  onDeleteItem(menu.item);
+                  setMenu(null);
+                }}
+              >
+                删除
+              </button>
             </>
           ) : (
             <>
