@@ -31,6 +31,10 @@ describe("parseRelease", () => {
     expect(parseRelease({ ...release, tag_name: "android-debug-ff4f" })).toBeNull();
   });
 
+  it("四段产品版本算新版本", () => {
+    expect(parseRelease({ ...release, tag_name: "v0.2.0.1" })!.version).toBe("0.2.0.1");
+  });
+
   it("缺字段时报错", () => {
     expect(() => parseRelease({ tag_name: "v1.0.0" })).toThrow();
   });

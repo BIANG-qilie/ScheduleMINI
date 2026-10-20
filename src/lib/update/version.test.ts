@@ -11,6 +11,11 @@ describe("compareVersions", () => {
     ["1.0.0-beta", "1.0.0", -1],
     ["1.0.0-alpha.1", "1.0.0-alpha.beta", -1],
     ["2.0.0+build.5", "2.0.0", 0],
+    ["0.2.0.1", "0.2.0", 1],
+    ["0.2.0", "0.2.0.0", 0],
+    ["0.2.0.1", "0.2.0.2", -1],
+    ["0.2.1", "0.2.0.9", 1],
+    ["v0.2.0.1", "0.2.0.1", 0],
   ])("%s vs %s → %i", (a, b, want) => {
     expect(compareVersions(a, b)).toBe(want);
   });
@@ -23,6 +28,8 @@ describe("compareVersions", () => {
   it("isNewer 只在严格更大时为真", () => {
     expect(isNewer("0.2.1", "0.2.0")).toBe(true);
     expect(isNewer("0.2.0", "0.2.0")).toBe(false);
+    expect(isNewer("0.2.0.1", "0.2.0")).toBe(true);
+    expect(isNewer("0.2.0", "0.2.0.1")).toBe(false);
   });
 
   it("APP_VERSION 来自 package.json", () => {

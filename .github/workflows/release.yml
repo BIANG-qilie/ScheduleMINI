@@ -27,6 +27,12 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
+      - name: Asset name pattern
+        id: names
+        shell: bash
+        run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -40,13 +46,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: 小日程 v__VERSION__
-          releaseBody: 见下方更新说明。
-          releaseDraft: true
+          tagName: ${{ github.ref_name }}
+          releaseName: 小日程 ${{ github.ref_name }}
+          releaseBody: |
+            - 调休上班日会显示工作周循环
+            - 周视图和聚焦悬浮窗按标签分色，归属留在边上
+            - 共同按钮对比更清楚，星期从周一开始
+            - 中继地址空着时只显示占位，手机上地址完整换行
+            - 手机上较短的日程卡片显示备注，长标题换行
+            - 同步失败时整句都看得到。中继拒收的提示是「同步失败：中继拒收，稍后重试」
+            - 结束共处可以选择记入并结束、只结束，或继续
+            - 按 Esc 关闭新建和设置
+            - 导入的内容不是 JSON 时，只提示「导入失败：配置不是合法 JSON」
+            - 取消过一次的周循环，可以删掉整段
+          releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          releaseAssetNamePattern: ${{ steps.names.outputs.pattern }}
+          args: --config src-tauri/ci-version.json ${{ matrix.args }}
 
   android:
     needs: desktop
@@ -57,6 +75,8 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -78,7 +98,7 @@ jobs:
       - name: Keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
       - name: Build APK
-        run: npm run tauri android build -- --apk
+        run: npm run tauri android build -- --apk --config src-tauri/ci-version.json
         env:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
@@ -93,3 +113,4 @@ jobs:
           cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk \
             "ScheduleMINI-${VERSION}-universal.apk"
           gh release upload "v${VERSION}" "ScheduleMINI-${VERSION}-universal.apk" --clobber
+          gh release view "v${VERSION}" --json assets --jq '.assets[].name' | grep -qx latest.json

@@ -1,16 +1,23 @@
 export const APP_VERSION = __APP_VERSION__;
 
-type Parsed = { core: [number, number, number]; pre: string[] };
+type Parsed = { core: number[]; pre: string[] };
 
-/** 解析 `v1.2.3` / `1.2.3-beta.1`；不是 semver 时返回 null */
+/**
+ * 解析 `v1.2.3`、`1.2.3-beta.1`，以及产品版本 `0.2.0.1`（第四段数字）。
+ * 不是这种版本号时返回 null。
+ */
 export function parseVersion(input: string): Parsed | null {
   const m = input
     .trim()
-    .match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+    .match(
+      /^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/,
+    );
   if (!m) return null;
+  const core = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (m[4] !== undefined) core.push(Number(m[4]));
   return {
-    core: [Number(m[1]), Number(m[2]), Number(m[3])],
-    pre: m[4] ? m[4].split(".") : [],
+    core,
+    pre: m[5] ? m[5].split(".") : [],
   };
 }
 
@@ -38,8 +45,9 @@ export function compareVersions(a: string, b: string) {
   const pa = parseVersion(a);
   const pb = parseVersion(b);
   if (!pa || !pb) throw new Error(`无效版本号：${pa ? b : a}`);
-  for (let i = 0; i < 3; i++) {
-    const d = pa.core[i] - pb.core[i];
+  const n = Math.max(pa.core.length, pb.core.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pa.core[i] ?? 0) - (pb.core[i] ?? 0);
     if (d !== 0) return Math.sign(d);
   }
   return Math.sign(comparePre(pa.pre, pb.pre));
