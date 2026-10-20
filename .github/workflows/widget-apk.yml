@@ -77,5 +77,5 @@ jobs:
               --title "小日程 ${VERSION} 桌面小组件" \
               --notes "$NOTES"
           fi
-          gh release view v0.2.2-widget --json isDraft,isLatest,tagName,assets \
-            --jq '{draft:.isDraft,latest:.isLatest,tag:.tagName,assets:[.assets[].name]}'
+          gh release view v0.2.2-widget --json isDraft,tagName,assets \
+            --jq '{draft:.isDraft,tag:.tagName,assets:[.assets[].name]}'
