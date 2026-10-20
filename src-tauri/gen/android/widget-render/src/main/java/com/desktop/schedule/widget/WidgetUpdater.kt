@@ -114,11 +114,19 @@ object WidgetUpdater {
         val now = System.currentTimeMillis()
         for (id in ids) {
             val text = WidgetRender.render(snapshot, WidgetModes.get(context, id), now)
-            val views = RemoteViews(context.packageName, R.layout.widget_schedule)
-            WidgetRender.bind(views, text)
+            val narrow = isNarrow(manager, id)
+            val layout = if (narrow) R.layout.widget_schedule_narrow else R.layout.widget_schedule
+            val views = RemoteViews(context.packageName, layout)
+            WidgetRender.bind(views, text, narrow)
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context, id))
             manager.updateAppWidget(id, views)
         }
+    }
+
+    /** 不到约四格宽时改成上下两条，避免标题被裁。 */
+    fun isNarrow(manager: AppWidgetManager, id: Int): Boolean {
+        val width = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+        return width in 1..219
     }
 
     private fun openApp(context: Context, widgetId: Int): PendingIntent {

@@ -1,6 +1,7 @@
 package com.desktop.schedule.widget
 
 import android.graphics.Color
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
@@ -51,6 +52,7 @@ data class WidgetText(
 /** 与 src/lib/widget-snapshot.ts 的 renderHomeWidget 同一规则。 */
 object WidgetRender {
     private const val INK = "#1C1612"
+    private const val MUTED = "#8A7D72"
     private const val EMPTY_NONE = "打开小日程，日程会出现在这里"
     private const val EMPTY_STALE = "打开小日程更新"
 
@@ -96,7 +98,7 @@ object WidgetRender {
         return WidgetText(resolved, kicker, false, "", lanes)
     }
 
-    fun bind(views: RemoteViews, text: WidgetText) {
+    fun bind(views: RemoteViews, text: WidgetText, narrow: Boolean = false) {
         views.setTextViewText(R.id.widget_kicker, text.kicker)
         if (text.empty) {
             views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
@@ -106,6 +108,14 @@ object WidgetRender {
         }
         views.setViewVisibility(R.id.widget_empty, View.GONE)
         views.setViewVisibility(R.id.widget_body, View.VISIBLE)
+        val two = text.lanes.size >= 2
+        views.setViewVisibility(R.id.lane_divider, View.GONE)
+        views.setViewVisibility(R.id.lane_rule, if (narrow && two) View.VISIBLE else View.GONE)
+        val titleSp = when {
+            narrow -> 20f
+            two -> 22f
+            else -> 32f
+        }
         bindLane(
             views,
             text.lanes[0],
@@ -113,10 +123,12 @@ object WidgetRender {
             R.id.self_name,
             R.id.self_title,
             R.id.self_time,
+            R.id.self_mark,
             R.id.self_tag,
             R.id.self_next,
+            titleSp,
         )
-        if (text.lanes.size < 2) {
+        if (!two) {
             views.setViewVisibility(R.id.lane_partner, View.GONE)
         } else {
             views.setViewVisibility(R.id.lane_partner, View.VISIBLE)
@@ -127,8 +139,10 @@ object WidgetRender {
                 R.id.partner_name,
                 R.id.partner_title,
                 R.id.partner_time,
+                R.id.partner_mark,
                 R.id.partner_tag,
                 R.id.partner_next,
+                titleSp,
             )
         }
     }
@@ -140,20 +154,31 @@ object WidgetRender {
         name: Int,
         title: Int,
         time: Int,
+        mark: Int,
         tag: Int,
         next: Int,
+        titleSp: Float,
     ) {
-        views.setInt(edge, "setBackgroundColor", color(lane.ownerColor, Color.parseColor("#0f766e")))
+        val owner = color(lane.ownerColor, Color.parseColor("#0f766e"))
+        val idle = lane.headline == "空闲"
+        views.setInt(edge, "setBackgroundColor", owner)
         views.setTextViewText(name, lane.name)
+        views.setTextColor(name, owner)
         views.setTextViewText(title, lane.headline)
+        views.setTextColor(title, Color.parseColor(if (idle) MUTED else INK))
+        views.setTextViewTextSize(title, TypedValue.COMPLEX_UNIT_SP, titleSp)
         views.setTextViewText(time, lane.time)
         views.setViewVisibility(time, if (lane.time.isEmpty()) View.GONE else View.VISIBLE)
         views.setTextViewText(tag, lane.tag)
         if (lane.tag.isEmpty()) {
             views.setViewVisibility(tag, View.GONE)
+            views.setViewVisibility(mark, View.GONE)
         } else {
             views.setViewVisibility(tag, View.VISIBLE)
-            views.setTextColor(tag, color(lane.tagColor, Color.parseColor(INK)))
+            views.setViewVisibility(mark, View.VISIBLE)
+            val tagColor = color(lane.tagColor, Color.parseColor(INK))
+            views.setTextColor(tag, tagColor)
+            views.setInt(mark, "setColorFilter", tagColor)
         }
         views.setTextViewText(next, lane.next)
         views.setViewVisibility(next, if (lane.next.isEmpty()) View.GONE else View.VISIBLE)

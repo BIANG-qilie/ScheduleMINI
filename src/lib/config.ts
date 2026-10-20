@@ -17,6 +17,13 @@ export const DEFAULT_PARTNER_COLOR = "#a21caf";
 /** 共同日程强调色（琥珀） */
 export const DEFAULT_SHARED_COLOR = "#b45309";
 
+/** 称呼只留一个短标签，不写成一句留言 */
+export const ADDRESS_MAX = 8;
+
+export function normalizeAddress(raw: string) {
+  return [...raw.trim().replace(/\s+/g, " ")].slice(0, ADDRESS_MAX).join("");
+}
+
 export const CoupleIdentitySchema = z.object({
   /** 稳定个人身份（selfId / personId）；多端须相同，与对方不同 */
   memberId: z.string().min(1),
@@ -24,11 +31,41 @@ export const CoupleIdentitySchema = z.object({
   selfColor: HexColorSchema.default(DEFAULT_SELF_COLOR),
   partnerName: z.string().trim().min(1).default("对方"),
   partnerColor: HexColorSchema.default(DEFAULT_PARTNER_COLOR),
+  /** 我给对方的称呼。空则展示回落到 partnerName */
+  addressForThem: z
+    .string()
+    .default("")
+    .transform((value) => normalizeAddress(value)),
+  addressForThemAt: z.string().default(""),
+  /** 对方给我的称呼 */
+  addressForMe: z
+    .string()
+    .default("")
+    .transform((value) => normalizeAddress(value)),
+  addressForMeAt: z.string().default(""),
   inviteCode: z.string().nullable().optional(),
   partnerMemberId: z.string().nullable().optional(),
   pairedAt: z.string().nullable().optional(),
 });
 export type CoupleIdentity = z.infer<typeof CoupleIdentitySchema>;
+
+export function partnerFacingName(
+  couple: Pick<CoupleIdentity, "addressForThem" | "partnerName">,
+) {
+  return couple.addressForThem.trim() || couple.partnerName || "对方";
+}
+
+/** 对方给我的称呼。没设过就是空字符串 */
+export function calledByPartner(couple: Pick<CoupleIdentity, "addressForMe">) {
+  return couple.addressForMe.trim();
+}
+
+/** 主屏幕小组件上自己这一侧：有对方给的称呼时用称呼 */
+export function selfWidgetName(
+  couple: Pick<CoupleIdentity, "addressForMe" | "selfName">,
+) {
+  return couple.addressForMe.trim() || couple.selfName;
+}
 
 /** 本机个人身份 id（多端共享） */
 export function selfPersonId(couple: CoupleIdentity) {
@@ -42,6 +79,10 @@ export function defaultCouple(): CoupleIdentity {
     selfColor: DEFAULT_SELF_COLOR,
     partnerName: "对方",
     partnerColor: DEFAULT_PARTNER_COLOR,
+    addressForThem: "",
+    addressForThemAt: "",
+    addressForMe: "",
+    addressForMeAt: "",
     inviteCode: null,
     partnerMemberId: null,
     pairedAt: null,
@@ -480,6 +521,8 @@ export const AppConfigSchema = z
           })
           .nullable()
           .default(null),
+        /** 会话最后一次变更。空字符串表示还没同步过 */
+        updatedAt: z.string().default(""),
         log: z
           .array(
             z.object({
@@ -498,7 +541,7 @@ export const AppConfigSchema = z
           )
           .default([]),
       })
-      .default({ current: null, log: [] }),
+      .default({ current: null, updatedAt: "", log: [] }),
     items: z.array(ScheduleItemSchema),
   })
   .superRefine((val, ctx) => {
@@ -560,7 +603,7 @@ export function ownerLabel(
 ) {
   const o = itemOwner(item);
   if (o === "shared") return "共同";
-  if (o === "partner") return couple.partnerName;
+  if (o === "partner") return partnerFacingName(couple);
   return couple.selfName;
 }
 
@@ -770,7 +813,7 @@ export function defaultConfig(): AppConfig {
     soloMode: false,
     syncRelayUrl: "",
     deletedItems: {},
-    coexistence: { current: null, log: [] },
+    coexistence: { current: null, updatedAt: "", log: [] },
     items: [
       {
         id: "sample-morning",
@@ -870,7 +913,11 @@ export function parseAppConfig(raw: unknown): AppConfig {
     ...parsed,
     couple,
     soloMode: parsed.soloMode ?? false,
-    coexistence: parsed.coexistence ?? { current: null, log: [] },
+    coexistence: parsed.coexistence ?? {
+      current: null,
+      updatedAt: "",
+      log: [],
+    },
     items,
   };
 }

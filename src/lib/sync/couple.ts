@@ -1,6 +1,20 @@
 import type { CoupleIdentity, ItemOwner, ScheduleItem } from "@/lib/config";
+import { normalizeAddress } from "@/lib/config";
 import { encryptPayload, decryptPayload, normalizeInviteCode } from "@/lib/sync/crypto";
 import { fetchRoom, pushMemberSlice } from "@/lib/sync/relay";
+
+/** 一个称呼：短标签 + 写入时间。空文本表示清掉 */
+export type AddressStamp = { text: string; updatedAt: string };
+
+/** 共处会话。current 为空表示已停，仍靠 updatedAt 做后写覆盖 */
+export type SyncedCoexistence = {
+  current: {
+    id: string;
+    startedAt: string;
+    pauses: { pausedAt: string; resumedAt?: string }[];
+  } | null;
+  updatedAt: string;
+};
 
 /** 联合维护：每人槽位推送完整日程文档，拉取后按条目 id LWW 合并 */
 export type PersonSlice = {
@@ -11,7 +25,59 @@ export type PersonSlice = {
   doc?: "shared-v2";
   /** 删除墓碑：条目 id → 删除时间；晚于条目 updatedAt 则视为已删 */
   deletedItems?: Record<string, string>;
+  /** 我给对方的称呼 */
+  addressForThem?: AddressStamp;
+  /** 正在进行的共处。记入之前不产生日程条目 */
+  coexistence?: SyncedCoexistence;
 };
+
+export function addressStamp(
+  text: string | undefined,
+  updatedAt: string | undefined,
+): AddressStamp | null {
+  if (!updatedAt) return null;
+  return { text: normalizeAddress(text ?? ""), updatedAt };
+}
+
+/** 称呼后写覆盖。没有时间戳的一侧不参与 */
+export function mergeAddressLww(
+  local: AddressStamp | null,
+  remote: AddressStamp | null | undefined,
+): AddressStamp | null {
+  if (!remote?.updatedAt) return local;
+  const next = {
+    text: normalizeAddress(remote.text ?? ""),
+    updatedAt: remote.updatedAt,
+  };
+  if (!local?.updatedAt || next.updatedAt > local.updatedAt) return next;
+  return local;
+}
+
+export function mergeCoexistenceLww(
+  local: SyncedCoexistence | null,
+  remote: SyncedCoexistence | null | undefined,
+): SyncedCoexistence | null {
+  if (!remote?.updatedAt) return local;
+  const current = remote.current;
+  const next: SyncedCoexistence =
+    current?.id && current.startedAt
+      ? {
+          updatedAt: remote.updatedAt,
+          current: {
+            id: current.id,
+            startedAt: current.startedAt,
+            pauses: (current.pauses ?? [])
+              .filter((pause) => pause.pausedAt)
+              .map((pause) => ({
+                pausedAt: pause.pausedAt,
+                ...(pause.resumedAt ? { resumedAt: pause.resumedAt } : {}),
+              })),
+          },
+        }
+      : { current: null, updatedAt: remote.updatedAt };
+  if (!local?.updatedAt || next.updatedAt > local.updatedAt) return next;
+  return local;
+}
 
 export type Tombstones = Record<string, string>;
 
@@ -139,18 +205,22 @@ export async function buildEncryptedSelfSlice(
   couple: CoupleIdentity,
   items: ScheduleItem[],
   deletedItems: Tombstones = {},
+  coexistence: SyncedCoexistence | null = null,
 ) {
   // 联合维护：推送完整日程（相对本机归属）
   const all = items.map((it) => ({
     ...it,
     owner: (it.owner ?? "self") as ItemOwner,
   }));
+  const address = addressStamp(couple.addressForThem, couple.addressForThemAt);
   const slice: PersonSlice = {
     items: all,
     selfName: couple.selfName,
     selfColor: couple.selfColor,
     doc: "shared-v2",
     deletedItems,
+    ...(address ? { addressForThem: address } : {}),
+    ...(coexistence?.updatedAt ? { coexistence } : {}),
   };
   const payload = await encryptPayload(inviteCode, slice);
   return {
@@ -171,11 +241,13 @@ export async function pullAndMergePartner(args: {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems?: Tombstones;
+  coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
 }): Promise<{
   items: ScheduleItem[];
   deletedItems: Tombstones;
   couple: CoupleIdentity;
+  coexistence: SyncedCoexistence | null;
   partnerOnline: boolean;
   selfSliceMerged: boolean;
   error?: string;
@@ -188,6 +260,7 @@ export async function pullAndMergePartner(args: {
       items: args.items,
       deletedItems: args.deletedItems ?? {},
       couple: args.couple,
+      coexistence: args.coexistence ?? null,
       partnerOnline: false,
       selfSliceMerged: false,
       error: room.error,
@@ -200,9 +273,25 @@ export async function pullAndMergePartner(args: {
   let merged = [...args.items];
   let tombstones = mergeTombstones(args.deletedItems);
   let selfSliceMerged = false;
+  let addressForThem = addressStamp(
+    args.couple.addressForThem,
+    args.couple.addressForThemAt,
+  );
+  let addressForMe = addressStamp(
+    args.couple.addressForMe,
+    args.couple.addressForMeAt,
+  );
+  let coexistence = args.coexistence ?? null;
   let nextCouple: CoupleIdentity = {
     ...args.couple,
     inviteCode: code,
+  };
+
+  const applySliceMeta = (slice: PersonSlice, mine: boolean) => {
+    if (mine) {
+      addressForThem = mergeAddressLww(addressForThem, slice.addressForThem);
+    }
+    coexistence = mergeCoexistenceLww(coexistence, slice.coexistence);
   };
 
   if (selfEntry?.payload) {
@@ -214,21 +303,31 @@ export async function pullAndMergePartner(args: {
       }));
       merged = mergeItemsLww(merged, remote);
       tombstones = mergeTombstones(tombstones, slice.deletedItems);
+      applySliceMeta(slice, true);
       selfSliceMerged = true;
     } catch {
       // keep local
     }
   }
 
+  const withAddress = (couple: CoupleIdentity): CoupleIdentity => ({
+    ...couple,
+    addressForThem: addressForThem?.text ?? "",
+    addressForThemAt: addressForThem?.updatedAt ?? "",
+    addressForMe: addressForMe?.text ?? "",
+    addressForMeAt: addressForMe?.updatedAt ?? "",
+  });
+
   if (others.length === 0) {
     return {
       items: applyTombstones(merged, tombstones),
       deletedItems: tombstones,
-      couple: {
+      couple: withAddress({
         ...nextCouple,
         partnerMemberId: null,
         pairedAt: args.couple.pairedAt,
-      },
+      }),
+      coexistence,
       partnerOnline: false,
       selfSliceMerged,
     };
@@ -242,7 +341,8 @@ export async function pullAndMergePartner(args: {
     return {
       items: applyTombstones(merged, tombstones),
       deletedItems: tombstones,
-      couple: nextCouple,
+      couple: withAddress(nextCouple),
+      coexistence,
       partnerOnline: false,
       selfSliceMerged,
       error: "解密对方日程失败，请确认邀请码一致",
@@ -256,17 +356,27 @@ export async function pullAndMergePartner(args: {
   }));
   merged = mergeItemsLww(merged, fromPartner);
   tombstones = mergeTombstones(tombstones, slice.deletedItems);
+  if (
+    args.couple.partnerMemberId &&
+    args.couple.partnerMemberId !== partner.memberId
+  ) {
+    addressForThem = { text: "", updatedAt: new Date().toISOString() };
+    addressForMe = null;
+  }
+  addressForMe = mergeAddressLww(addressForMe, slice.addressForThem);
+  coexistence = mergeCoexistenceLww(coexistence, slice.coexistence);
 
   return {
     items: applyTombstones(merged, tombstones),
     deletedItems: tombstones,
-    couple: {
+    couple: withAddress({
       ...nextCouple,
       partnerMemberId: partner.memberId,
       partnerName: slice.selfName || partner.name || args.couple.partnerName,
       partnerColor: slice.selfColor || partner.color || args.couple.partnerColor,
       pairedAt: args.couple.pairedAt || new Date().toISOString(),
-    },
+    }),
+    coexistence,
     partnerOnline: true,
     selfSliceMerged,
   };
@@ -277,6 +387,7 @@ export async function pushSelfSlice(args: {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems?: Tombstones;
+  coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
 }) {
   const code = normalizeInviteCode(args.inviteCode);
@@ -285,6 +396,7 @@ export async function pushSelfSlice(args: {
     args.couple,
     args.items,
     args.deletedItems,
+    args.coexistence ?? null,
   );
   return pushMemberSlice({
     inviteCode: code,
@@ -301,9 +413,17 @@ export type SyncOnceResult = {
   items: ScheduleItem[];
   deletedItems: Tombstones;
   couple: CoupleIdentity;
+  coexistence: SyncedCoexistence | null;
   partnerOnline: boolean;
   selfSliceMerged: boolean;
   error?: string;
+};
+
+export type SyncLatest = {
+  items: ScheduleItem[];
+  deletedItems: Tombstones;
+  couple?: CoupleIdentity;
+  coexistence?: SyncedCoexistence | null;
 };
 
 /**
@@ -315,26 +435,59 @@ export async function syncRoomOnce(args: {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems: Tombstones;
+  coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
-  latest?: () => { items: ScheduleItem[]; deletedItems: Tombstones };
+  latest?: () => SyncLatest;
 }): Promise<SyncOnceResult> {
   const pulled = await pullAndMergePartner(args);
   if (pulled.error && !pulled.selfSliceMerged && !pulled.partnerOnline) {
-    return { ...pulled, items: args.items, deletedItems: args.deletedItems };
+    return {
+      ...pulled,
+      items: args.items,
+      deletedItems: args.deletedItems,
+      coexistence: args.coexistence ?? null,
+    };
   }
 
-  const now = args.latest?.() ?? args;
+  const now = args.latest?.() ?? {
+    items: args.items,
+    deletedItems: args.deletedItems,
+    couple: args.couple,
+    coexistence: args.coexistence ?? null,
+  };
   const deletedItems = mergeTombstones(pulled.deletedItems, now.deletedItems);
   const items = applyTombstones(
     mergeItemsLww(pulled.items, now.items),
     deletedItems,
   );
+  const addressForThem = mergeAddressLww(
+    addressStamp(pulled.couple.addressForThem, pulled.couple.addressForThemAt),
+    addressStamp(now.couple?.addressForThem, now.couple?.addressForThemAt),
+  );
+  const addressForMe = mergeAddressLww(
+    addressStamp(pulled.couple.addressForMe, pulled.couple.addressForMeAt),
+    addressStamp(now.couple?.addressForMe, now.couple?.addressForMeAt),
+  );
+  const coexistence = mergeCoexistenceLww(
+    pulled.coexistence,
+    now.coexistence,
+  );
+  const couple: CoupleIdentity = {
+    ...pulled.couple,
+    selfName: now.couple?.selfName || pulled.couple.selfName,
+    selfColor: now.couple?.selfColor || pulled.couple.selfColor,
+    addressForThem: addressForThem?.text ?? "",
+    addressForThemAt: addressForThem?.updatedAt ?? "",
+    addressForMe: addressForMe?.text ?? "",
+    addressForMeAt: addressForMe?.updatedAt ?? "",
+  };
 
   const pushed = await pushSelfSlice({
     inviteCode: args.inviteCode,
-    couple: pulled.couple,
+    couple,
     items,
     deletedItems,
+    coexistence,
     baseUrl: args.baseUrl,
   });
   const error = !pushed.ok
@@ -342,5 +495,5 @@ export async function syncRoomOnce(args: {
     : pushed.data.rejected
       ? "中继拒收，稍后重试"
       : pulled.error;
-  return { ...pulled, items, deletedItems, error };
+  return { ...pulled, items, deletedItems, couple, coexistence, error };
 }

@@ -1,8 +1,15 @@
 /// <reference types="node" />
 import { spawn, type ChildProcess } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { defaultCouple, type CoupleIdentity, type ScheduleItem } from "@/lib/config";
-import { syncRoomOnce } from "@/lib/sync/couple";
+import {
+  coexistenceElapsedMs,
+  coexistenceIsPaused,
+  defaultCouple,
+  partnerFacingName,
+  type CoupleIdentity,
+  type ScheduleItem,
+} from "@/lib/config";
+import { syncRoomOnce, type SyncedCoexistence } from "@/lib/sync/couple";
 import { generateInviteCode } from "@/lib/sync/crypto";
 
 const PORT = 18000 + Math.floor(Math.random() * 2000);
@@ -33,10 +40,16 @@ type Client = {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems: Record<string, string>;
+  coexistence: SyncedCoexistence | null;
 };
 
 function client(couple: Partial<CoupleIdentity> = {}): Client {
-  return { couple: { ...defaultCouple(), ...couple }, items: [], deletedItems: {} };
+  return {
+    couple: { ...defaultCouple(), ...couple },
+    items: [],
+    deletedItems: {},
+    coexistence: null,
+  };
 }
 
 let tick = Date.parse("2026-10-19T08:00:00.000Z");
@@ -76,12 +89,20 @@ async function sync(c: Client) {
     couple: c.couple,
     items: c.items,
     deletedItems: c.deletedItems,
+    coexistence: c.coexistence,
     baseUrl: BASE,
+    latest: () => ({
+      items: c.items,
+      deletedItems: c.deletedItems,
+      couple: c.couple,
+      coexistence: c.coexistence,
+    }),
   });
   expect(r.error).toBeUndefined();
   c.couple = r.couple;
   c.items = r.items;
   c.deletedItems = r.deletedItems;
+  c.coexistence = r.coexistence;
   return r;
 }
 
@@ -165,5 +186,80 @@ describe("two clients against a local relay", () => {
     expect(titles(phone)).toEqual([]);
     expect(desk.deletedItems.w1).toBeTruthy();
     expect(phone.deletedItems.w1).toBeTruthy();
+  });
+
+  it("称呼同步后，对方用这个标签显示你，你也能看见自己被怎么叫", async () => {
+    const code = generateInviteCode(6);
+    const a = client({ inviteCode: code, selfName: "甲" });
+    const b = client({ inviteCode: code, selfName: "乙" });
+
+    a.couple.addressForThem = "宝宝";
+    a.couple.addressForThemAt = stamp();
+    await sync(a);
+    await sync(b);
+
+    expect(b.couple.addressForMe).toBe("宝宝");
+    const aPhone = client({
+      inviteCode: code,
+      memberId: a.couple.memberId,
+      selfName: "甲",
+    });
+    await sync(aPhone);
+    expect(aPhone.couple.addressForThem).toBe("宝宝");
+    expect(partnerFacingName(aPhone.couple)).toBe("宝宝");
+
+    b.couple.addressForThem = "乖乖";
+    b.couple.addressForThemAt = stamp();
+    await sync(b);
+    await sync(a);
+    expect(partnerFacingName(b.couple)).toBe("乖乖");
+    expect(a.couple.addressForMe).toBe("乖乖");
+    expect(partnerFacingName(a.couple)).toBe("宝宝");
+  });
+
+  it("共处开始、暂停、不记入结束会同步到另一台", async () => {
+    const code = generateInviteCode(6);
+    const a = client({ inviteCode: code });
+    const b = client({ inviteCode: code });
+    const startedAt = "2026-10-20T01:00:00.000Z";
+    a.coexistence = {
+      current: { id: "together", startedAt, pauses: [] },
+      updatedAt: startedAt,
+    };
+    await sync(a);
+    await sync(b);
+
+    expect(b.coexistence?.current?.startedAt).toBe(startedAt);
+    expect(b.coexistence?.current?.id).toBe("together");
+    expect(coexistenceIsPaused(b.coexistence?.current)).toBe(false);
+    const now = new Date("2026-10-20T01:05:00.000Z");
+    expect(coexistenceElapsedMs(b.coexistence!.current!, now)).toBe(
+      coexistenceElapsedMs(a.coexistence!.current!, now),
+    );
+    expect(b.items.some((it) => it.title.includes("共处"))).toBe(false);
+
+    const pausedAt = "2026-10-20T01:04:00.000Z";
+    a.coexistence = {
+      current: {
+        id: "together",
+        startedAt,
+        pauses: [{ pausedAt }],
+      },
+      updatedAt: pausedAt,
+    };
+    await sync(a);
+    await sync(b);
+    expect(coexistenceIsPaused(b.coexistence?.current)).toBe(true);
+    expect(b.coexistence?.current?.pauses).toEqual([{ pausedAt }]);
+
+    a.coexistence = {
+      current: null,
+      updatedAt: "2026-10-20T01:06:00.000Z",
+    };
+    await sync(a);
+    await sync(b);
+    expect(b.coexistence?.current).toBeNull();
+    expect(a.items.some((it) => it.title.includes("共处"))).toBe(false);
+    expect(b.items.some((it) => it.title.includes("共处"))).toBe(false);
   });
 });

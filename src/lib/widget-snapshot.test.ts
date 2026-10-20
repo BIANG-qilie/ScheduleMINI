@@ -350,6 +350,38 @@ describe("home widget text", () => {
     );
   });
 
+  it("称呼代替对方，自己这一侧用对方给的称呼", async () => {
+    const base = emptyConfig();
+    const cfg = parseAppConfig({
+      ...base,
+      couple: {
+        ...base.couple,
+        selfName: "我",
+        partnerName: "对方",
+        addressForThem: "宝宝",
+        addressForThemAt: "2026-10-20T01:00:00.000Z",
+        addressForMe: "乖乖",
+        addressForMeAt: "2026-10-20T01:00:00.000Z",
+      },
+      items: [],
+    });
+    const now = new Date(2026, 8, 21, 9, 0, 0);
+    const snap = await buildWidgetSnapshot(cfg, now);
+    expect(snap.partnerName).toBe("宝宝");
+    expect(snap.selfName).toBe("乖乖");
+    const both = renderHomeWidget(snap, "both", now);
+    expect(both.lanes.map((lane) => lane.name)).toEqual(["乖乖", "宝宝"]);
+    expect(renderHomeWidget(snap, "partner", now).lanes[0].name).toBe("宝宝");
+    expect(renderHomeWidget(snap, "self", now).lanes[0].name).toBe("乖乖");
+  });
+
+  it("没设称呼时仍用原来的名字", async () => {
+    const now = new Date(2026, 8, 21, 9, 0, 0);
+    const snap = await buildWidgetSnapshot(config([]), now);
+    expect(snap.selfName).toBe("我");
+    expect(snap.partnerName).toBe("对方");
+  });
+
   it("没有快照时是空状态", () => {
     const view = renderHomeWidget(null, "both", new Date(2026, 8, 21, 9, 0, 0));
     expect(view.empty).toBe(true);
