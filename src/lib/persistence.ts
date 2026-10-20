@@ -56,7 +56,7 @@ function parseConfigText(text: string): AppConfig {
     raw = JSON.parse(text);
   } catch (error) {
     throw new ConfigLoadError(
-      `配置不是合法 JSON${error instanceof Error ? `（${error.message}）` : ""}`,
+      "配置不是合法 JSON",
       { cause: error },
     );
   }

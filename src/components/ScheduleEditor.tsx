@@ -157,7 +157,7 @@ export function ScheduleEditor({
                       active
                         ? {
                             backgroundColor: color,
-                            color: "#fff",
+                            color: value === "shared" ? "#3f1d24" : "#fff",
                             boxShadow:
                               value === "shared"
                                 ? "0 2px 10px -2px rgba(243,166,160,0.55)"
@@ -430,11 +430,12 @@ export function ScheduleEditor({
           ) : (
             <div className="flex flex-col gap-3 pt-1">
               <div className="flex flex-wrap gap-1.5">
-                {WEEKDAY_LABELS.map((label, day) => {
+                {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+                  const label = WEEKDAY_LABELS[day];
                   const active = draft.weekdays.includes(day);
                   return (
                     <button
-                      key={label}
+                      key={day}
                       type="button"
                       onClick={() => onToggleWeekday(day)}
                       className={

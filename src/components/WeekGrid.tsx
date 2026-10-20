@@ -21,6 +21,7 @@ import {
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
+  itemTag,
   ownerColor,
   type CoupleIdentity,
   type DayOverride,
@@ -28,9 +29,9 @@ import {
 } from "@/lib/config";
 import { onHolidayData, resolveDayState, type DayLabel } from "@/lib/holidays";
 import {
+  TAG_SURFACE,
   formatItemSubline,
   itemHoverText,
-  ownerSurfaceStyle,
 } from "@/lib/schedule-style";
 import { cn } from "@/lib/utils";
 
@@ -461,6 +462,7 @@ export function WeekGrid({
                         item,
                         col.dateKey,
                         col.weekday,
+                        dayOverrides,
                       );
                       if (!segment) return null;
                       let start = clockToCycleMinutes(
@@ -503,10 +505,14 @@ export function WeekGrid({
                     const overnight =
                       segment.end === "24:00" || segment.start === "00:00";
                     // 短块优先标题；完整信息靠 hover
-                    const showSub = height >= 28;
-                    const showNote = !!item.note?.trim() && height >= 52;
+                    const note = item.note?.trim() ?? "";
+                    const showNote =
+                      !!note && (dayLayout ? height >= 44 : height >= 52);
+                    const showSub =
+                      height >= 28 && !(dayLayout && showNote && height < 68);
                     const showOvernight = overnight && height >= 40 && !showNote;
                     const color = ownerColor(item, couple);
+                    const tagSurface = TAG_SURFACE[itemTag(item)];
                     const slot = layout.get(item.id) ?? {
                       column: 0,
                       columnCount: 1,
@@ -520,6 +526,7 @@ export function WeekGrid({
                         title={itemHoverText(item)}
                         className={cn(
                           "group absolute overflow-hidden rounded-md border text-left transition-[transform,filter] duration-150 hover:z-20 hover:brightness-[0.98]",
+                          tagSurface.block,
                           height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
                           (once || courseSwap) && "border-dashed",
                           selectedIds?.has(item.id) &&
@@ -532,7 +539,7 @@ export function WeekGrid({
                           width: `calc(${widthPct}% - 4px)`,
                           right: "auto",
                           zIndex: z,
-                          ...ownerSurfaceStyle(color),
+                          boxShadow: `inset 3px 0 0 ${color}`,
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -608,8 +615,15 @@ export function WeekGrid({
                             )
                           ) : null}
                           {showNote ? (
-                            <p className="truncate text-[10px] leading-tight opacity-70">
-                              {item.note?.trim()}
+                            <p
+                              className={cn(
+                                "text-[10px] leading-tight opacity-70",
+                                dayLayout
+                                  ? "line-clamp-2 whitespace-normal break-words"
+                                  : "truncate",
+                              )}
+                            >
+                              {note}
                             </p>
                           ) : null}
                           {showOvernight ? (

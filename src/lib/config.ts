@@ -1031,8 +1031,9 @@ export function itemSegmentOnDate(
   item: ScheduleItem,
   dateKey: string,
   weekday = parseDateKey(dateKey).getDay(),
+  dayOverrides: Record<string, DayOverride> = {},
 ): { start: string; end: string } | null {
-  if (!itemOccursOnDate(item, dateKey, weekday)) return null;
+  if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return null;
   if (!isOvernightItem(item)) {
     return { start: item.start, end: item.end };
   }

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +33,18 @@ export function Dialog({
 }: DialogProps) {
   const dragStart = React.useRef<number | null>(null);
   const [dragY, setDragY] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+
   if (!open) return null;
 
   return (
@@ -108,11 +121,12 @@ export function Dialog({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon"
             className="shrink-0"
+            aria-label="关闭"
             onClick={() => onOpenChange(false)}
           >
-            关闭
+            <X className="h-4 w-4" aria-hidden />
           </Button>
         </div>
         <div

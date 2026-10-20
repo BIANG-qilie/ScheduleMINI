@@ -50,11 +50,16 @@ export function CoexistenceBar({ className, compact }: Props) {
   const current = config.coexistence.current;
   const paused = coexistenceIsPaused(current);
   const [now, setNow] = useState(() => new Date());
+  const [ending, setEnding] = useState(false);
 
   useEffect(() => {
     if (!current) return;
     const id = window.setInterval(() => setNow(new Date()), 1_000);
     return () => window.clearInterval(id);
+  }, [current?.id]);
+
+  useEffect(() => {
+    if (!current) setEnding(false);
   }, [current?.id]);
 
   const elapsed = current
@@ -128,42 +133,82 @@ export function CoexistenceBar({ className, compact }: Props) {
         />
         共处中{paused ? " · 暂停" : ""} · {elapsed}
       </span>
-      {paused ? (
-        <button
-          type="button"
-          className={cn(
-            "coex-chip",
-            compact ? "coex-chip-compact" : "coex-chip-light",
-          )}
-          onClick={() => void resumeCoexistence()}
-        >
-          继续
-        </button>
+      {ending ? (
+        <span className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label="结束共处">
+          <button
+            type="button"
+            className={cn(
+              "coex-chip",
+              compact ? "coex-chip-compact" : "coex-chip-light",
+            )}
+            onClick={() => {
+              setEnding(false);
+              void stopCoexistence({ createSharedItem: true });
+            }}
+          >
+            记入并结束
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "coex-chip",
+              compact ? "coex-chip-compact" : "coex-chip-light",
+            )}
+            onClick={() => {
+              setEnding(false);
+              void stopCoexistence({ createSharedItem: false });
+            }}
+          >
+            只结束
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "coex-chip",
+              compact ? "coex-chip-compact" : "coex-chip-light",
+            )}
+            onClick={() => setEnding(false)}
+          >
+            继续
+          </button>
+        </span>
       ) : (
-        <button
-          type="button"
-          className={cn(
-            "coex-chip",
-            compact ? "coex-chip-compact" : "coex-chip-light",
+        <>
+          {paused ? (
+            <button
+              type="button"
+              className={cn(
+                "coex-chip",
+                compact ? "coex-chip-compact" : "coex-chip-light",
+              )}
+              onClick={() => void resumeCoexistence()}
+            >
+              继续
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={cn(
+                "coex-chip",
+                compact ? "coex-chip-compact" : "coex-chip-light",
+              )}
+              onClick={() => void pauseCoexistence()}
+            >
+              暂停
+            </button>
           )}
-          onClick={() => void pauseCoexistence()}
-        >
-          暂停
-        </button>
+          <button
+            type="button"
+            className={cn(
+              "coex-chip",
+              compact ? "coex-chip-compact" : "coex-chip-light",
+            )}
+            onClick={() => setEnding(true)}
+          >
+            结束
+          </button>
+        </>
       )}
-      <button
-        type="button"
-        className={cn(
-          "coex-chip",
-          compact ? "coex-chip-compact" : "coex-chip-light",
-        )}
-        onClick={() => {
-          const save = window.confirm("结束共处并记入共同日程？");
-          void stopCoexistence({ createSharedItem: save });
-        }}
-      >
-        结束
-      </button>
     </div>
   );
 }
