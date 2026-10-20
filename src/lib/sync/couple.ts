@@ -36,6 +36,19 @@ export function applyTombstones(items: ScheduleItem[], tombstones: Tombstones) {
   });
 }
 
+/** 同步结果落盘前再并一次本地状态，避免拉取期间的删除被旧条目盖回。 */
+export function reconcileSyncResult(
+  latest: { items: ScheduleItem[]; deletedItems?: Tombstones },
+  synced: { items: ScheduleItem[]; deletedItems?: Tombstones },
+) {
+  const deletedItems = mergeTombstones(synced.deletedItems, latest.deletedItems);
+  const items = applyTombstones(
+    mergeItemsLww(synced.items, latest.items),
+    deletedItems,
+  );
+  return { items, deletedItems };
+}
+
 /** @deprecated 用 PersonSlice */
 export type PartnerSlice = PersonSlice;
 

@@ -5,6 +5,7 @@ import {
   lanePartnerItems,
   laneSelfItems,
   mergeItemsLww,
+  reconcileSyncResult,
   rekeyAuthoredItems,
 } from "@/lib/sync/couple";
 import {
@@ -39,6 +40,27 @@ function item(
     updatedAt,
   };
 }
+
+describe("reconcileSyncResult", () => {
+  it("keeps a tombstone over a skipped series that sync still holds", () => {
+    const skipped = {
+      ...item("w", "2026-10-20T08:00:00.000Z", "周会"),
+      skippedDates: ["2026-10-20"],
+    };
+    const reconciled = reconcileSyncResult(
+      {
+        items: [],
+        deletedItems: { w: "2026-10-20T09:00:00.000Z" },
+      },
+      {
+        items: [skipped],
+        deletedItems: {},
+      },
+    );
+    expect(reconciled.items).toEqual([]);
+    expect(reconciled.deletedItems.w).toBe("2026-10-20T09:00:00.000Z");
+  });
+});
 
 describe("mergeItemsLww", () => {
   it("keeps newer updatedAt", () => {
