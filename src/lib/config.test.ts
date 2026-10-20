@@ -333,6 +333,49 @@ describe("holidays and work tag", () => {
     expect(d.name).toContain("中秋");
   });
 
+  it("shows Friday work weekly item on 2026-10-02 when marked 上班", () => {
+    const item = {
+      id: "makeup",
+      start: "13:00",
+      end: "14:00",
+      title: "调休应出现",
+      weekdays: [5],
+      enabled: true,
+      recurrence: "weekly" as const,
+      tag: "work" as const,
+      skippedDates: [] as string[],
+    };
+    const marked = { "2026-10-02": "work" as const };
+    expect(resolveDayState("2026-10-02", {}).isOff).toBe(true);
+    expect(itemOccursOnDate(item, "2026-10-02", 5, {})).toBe(false);
+    expect(itemSegmentOnDate(item, "2026-10-02", 5, {})).toBeNull();
+    expect(itemOccursOnDate(item, "2026-10-02", 5, marked)).toBe(true);
+    expect(itemSegmentOnDate(item, "2026-10-02", 5, marked)).toEqual({
+      start: "13:00",
+      end: "14:00",
+    });
+
+    const life = { ...item, id: "life", tag: "life" as const, title: "放假仍在" };
+    expect(itemOccursOnDate(life, "2026-10-02", 5, {})).toBe(true);
+    expect(itemSegmentOnDate(life, "2026-10-02", 5, {})).toEqual({
+      start: "13:00",
+      end: "14:00",
+    });
+    const once = {
+      ...item,
+      id: "once",
+      title: "国庆仅一次",
+      weekdays: [] as number[],
+      recurrence: "once" as const,
+      date: "2026-10-02",
+    };
+    expect(itemOccursOnDate(once, "2026-10-02", 5, {})).toBe(true);
+    expect(itemSegmentOnDate(once, "2026-10-02", 5, {})).toEqual({
+      start: "13:00",
+      end: "14:00",
+    });
+  });
+
   it("skips work weekly items on holiday", () => {
     const item = {
       id: "w",

@@ -568,8 +568,7 @@ export function SettingsPage() {
             <button
               type="button"
               role="status"
-              className="max-w-64 truncate text-xs text-red-700 underline-offset-2 hover:underline"
-              title={syncStatus}
+              className="max-w-72 whitespace-normal break-words text-left text-xs leading-snug text-red-700 underline-offset-2 hover:underline"
               onClick={() => {
                 setPrefsTab("couple");
                 setPrefsOpen(true);
@@ -799,7 +798,14 @@ export function SettingsPage() {
                           <span className="text-xs opacity-60">已停用</span>
                         ) : null}
                       </div>
-                      <p className="truncate font-display text-lg leading-snug">
+                      <p
+                        className={cn(
+                          "font-display text-lg leading-snug",
+                          narrow
+                            ? "line-clamp-2 whitespace-normal break-words"
+                            : "truncate",
+                        )}
+                      >
                         {itemDisplayTitle(item)}
                       </p>
                       {subline ? (
@@ -995,14 +1001,12 @@ export function SettingsPage() {
             <div className="space-y-2">
               <Label htmlFor="sync-relay-url">同步中继</Label>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
+                <textarea
                   id="sync-relay-url"
-                  className="font-mono text-xs"
+                  rows={narrow ? 3 : 2}
+                  className="min-h-10 w-full min-w-0 resize-y break-all rounded-xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_28%,var(--color-surface))] px-3 py-2 font-mono text-xs leading-relaxed placeholder:text-[color-mix(in_oklab,var(--color-ink-muted)_75%,white)] focus-visible:border-[var(--color-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)]"
                   placeholder={resolveRelayBaseUrl(null)}
-                  value={
-                    config.syncRelayUrl ||
-                    resolveRelayBaseUrl(config.syncRelayUrl)
-                  }
+                  value={config.syncRelayUrl}
                   onChange={(e) => {
                     void setSyncRelayUrl(e.target.value);
                   }}
@@ -1017,7 +1021,7 @@ export function SettingsPage() {
                   恢复默认
                 </Button>
               </div>
-              <p className="text-xs text-[var(--color-ink-muted)]">
+              <p className="break-all text-xs leading-relaxed text-[var(--color-ink-muted)]">
                 {resolveRelayBaseUrl(config.syncRelayUrl)}
               </p>
             </div>
@@ -1404,7 +1408,10 @@ export function SettingsPage() {
 
       <Dialog
         open={editorOpen}
-        onOpenChange={setEditorOpen}
+        onOpenChange={(open) => {
+          setEditorOpen(open);
+          if (!open) setOccurrenceDate(null);
+        }}
         panel
         className={narrow ? "phone-sheet" : undefined}
         eyebrow="安排"

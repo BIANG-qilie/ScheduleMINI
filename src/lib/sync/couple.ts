@@ -340,7 +340,7 @@ export async function syncRoomOnce(args: {
   const error = !pushed.ok
     ? pushed.error
     : pushed.data.rejected
-      ? "中继拒收（本机时间可能偏慢），稍后重试"
+      ? "中继拒收，稍后重试"
       : pulled.error;
   return { ...pulled, items, deletedItems, error };
 }

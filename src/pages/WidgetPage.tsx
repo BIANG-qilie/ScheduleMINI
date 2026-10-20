@@ -141,6 +141,7 @@ function PersonColumn({
 }) {
   const subline = currentItem ? formatItemSubline(currentItem) : null;
   const nextSubline = upcoming ? formatItemSubline(upcoming.item) : null;
+  const tagStyle = currentItem ? TAG_WIDGET[itemTag(currentItem)] : null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -154,18 +155,27 @@ function PersonColumn({
         </span>
       </div>
 
-      {currentItem ? (
+      {currentItem && tagStyle ? (
         <div
-          className="widget-now-surface relative overflow-hidden rounded-2xl px-2.5 py-3 text-[#1a120e]"
-          style={{
-            background: `linear-gradient(160deg, color-mix(in oklab, ${color} 78%, white) 0%, ${color} 62%, color-mix(in oklab, ${color} 70%, black) 100%)`,
-          }}
+          className={cn(
+            "widget-now-surface relative overflow-hidden rounded-2xl border px-2.5 py-3 text-white",
+            tagStyle.card,
+          )}
+          style={{ boxShadow: `inset 3px 0 0 ${color}` }}
         >
           <div className="flex items-center justify-between gap-1">
-            <span className="rounded-full bg-black/12 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-current/80">
+            <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-white/85">
               NOW
             </span>
-            <span className="font-mono text-[10px] tabular-nums text-current/70">
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                tagStyle.badge,
+              )}
+            >
+              {formatTagLabel(itemTag(currentItem))}
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-white/70">
               {remainingCurrent != null && remainingCurrent > 0
                 ? `剩 ${formatDurationCompact(remainingCurrent)}`
                 : "进行中"}
@@ -175,16 +185,16 @@ function PersonColumn({
             {itemDisplayTitle(currentItem)}
           </p>
           {subline ? (
-            <p className="mt-0.5 text-[11px] font-medium text-current/70">
+            <p className="mt-0.5 text-[11px] font-medium text-white/75">
               {subline}
             </p>
           ) : null}
-          <p className="mt-1 font-mono text-[10px] tabular-nums text-current/55">
+          <p className="mt-1 font-mono text-[10px] tabular-nums text-white/60">
             {currentItem.start}–{currentItem.end}
           </p>
-          <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-black/15">
+          <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-white/20">
             <div
-              className="h-full rounded-full bg-black/35"
+              className="h-full rounded-full bg-white/75"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>

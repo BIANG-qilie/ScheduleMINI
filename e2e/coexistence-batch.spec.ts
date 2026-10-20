@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 
 test.describe("共处模式", () => {
   test("开→暂停→继续→结束写入共同日程", async ({ page }) => {
-    page.on("dialog", (d) => d.accept());
     await page.goto("/");
     await page.getByRole("button", { name: "开启共处" }).click();
     await expect(page.getByText(/共处中/)).toBeVisible();
@@ -12,6 +11,7 @@ test.describe("共处模式", () => {
     await expect(page.getByText(/共处中/)).toBeVisible();
     await expect(page.getByRole("button", { name: "暂停" })).toBeVisible();
     await page.getByRole("button", { name: "结束" }).click();
+    await page.getByRole("button", { name: "记入并结束" }).click();
     await expect(page.getByRole("button", { name: "开启共处" })).toBeVisible();
     await page.getByRole("button", { name: "列表" }).click();
     await expect(page.getByText(/共处/).first()).toBeVisible();
@@ -19,11 +19,16 @@ test.describe("共处模式", () => {
   });
 
   test("结束取消不新增", async ({ page }) => {
-    page.on("dialog", (d) => d.dismiss());
     await page.goto("/");
     const countText = await page.getByText(/共 \d+ 条/).textContent();
     await page.getByRole("button", { name: "开启共处" }).click();
     await page.getByRole("button", { name: "结束" }).click();
+    await page.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(page.getByText(/共处中/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "开启共处" })).toHaveCount(0);
+    await expect(page.getByText(/共 \d+ 条/)).toHaveText(countText ?? "");
+    await page.getByRole("button", { name: "结束" }).click();
+    await page.getByRole("button", { name: "只结束" }).click();
     await expect(page.getByRole("button", { name: "开启共处" })).toBeVisible();
     await expect(page.getByText(/共 \d+ 条/)).toHaveText(countText ?? "");
   });
