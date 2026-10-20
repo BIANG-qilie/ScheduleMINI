@@ -25,6 +25,15 @@ const cargo = readFileSync(cargoPath, "utf8").replace(
 );
 writeFileSync(cargoPath, cargo);
 
+// Android 的 rust 构建会直接解析 tauri.conf.json，不吃 --config 覆盖。
+// 把指向 package.json 的版本改成三段 semver，应用内版本仍来自 package.json。
+const confPath = "src-tauri/tauri.conf.json";
+const conf = readFileSync(confPath, "utf8").replace(
+  /"version": "\.\.\/package\.json"/,
+  `"version": "${bundleVersion}"`,
+);
+writeFileSync(confPath, conf);
+
 const overlay = {
   version: bundleVersion,
   bundle: { android: { versionCode } },
