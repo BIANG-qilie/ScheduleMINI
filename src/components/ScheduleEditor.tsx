@@ -18,6 +18,7 @@ import {
   WORK_KIND_META,
   WORK_KIND_OPTIONS,
   formatDateKey,
+  partnerFacingName,
   itemSkippedDates,
   tagRespectsHolidays,
   workKindRequiredField,
@@ -139,7 +140,7 @@ export function ScheduleEditor({
               {(
                 [
                   ["self", "自己", couple.selfColor] as const,
-                  ["partner", "对方", couple.partnerColor] as const,
+                  ["partner", partnerFacingName(couple), couple.partnerColor] as const,
                   ["shared", "共同", "#f3a6a0"] as const,
                 ] as const
               ).map(([value, label, color]) => {

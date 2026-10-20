@@ -21,6 +21,8 @@ import {
   itemSkippedDates,
   occurrenceAnchorDate,
   parseAppConfig,
+  normalizeAddress,
+  partnerFacingName,
 } from "@/lib/config";
 import {
   ConfigLoadError,
@@ -37,6 +39,9 @@ import {
   parseDeviceSyncCode,
 } from "@/lib/sync/crypto";
 import {
+  addressStamp,
+  mergeAddressLww,
+  mergeCoexistenceLww,
   reconcileSyncResult,
   rekeyAuthoredItems,
   syncRoomOnce,
@@ -88,7 +93,11 @@ type ConfigState = {
     patch: Partial<
       Pick<
         CoupleIdentity,
-        "selfName" | "selfColor" | "partnerName" | "partnerColor"
+        | "selfName"
+        | "selfColor"
+        | "partnerName"
+        | "partnerColor"
+        | "addressForThem"
       >
     >,
   ) => Promise<void>;
@@ -152,10 +161,26 @@ async function runSyncOnce() {
     couple: config.couple,
     items: config.items,
     deletedItems: config.deletedItems,
+    coexistence: config.coexistence.updatedAt
+      ? {
+          current: config.coexistence.current,
+          updatedAt: config.coexistence.updatedAt,
+        }
+      : null,
     baseUrl: config.syncRelayUrl,
     latest: () => {
       const c = useConfigStore.getState().config;
-      return { items: c.items, deletedItems: c.deletedItems };
+      return {
+        items: c.items,
+        deletedItems: c.deletedItems,
+        couple: c.couple,
+        coexistence: c.coexistence.updatedAt
+          ? {
+              current: c.coexistence.current,
+              updatedAt: c.coexistence.updatedAt,
+            }
+          : null,
+      };
     },
   });
 
@@ -164,6 +189,23 @@ async function runSyncOnce() {
       const latest = useConfigStore.getState().config;
       if (latest.couple.inviteCode !== code) return;
       const reconciled = reconcileSyncResult(latest, result);
+      const them = mergeAddressLww(
+        addressStamp(latest.couple.addressForThem, latest.couple.addressForThemAt),
+        addressStamp(result.couple.addressForThem, result.couple.addressForThemAt),
+      );
+      const me = mergeAddressLww(
+        addressStamp(latest.couple.addressForMe, latest.couple.addressForMeAt),
+        addressStamp(result.couple.addressForMe, result.couple.addressForMeAt),
+      );
+      const session = mergeCoexistenceLww(
+        latest.coexistence.updatedAt
+          ? {
+              current: latest.coexistence.current,
+              updatedAt: latest.coexistence.updatedAt,
+            }
+          : null,
+        result.coexistence,
+      );
       await useConfigStore.getState().setConfig({
         ...latest,
         couple: {
@@ -172,7 +214,18 @@ async function runSyncOnce() {
           partnerName: result.couple.partnerName,
           partnerColor: result.couple.partnerColor,
           pairedAt: result.couple.pairedAt,
+          addressForThem: them?.text ?? latest.couple.addressForThem,
+          addressForThemAt: them?.updatedAt ?? latest.couple.addressForThemAt,
+          addressForMe: me?.text ?? "",
+          addressForMeAt: me?.updatedAt ?? "",
         },
+        coexistence: session
+          ? {
+              ...latest.coexistence,
+              current: session.current,
+              updatedAt: session.updatedAt,
+            }
+          : latest.coexistence,
         items: reconciled.items,
         deletedItems: reconciled.deletedItems,
       });
@@ -185,7 +238,7 @@ async function runSyncOnce() {
   }
   set({
     syncStatus: result.partnerOnline
-      ? `已同步 · 与「${result.couple.partnerName}」互知`
+      ? `已同步 · 与「${partnerFacingName(result.couple)}」互知`
       : result.selfSliceMerged
         ? "已同步 · 多端"
         : "已同步 · 等待对方加入",
@@ -498,10 +551,12 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   setCoupleIdentity: async (patch) => {
     const { config, setConfig, syncNow } = get();
-    await setConfig({
-      ...config,
-      couple: { ...config.couple, ...patch },
-    });
+    const couple = { ...config.couple, ...patch };
+    if (patch.addressForThem !== undefined) {
+      couple.addressForThem = normalizeAddress(patch.addressForThem);
+      couple.addressForThemAt = new Date().toISOString();
+    }
+    await setConfig({ ...config, couple });
     if (get().config.couple.inviteCode) void syncNow();
   },
 
@@ -605,6 +660,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         ...config.couple,
         partnerMemberId: null,
         pairedAt: null,
+        addressForMe: "",
+        addressForMeAt: "",
       },
     });
     set({ syncStatus: "已解除对方配对" });
@@ -641,60 +698,64 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   startCoexistence: async () => {
-    const { config, setConfig } = get();
+    const { config, setConfig, syncNow } = get();
     if (config.coexistence.current) return;
+    const startedAt = new Date().toISOString();
     await setConfig({
       ...config,
       coexistence: {
         ...config.coexistence,
+        updatedAt: startedAt,
         current: {
           id: createId(),
-          startedAt: new Date().toISOString(),
+          startedAt,
           pauses: [],
         },
       },
     });
+    if (get().config.couple.inviteCode) void syncNow();
   },
 
   pauseCoexistence: async () => {
-    const { config, setConfig } = get();
+    const { config, setConfig, syncNow } = get();
     const cur = config.coexistence.current;
     if (!cur || coexistenceIsPaused(cur)) return;
+    const pausedAt = new Date().toISOString();
     await setConfig({
       ...config,
       coexistence: {
         ...config.coexistence,
+        updatedAt: pausedAt,
         current: {
           ...cur,
-          pauses: [
-            ...cur.pauses,
-            { pausedAt: new Date().toISOString() },
-          ],
+          pauses: [...cur.pauses, { pausedAt }],
         },
       },
     });
+    if (get().config.couple.inviteCode) void syncNow();
   },
 
   resumeCoexistence: async () => {
-    const { config, setConfig } = get();
+    const { config, setConfig, syncNow } = get();
     const cur = config.coexistence.current;
     if (!cur || !coexistenceIsPaused(cur)) return;
+    const resumedAt = new Date().toISOString();
     const pauses = cur.pauses.map((p, i) =>
-      i === cur.pauses.length - 1 && !p.resumedAt
-        ? { ...p, resumedAt: new Date().toISOString() }
-        : p,
+      i === cur.pauses.length - 1 && !p.resumedAt ? { ...p, resumedAt } : p,
     );
     await setConfig({
       ...config,
       coexistence: {
         ...config.coexistence,
+        updatedAt: resumedAt,
         current: { ...cur, pauses },
       },
     });
+    if (get().config.couple.inviteCode) void syncNow();
   },
 
   stopCoexistence: async (opts) => {
-    const { config, setConfig, upsertItem } = get();
+    const { config, setConfig, upsertItem, syncNow } = get();
     const cur = config.coexistence.current;
     if (!cur) return null;
     const endedAt = new Date().toISOString();
@@ -713,9 +774,11 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       ...config,
       coexistence: {
         current: null,
+        updatedAt: endedAt,
         log: [finished, ...config.coexistence.log].slice(0, 40),
       },
     });
+    if (get().config.couple.inviteCode) void syncNow();
 
     if (!opts?.createSharedItem) return {};
 

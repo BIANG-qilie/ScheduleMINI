@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/widget_config_title"
+        android:textColor="#1C1612"
+        android:textSize="22sp" />
+
+    <RadioGroup
+        android:id="@+id/mode_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp">
+
+        <RadioButton
+            android:id="@+id/mode_self"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/widget_mode_self"
+            android:textColor="#1C1612"
+            android:textSize="18sp" />
+
+        <RadioButton
+            android:id="@+id/mode_partner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/widget_mode_partner"
+            android:textColor="#1C1612"
+            android:textSize="18sp" />
+
+        <RadioButton
+            android:id="@+id/mode_both"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:checked="true"
+            android:text="@string/widget_mode_both"
+            android:textColor="#1C1612"
+            android:textSize="18sp" />
+    </RadioGroup>
+
+    <Button
+        android:id="@+id/mode_save"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:background="#1C1612"
+        android:text="@string/widget_config_save"
+        android:textColor="#FBF6EE" />
+</LinearLayout>

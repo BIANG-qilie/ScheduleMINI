@@ -15,6 +15,10 @@ import {
   safeParseAppConfig,
 } from "@/lib/config";
 import { isTauriRuntime } from "@/lib/utils";
+import {
+  WIDGET_SNAPSHOT_FILE,
+  buildWidgetSnapshot,
+} from "@/lib/widget-snapshot";
 
 const LOCAL_STORAGE_KEY = "desktop-schedule-widget:config";
 
@@ -48,6 +52,38 @@ function formatZodIssuesZh(error: {
   const more =
     error.issues.length > 5 ? `（另有 ${error.issues.length - 5} 项）` : "";
   return parts.join("；") + more;
+}
+
+function notifyHomeWidget() {
+  const bridge = (
+    globalThis as {
+      SmWidget?: { notifyScheduleChanged?: () => void };
+    }
+  ).SmWidget;
+  try {
+    bridge?.notifyScheduleChanged?.();
+  } catch {
+    // 桌面端没有这个接口
+  }
+}
+
+let snapshotGeneration = 0;
+
+/** 从已校验的配置写出小组件快照。配置文件仍是唯一来源。 */
+export async function persistWidgetSnapshot(config: AppConfig): Promise<void> {
+  if (!isTauriRuntime()) return;
+  const generation = ++snapshotGeneration;
+  try {
+    const snapshot = await buildWidgetSnapshot(config);
+    if (generation !== snapshotGeneration) return;
+    await writeTextFile(WIDGET_SNAPSHOT_FILE, JSON.stringify(snapshot), {
+      baseDir: BaseDirectory.AppConfig,
+    });
+    if (generation !== snapshotGeneration) return;
+    notifyHomeWidget();
+  } catch {
+    // 配置已经落盘。快照下次保存或打开应用时再写。
+  }
 }
 
 function parseConfigText(text: string): AppConfig {
@@ -96,7 +132,9 @@ export async function loadConfig(): Promise<AppConfig> {
   const text = await readTextFile(CONFIG_FILE_NAME, {
     baseDir: BaseDirectory.AppConfig,
   });
-  return parseConfigText(text);
+  const config = parseConfigText(text);
+  void persistWidgetSnapshot(config);
+  return config;
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
@@ -109,6 +147,7 @@ export async function saveConfig(config: AppConfig): Promise<void> {
   await writeTextFile(CONFIG_FILE_NAME, JSON.stringify(validated, null, 2), {
     baseDir: BaseDirectory.AppConfig,
   });
+  await persistWidgetSnapshot(validated);
 }
 
 export async function exportConfigToFile(config: AppConfig): Promise<boolean> {

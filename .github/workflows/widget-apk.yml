@@ -1,0 +1,81 @@
+name: Widget draft APK
+
+# 只给桌面小组件草稿安装包。不发布，不写 latest.json，不标成 latest。
+on:
+  push:
+    tags: ["v0.2.2-widget"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Keystore
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+          else
+            echo "SIGNING=debug" >> "$GITHUB_ENV"
+          fi
+      - name: Build APK
+        run: npm run tauri android build -- --apk
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk \
+            "ScheduleMINI-${VERSION}-universal.apk"
+          NOTES=$(cat <<EOF
+          桌面小组件草稿。应用版本仍是 ${VERSION}，更新器不会把它当成新版本。
+
+          安装包签名：${SIGNING}。
+
+          长按主屏幕，添加小部件，选小日程的「此刻」。放置时选自己、对方或双方，默认双方。点一下打开「此刻」。
+          EOF
+          )
+          if gh release view v0.2.2-widget >/dev/null 2>&1; then
+            gh release upload v0.2.2-widget "ScheduleMINI-${VERSION}-universal.apk" --clobber
+          else
+            gh release create v0.2.2-widget "ScheduleMINI-${VERSION}-universal.apk" \
+              --draft \
+              --title "小日程 ${VERSION} 桌面小组件" \
+              --notes "$NOTES"
+          fi
+          gh release view v0.2.2-widget --json isDraft,tagName,assets \
+            --jq '{draft:.isDraft,tag:.tagName,assets:[.assets[].name]}'

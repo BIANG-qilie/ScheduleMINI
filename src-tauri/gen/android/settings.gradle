@@ -1,3 +1,11 @@
-include ':app'
+include ':widget-render'
 
-apply from: 'tauri.settings.gradle'
+def requested = gradle.startParameter.taskNames
+def widgetOnly = !requested.isEmpty() && requested.every { it.contains('widget-render') }
+if (!widgetOnly) {
+    include ':app'
+    def tauriSettings = new File(settingsDir, 'tauri.settings.gradle')
+    if (tauriSettings.exists()) {
+        apply from: tauriSettings
+    }
+}

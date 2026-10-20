@@ -15,6 +15,18 @@ import {
 } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
+/** 纸色界面上的标签色，色条 class 与此一致 */
+export const TAG_BAR: Record<ScheduleTag, string> = {
+  work: "#1f8a78",
+  commute: "#7c5cbf",
+  study: "#3d7ea6",
+  rest: "#3d8f62",
+  life: "#c47a32",
+  call: "#c45d6e",
+  game: "#5c62b8",
+  other: "#8a8176",
+};
+
 /** 设置页 / 周视图浅色底 */
 export const TAG_SURFACE: Record<
   ScheduleTag,

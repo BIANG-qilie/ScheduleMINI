@@ -4,6 +4,8 @@ import {
   flipOwnerForLocal,
   lanePartnerItems,
   laneSelfItems,
+  mergeAddressLww,
+  mergeCoexistenceLww,
   mergeItemsLww,
   reconcileSyncResult,
   rekeyAuthoredItems,
@@ -59,6 +61,56 @@ describe("reconcileSyncResult", () => {
     );
     expect(reconciled.items).toEqual([]);
     expect(reconciled.deletedItems.w).toBe("2026-10-20T09:00:00.000Z");
+  });
+});
+
+describe("mergeAddressLww", () => {
+  it("keeps the newer 称呼 and lets an empty label clear it", () => {
+    const older = { text: "对方", updatedAt: "2026-10-20T01:00:00.000Z" };
+    const newer = { text: "宝宝", updatedAt: "2026-10-20T02:00:00.000Z" };
+    expect(mergeAddressLww(older, newer)?.text).toBe("宝宝");
+    expect(mergeAddressLww(newer, older)?.text).toBe("宝宝");
+    expect(
+      mergeAddressLww(newer, {
+        text: "   ",
+        updatedAt: "2026-10-20T03:00:00.000Z",
+      })?.text,
+    ).toBe("");
+  });
+});
+
+describe("mergeCoexistenceLww", () => {
+  const running = {
+    current: {
+      id: "s",
+      startedAt: "2026-10-20T01:00:00.000Z",
+      pauses: [] as { pausedAt: string; resumedAt?: string }[],
+    },
+    updatedAt: "2026-10-20T01:00:00.000Z",
+  };
+
+  it("a later stop clears a running session", () => {
+    const stopped = {
+      current: null,
+      updatedAt: "2026-10-20T01:05:00.000Z",
+    };
+    expect(mergeCoexistenceLww(running, stopped)?.current).toBeNull();
+    expect(mergeCoexistenceLww(stopped, running)?.current).toBeNull();
+  });
+
+  it("an older pause does not overwrite a newer stop", () => {
+    const paused = {
+      current: {
+        ...running.current,
+        pauses: [{ pausedAt: "2026-10-20T01:02:00.000Z" }],
+      },
+      updatedAt: "2026-10-20T01:02:00.000Z",
+    };
+    const stopped = {
+      current: null,
+      updatedAt: "2026-10-20T01:06:00.000Z",
+    };
+    expect(mergeCoexistenceLww(stopped, paused)?.current).toBeNull();
   });
 });
 

@@ -28,7 +28,9 @@ const ScheduleEditor = lazy(() =>
   import("@/components/ScheduleEditor").then((m) => ({ default: m.ScheduleEditor })),
 );
 import {
+  ADDRESS_MAX,
   APP_DISPLAY_NAME,
+  calledByPartner,
   DEFAULT_CALL_CHANNEL,
   DEFAULT_WORK_KIND,
   SCHEDULE_TAG_OPTIONS,
@@ -44,6 +46,7 @@ import {
   itemWorkKind,
   ownerColor,
   ownerLabel,
+  partnerFacingName,
   workKindRequiredField,
   type ItemOwner,
   type ReminderMinutes,
@@ -189,6 +192,17 @@ export function SettingsPage() {
   );
   const narrow = useNarrow();
   const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list">("now");
+
+  useEffect(() => {
+    const openNow = () => setPhoneTab("now");
+    window.__scheduleOpenNow = openNow;
+    if (window.SmWidget?.consumeOpenNow?.()) openNow();
+    return () => {
+      if (window.__scheduleOpenNow === openNow) {
+        window.__scheduleOpenNow = undefined;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void init();
@@ -491,7 +505,7 @@ export function SettingsPage() {
             {phoneTab === "now"
               ? config.soloMode
                 ? "一个人"
-                : `${config.couple.selfName} · ${config.couple.partnerName}`
+                : `${config.couple.selfName} · ${partnerFacingName(config.couple)}`
               : `共 ${sortedItems.length} 条`}
           </p>
         </header>
@@ -523,7 +537,7 @@ export function SettingsPage() {
                   className="h-2 w-2 rounded-full"
                   style={{ backgroundColor: config.couple.partnerColor }}
                 />
-                {config.couple.partnerName}
+                {partnerFacingName(config.couple)}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span
@@ -972,16 +986,23 @@ export function SettingsPage() {
                     }
                   />
                 </div>
+                {calledByPartner(config.couple) ? (
+                  <p className="truncate text-xs text-[var(--color-ink-muted)]">
+                    称你 {calledByPartner(config.couple)}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2 rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_30%,var(--color-surface))] p-3.5">
-                <Label htmlFor="partner-name">对方怎么称呼</Label>
+                <Label htmlFor="partner-name">称呼</Label>
                 <div className="flex gap-2">
                   <Input
                     id="partner-name"
-                    value={config.couple.partnerName}
+                    maxLength={ADDRESS_MAX}
+                    value={config.couple.addressForThem}
+                    placeholder={config.couple.partnerName}
                     onChange={(e) =>
                       void setCoupleIdentity({
-                        partnerName: e.target.value || "对方",
+                        addressForThem: e.target.value,
                       })
                     }
                   />
@@ -1031,7 +1052,7 @@ export function SettingsPage() {
               {isPaired(config.couple) ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <p>
-                    已与「{config.couple.partnerName}」配对
+                    已与「{partnerFacingName(config.couple)}」配对
                     {config.couple.inviteCode
                       ? ` · ${config.couple.inviteCode}`
                       : ""}
