@@ -19,7 +19,7 @@ jobs:
         include:
           - platform: windows-latest
             args: ""
-          - platform: macos-13
+          - platform: macos-15-intel
             args: "--target universal-apple-darwin"
     runs-on: ${{ matrix.platform }}
     steps:
