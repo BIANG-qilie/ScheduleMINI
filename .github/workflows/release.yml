@@ -19,7 +19,7 @@ jobs:
         include:
           - platform: windows-latest
             args: ""
-          - platform: macos-latest
+          - platform: macos-13
             args: "--target universal-apple-darwin"
     runs-on: ${{ matrix.platform }}
     steps:
@@ -36,7 +36,7 @@ jobs:
         run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
