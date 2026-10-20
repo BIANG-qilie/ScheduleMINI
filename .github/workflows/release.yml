@@ -61,9 +61,9 @@ jobs:
             - 取消过一次的周循环，可以删掉整段
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           updaterJsonPreferNsis: true
-          releaseAssetNamePattern: ${{ steps.names.outputs.pattern }}
+          assetNamePattern: ${{ steps.names.outputs.pattern }}
           args: --config src-tauri/ci-version.json ${{ matrix.args }}
 
   android:
