@@ -191,6 +191,17 @@ export function SettingsPage() {
   const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list">("now");
 
   useEffect(() => {
+    const openNow = () => setPhoneTab("now");
+    window.__scheduleOpenNow = openNow;
+    if (window.SmWidget?.consumeOpenNow?.()) openNow();
+    return () => {
+      if (window.__scheduleOpenNow === openNow) {
+        window.__scheduleOpenNow = undefined;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     void init();
   }, [init]);
 

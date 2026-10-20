@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_name">此刻</string>
+    <string name="widget_description">桌面上的此刻：自己、对方，或双方</string>
+    <string name="widget_config_title">这个小部件看谁</string>
+    <string name="widget_config_save">放上桌面</string>
+    <string name="widget_config_done">完成</string>
+    <string name="widget_mode_self">自己</string>
+    <string name="widget_mode_partner">对方</string>
+    <string name="widget_mode_both">双方</string>
+</resources>

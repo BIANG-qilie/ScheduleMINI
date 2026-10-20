@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   desktop:
+    if: ${{ !endsWith(github.ref_name, '-widget') }}
     strategy:
       fail-fast: false
       matrix:

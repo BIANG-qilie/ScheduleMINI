@@ -84,4 +84,4 @@ npm run pull:build
 
 产物：`src-tauri/target/release/desktop-schedule-widget.exe`。
 
-Android 调试包见 [docs/android.md](docs/android.md)。
+Android 调试包和主屏幕小组件见 [docs/android.md](docs/android.md)。
