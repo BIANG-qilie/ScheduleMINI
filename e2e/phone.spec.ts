@@ -1,3 +1,4 @@
+import { existsSync, statSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 test.use({ viewport: { width: 390, height: 844 } });
@@ -56,5 +57,70 @@ test.describe("手机宽度", () => {
     await dialog.getByRole("tab", { name: "显示" }).click();
     await expect(dialog.getByLabel("开始前提醒")).toBeVisible();
     await expect(dialog.getByLabel("开机自启")).toHaveCount(0);
+  });
+});
+
+test.describe("手机周视图连续滚动换日", () => {
+  test.use({ timezoneId: "Asia/Shanghai" });
+
+  test("从 20 日向下滚过凌晨尾巴后标题变成 21 日", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-20T15:00:00+08:00") });
+    await page.goto("/");
+    await page.getByRole("button", { name: "周", exact: true }).click();
+    const scroller = page.locator("[data-week-scroll]");
+    await expect(scroller).toBeVisible();
+
+    const stuckDate = () =>
+      page.evaluate(() => {
+        const el = document.querySelector("[data-week-scroll]");
+        if (!el) return null;
+        const edge = el.getBoundingClientRect().top + 1;
+        const headers = [
+          ...document.querySelectorAll<HTMLElement>("[data-day-header]"),
+        ];
+        let current: HTMLElement | null = null;
+        for (const header of headers) {
+          const rect = header.getBoundingClientRect();
+          if (rect.top <= edge + 4 && rect.bottom > edge) current = header;
+        }
+        return current?.dataset.date ?? null;
+      });
+
+    await expect.poll(stuckDate).toBe("2026-10-20");
+
+    const scrollBy = (date: string, extra: number) =>
+      page.evaluate(
+        ({ date, extra }) => {
+          const el = document.querySelector("[data-week-scroll]");
+          const section = el?.querySelector<HTMLElement>(
+            `[data-day="${date}"]`,
+          );
+          if (!el || !section) return false;
+          const delta =
+            section.getBoundingClientRect().top - el.getBoundingClientRect().top;
+          el.scrollTop += delta + extra;
+          return true;
+        },
+        { date, extra },
+      );
+
+    // 日内下滚仍停在 20 日，凌晨下沿（21日 00:00）还在这一天里
+    expect(await scrollBy("2026-10-20", 400)).toBe(true);
+    await expect.poll(stuckDate).toBe("2026-10-20");
+    await expect(
+      page.locator('[data-day="2026-10-20"]').getByText("21日", { exact: true }),
+    ).toBeAttached();
+
+    // 再往下，越过这一天的尾巴，进入 21 日自己的网格起点
+    expect(await scrollBy("2026-10-21", 0)).toBe(true);
+    await expect.poll(stuckDate).toBe("2026-10-21");
+    await expect(page.locator('[data-day="2026-10-20"]')).toBeAttached();
+
+    const media = "/cursor/stores/self/media";
+    if (existsSync(media)) {
+      const shot = `${media}/phone-week-scroll-next-day.png`;
+      await page.screenshot({ path: shot });
+      expect(statSync(shot).size).toBeGreaterThan(1000);
+    }
   });
 });

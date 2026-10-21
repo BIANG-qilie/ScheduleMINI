@@ -2,12 +2,15 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   ScheduleItemSchema,
   clockToCycleMinutes,
+  columnSegmentsOnDate,
   emptyConfig,
   formatCallChannelLabel,
   formatItemSpan,
+  formatLowerBandHour,
   formatWorkDisplay,
   itemCycleSlice,
   getCurrentItem,
+  getUpcomingItem,
   gridDayHours,
   gridViewSpanHours,
   isItemNow,
@@ -414,15 +417,70 @@ describe("周循环跨日 22:00–06:00", () => {
     expect(isItemNow(overnightWeekly, now, {})).toBe(false);
   });
 
-  it("周视图片段：周一晚 + 周二晨", () => {
+  it("周视图片段留在起始日列，结束日列不画凌晨尾巴", () => {
+    expect(columnSegmentsOnDate(overnightWeekly, "2026-09-21", 1)).toEqual([
+      { start: "22:00", end: "24:00" },
+      { start: "00:00", end: "06:00" },
+    ]);
+    expect(columnSegmentsOnDate(overnightWeekly, "2026-09-22", 2)).toEqual([]);
     expect(itemSegmentOnDate(overnightWeekly, "2026-09-21", 1)).toEqual({
       start: "22:00",
       end: "24:00",
     });
-    expect(itemSegmentOnDate(overnightWeekly, "2026-09-22", 2)).toEqual({
-      start: "00:00",
-      end: "06:00",
-    });
+    expect(itemSegmentOnDate(overnightWeekly, "2026-09-22", 2)).toBeNull();
+  });
+
+  it("20日 22:00–06:00 落在 20 日列，直到 21 日 06:00", () => {
+    const item = {
+      ...overnightWeekly,
+      id: "tue-night",
+      weekdays: [2],
+      tag: "life" as const,
+    };
+    // 2026-10-20 周二 → 21 日凌晨
+    const on20 = columnSegmentsOnDate(item, "2026-10-20", 2, {}, 7);
+    expect(on20).toEqual([
+      { start: "22:00", end: "24:00" },
+      { start: "00:00", end: "06:00" },
+    ]);
+    expect(columnSegmentsOnDate(item, "2026-10-21", 3, {}, 7)).toEqual([]);
+    const evening = clockToCycleMinutes(on20[0].start, 7);
+    const midnight = clockToCycleMinutes("24:00", 7);
+    const morningStart = clockToCycleMinutes(on20[1].start, 7);
+    const morningEnd = clockToCycleMinutes(on20[1].end, 7);
+    expect(morningStart).toBe(midnight);
+    expect(morningEnd).toBeGreaterThan(evening);
+    expect(morningEnd).toBe(23 * 60);
+    expect(formatLowerBandHour(0, "2026-10-20")).toBe("21日 00:00");
+    expect(formatLowerBandHour(6, "2026-10-20")).toBe("21日 06:00");
+  });
+
+  it("进行中的夜班不会在次日晚上被当成又一次开始", () => {
+    const item = {
+      ...overnightWeekly,
+      id: "tue-night",
+      title: "夜班",
+      weekdays: [2],
+      tag: "life" as const,
+    };
+    const evening = new Date(2026, 9, 20, 23, 10, 0);
+    const morning = new Date(2026, 9, 21, 3, 10, 0);
+    expect(getUpcomingItem([item], evening)?.dateKey).toBe("2026-10-27");
+    expect(getUpcomingItem([item], evening)?.item.id).toBe("tue-night");
+    expect(getUpcomingItem([item], morning)?.dateKey).toBe("2026-10-27");
+    const other = {
+      id: "thu-work",
+      start: "22:00",
+      end: "23:00",
+      title: "夜班工作",
+      weekdays: [4],
+      enabled: true,
+      recurrence: "weekly" as const,
+      tag: "life" as const,
+      skippedDates: [] as string[],
+    };
+    expect(getUpcomingItem([item, other], morning)?.item.id).toBe("thu-work");
+    expect(getUpcomingItem([item, other], morning)?.dateKey).toBe("2026-10-22");
   });
 
   it("progress stays in 0–1", () => {

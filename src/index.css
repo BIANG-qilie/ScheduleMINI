@@ -355,60 +355,6 @@ body.widget-body #root {
   animation: phone-rise 520ms var(--ease-out) both;
 }
 
-.address-line {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 0 4px;
-}
-.address-line label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--color-ink-muted);
-}
-.address-line input {
-  width: 6.5rem;
-  max-width: 42vw;
-  border: 0;
-  border-bottom: 1px solid var(--color-line);
-  border-radius: 0;
-  background: transparent;
-  padding: 2px 0 3px;
-  font: inherit;
-  font-size: 14px;
-  color: var(--color-ink);
-}
-.address-line input::placeholder {
-  color: color-mix(in oklab, var(--color-ink-muted) 70%, transparent);
-}
-.address-line input:focus {
-  outline: none;
-  border-bottom-color: var(--color-ink);
-}
-.address-called {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--color-ink-muted);
-}
-.address-line.glass label,
-.address-line.glass .address-called {
-  color: rgba(255, 255, 255, 0.46);
-}
-.address-line.glass input {
-  color: white;
-  border-bottom-color: rgba(255, 255, 255, 0.28);
-}
-.address-line.glass input:focus {
-  border-bottom-color: white;
-}
-
 .now-hero .kicker {
   color: var(--color-accent);
 }
