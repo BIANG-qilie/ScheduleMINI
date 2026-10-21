@@ -1,6 +1,11 @@
 import type { CoupleIdentity, ItemOwner, ScheduleItem } from "@/lib/config";
 import { normalizeAddress } from "@/lib/config";
-import { encryptPayload, decryptPayload, normalizeInviteCode } from "@/lib/sync/crypto";
+import {
+  decryptPayload,
+  digestJson,
+  encryptPayload,
+  normalizeInviteCode,
+} from "@/lib/sync/crypto";
 import { fetchRoom, pushMemberSlice } from "@/lib/sync/relay";
 
 /** 一个称呼：短标签 + 写入时间。空文本表示清掉 */
@@ -225,6 +230,7 @@ export async function buildEncryptedSelfSlice(
   const payload = await encryptPayload(inviteCode, slice);
   return {
     payload,
+    docRev: await digestJson(slice),
     // 槽位版本 = 推送时刻：删除不会抬高条目最大时间，用它会被中继判旧拒收
     updatedAt: new Date().toISOString(),
     itemCount: all.length,
@@ -391,7 +397,7 @@ export async function pushSelfSlice(args: {
   baseUrl?: string | null;
 }) {
   const code = normalizeInviteCode(args.inviteCode);
-  const { payload, updatedAt } = await buildEncryptedSelfSlice(
+  const { payload, docRev, updatedAt } = await buildEncryptedSelfSlice(
     code,
     args.couple,
     args.items,
@@ -404,6 +410,7 @@ export async function pushSelfSlice(args: {
     name: args.couple.selfName,
     color: args.couple.selfColor,
     payload,
+    docRev,
     updatedAt,
     baseUrl: args.baseUrl,
   });
@@ -416,6 +423,8 @@ export type SyncOnceResult = {
   coexistence: SyncedCoexistence | null;
   partnerOnline: boolean;
   selfSliceMerged: boolean;
+  /** 中继房间代数。长轮询用它判断有没有新写入 */
+  roomRev?: number;
   error?: string;
 };
 
@@ -495,5 +504,13 @@ export async function syncRoomOnce(args: {
     : pushed.data.rejected
       ? "中继拒收，稍后重试"
       : pulled.error;
-  return { ...pulled, items, deletedItems, couple, coexistence, error };
+  return {
+    ...pulled,
+    items,
+    deletedItems,
+    couple,
+    coexistence,
+    error,
+    roomRev: pushed.ok ? pushed.data.rev : undefined,
+  };
 }

@@ -3,6 +3,9 @@
  * Room = map of personId → encrypted slice.
  * Max 2 distinct personIds (couple); same personId may be written by many devices (LWW by updatedAt).
  *
+ * GET /v1/rooms/:code/wait?sinceRev=&timeoutMs=  hangs until rev changes.
+ * Clients on 0.2.2 keep using GET + PUT; payload ciphertext is unchanged.
+ *
  * Run: node sync-relay/server.mjs
  * Default: http://127.0.0.1:8787
  */
@@ -11,11 +14,17 @@ import { URL } from "node:url";
 
 const PORT = Number(process.env.PORT || 8787);
 const MAX_PERSONS = 2;
+const DEFAULT_WAIT_MS = 25_000;
+const MAX_WAIT_MS = 30_000;
 
-/** @type {Map<string, { persons: Map<string, object>, updatedAt: string }>} */
+/** @type {Map<string, { persons: Map<string, object>, updatedAt: string | null, rev: number }>} */
 const rooms = new Map();
 
+/** @type {Map<string, Set<{ res: import("node:http").ServerResponse, timer: NodeJS.Timeout }>>} */
+const waiters = new Map();
+
 function json(res, status, body) {
+  if (res.writableEnded) return;
   const data = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -61,6 +70,62 @@ function roomMembers(room) {
   }));
 }
 
+function roomBody(code, room, extra = {}) {
+  if (!room) {
+    return { code, updatedAt: null, rev: 0, members: [], ...extra };
+  }
+  return {
+    code,
+    updatedAt: room.updatedAt,
+    rev: room.rev,
+    members: roomMembers(room),
+    ...extra,
+  };
+}
+
+function clampWait(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_WAIT_MS;
+  return Math.min(MAX_WAIT_MS, Math.max(0, Math.floor(n)));
+}
+
+function removeWaiter(code, waiter) {
+  const set = waiters.get(code);
+  if (!set) return;
+  set.delete(waiter);
+  if (set.size === 0) waiters.delete(code);
+}
+
+function notify(code) {
+  const set = waiters.get(code);
+  if (!set || set.size === 0) return;
+  const room = rooms.get(code) ?? null;
+  for (const waiter of [...set]) {
+    clearTimeout(waiter.timer);
+    removeWaiter(code, waiter);
+    json(waiter.res, 200, roomBody(code, room, { changed: true }));
+  }
+}
+
+function holdWait(req, res, code, timeoutMs) {
+  const waiter = { res, timer: /** @type {NodeJS.Timeout} */ (null) };
+  waiter.timer = setTimeout(() => {
+    removeWaiter(code, waiter);
+    json(res, 200, roomBody(code, rooms.get(code) ?? null, { changed: false }));
+  }, timeoutMs);
+  let set = waiters.get(code);
+  if (!set) {
+    set = new Set();
+    waiters.set(code, set);
+  }
+  set.add(waiter);
+  req.on("close", () => {
+    if (res.writableEnded) return;
+    clearTimeout(waiter.timer);
+    removeWaiter(code, waiter);
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -75,37 +140,63 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
   if (req.method === "GET" && url.pathname === "/health") {
-    json(res, 200, { ok: true, rooms: rooms.size, maxPersons: MAX_PERSONS });
+    json(res, 200, {
+      ok: true,
+      rooms: rooms.size,
+      maxPersons: MAX_PERSONS,
+      wait: true,
+    });
     return;
   }
 
-  // /v1/rooms/:code and /v1/rooms/:code/members/:personId (memberId = personId)
-  const match = url.pathname.match(
-    /^\/v1\/rooms\/([^/]+)(?:\/members\/([^/]+))?$/,
-  );
-  if (!match) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  // /v1/rooms/:code
+  // /v1/rooms/:code/wait
+  // /v1/rooms/:code/members/:personId
+  if (parts[0] !== "v1" || parts[1] !== "rooms" || !parts[2]) {
     json(res, 404, { error: "not_found" });
     return;
   }
 
-  const code = normalizeCode(decodeURIComponent(match[1]));
-  const personId = match[2] ? decodeURIComponent(match[2]) : null;
+  const code = normalizeCode(decodeURIComponent(parts[2]));
   if (!code || code.length < 4) {
     json(res, 400, { error: "bad_code" });
     return;
   }
 
-  if (req.method === "GET" && !personId) {
-    const room = rooms.get(code);
-    if (!room) {
-      json(res, 200, { code, members: [], updatedAt: null });
+  const isWait = parts[3] === "wait" && !parts[4];
+  const personId =
+    parts[3] === "members" && parts[4] ? decodeURIComponent(parts[4]) : null;
+  if (parts[3] && !isWait && !personId) {
+    json(res, 404, { error: "not_found" });
+    return;
+  }
+
+  if (req.method === "GET" && isWait) {
+    const room = rooms.get(code) ?? null;
+    const current = room?.rev ?? 0;
+    const rawSince = url.searchParams.get("sinceRev");
+    const sinceRev =
+      rawSince === null || rawSince === "" ? current : Number(rawSince);
+    if (!Number.isInteger(sinceRev) || sinceRev < 0) {
+      json(res, 400, { error: "bad_since" });
       return;
     }
-    json(res, 200, {
-      code,
-      updatedAt: room.updatedAt,
-      members: roomMembers(room),
-    });
+    const timeoutMs = clampWait(url.searchParams.get("timeoutMs"));
+    if (current !== sinceRev) {
+      json(res, 200, roomBody(code, room, { changed: true }));
+      return;
+    }
+    if (timeoutMs === 0) {
+      json(res, 200, roomBody(code, room, { changed: false }));
+      return;
+    }
+    holdWait(req, res, code, timeoutMs);
+    return;
+  }
+
+  if (req.method === "GET" && !personId) {
+    json(res, 200, roomBody(code, rooms.get(code) ?? null));
     return;
   }
 
@@ -116,6 +207,7 @@ const server = http.createServer(async (req, res) => {
       const color = String(body.color || "#a21caf").slice(0, 16);
       const payload = String(body.payload || "");
       const updatedAt = String(body.updatedAt || new Date().toISOString());
+      const docRev = String(body.docRev || "").slice(0, 64);
       if (!payload) {
         json(res, 400, { error: "missing_payload" });
         return;
@@ -123,7 +215,7 @@ const server = http.createServer(async (req, res) => {
 
       let room = rooms.get(code);
       if (!room) {
-        room = { persons: new Map(), updatedAt };
+        room = { persons: new Map(), updatedAt: null, rev: 0 };
         rooms.set(code, room);
       }
 
@@ -138,12 +230,13 @@ const server = http.createServer(async (req, res) => {
 
       // Same personId: keep newer slice (multi-device LWW)
       if (existing && existing.updatedAt > updatedAt) {
-        json(res, 200, {
-          code,
-          updatedAt: room.updatedAt,
-          rejected: true,
-          members: roomMembers(room),
-        });
+        json(res, 200, roomBody(code, room, { rejected: true }));
+        return;
+      }
+
+      // Same plaintext: do not move the slot clock or wake waiters.
+      if (existing && docRev && existing.docRev === docRev) {
+        json(res, 200, roomBody(code, room, { unchanged: true }));
         return;
       }
 
@@ -153,13 +246,12 @@ const server = http.createServer(async (req, res) => {
         color,
         payload,
         updatedAt,
+        ...(docRev ? { docRev } : {}),
       });
+      room.rev += 1;
       room.updatedAt = new Date().toISOString();
-      json(res, 200, {
-        code,
-        updatedAt: room.updatedAt,
-        members: roomMembers(room),
-      });
+      notify(code);
+      json(res, 200, roomBody(code, room));
       return;
     } catch {
       json(res, 400, { error: "bad_json" });

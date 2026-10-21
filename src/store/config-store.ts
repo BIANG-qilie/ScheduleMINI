@@ -46,6 +46,12 @@ import {
   rekeyAuthoredItems,
   syncRoomOnce,
 } from "@/lib/sync/couple";
+import {
+  COUPLE_SYNC_FALLBACK_MS,
+  COUPLE_SYNC_WAIT_MS,
+  decideAfterRoomWait,
+  waitForRoomChange,
+} from "@/lib/sync/relay";
 import { createId, isTauriRuntime } from "@/lib/utils";
 
 type ConfigState = {
@@ -109,7 +115,7 @@ type ConfigState = {
   joinWithDeviceCode: (raw: string) => Promise<void>;
   unpair: () => Promise<void>;
   stopRoomSync: () => Promise<void>;
-  syncNow: () => Promise<void>;
+  syncNow: () => Promise<boolean>;
   startCoexistence: () => Promise<void>;
   pauseCoexistence: () => Promise<void>;
   resumeCoexistence: () => Promise<void>;
@@ -131,8 +137,10 @@ async function broadcastConfig(config: AppConfig) {
   }
 }
 
-let syncInFlight: Promise<void> | null = null;
+let syncInFlight: Promise<boolean> | null = null;
 let syncQueued = false;
+/** 最近一次中继房间代数，长轮询从此处接着等 */
+let lastRoomRev = 0;
 
 /** 日程写入串行。单次取消的保存若与删除重叠，后完成的那次会把整段写回来。 */
 let configWrite: Promise<unknown> = Promise.resolve();
@@ -146,13 +154,13 @@ function enqueueConfigWrite<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function runSyncOnce() {
+async function runSyncOnce(): Promise<boolean> {
   const { config } = useConfigStore.getState();
   const set = useConfigStore.setState;
   const code = config.couple.inviteCode;
   if (!code) {
     set({ syncStatus: null });
-    return;
+    return true;
   }
   set({ syncStatus: "同步中…" });
 
@@ -232,9 +240,11 @@ async function runSyncOnce() {
     });
   }
 
+  if (typeof result.roomRev === "number") lastRoomRev = result.roomRev;
+
   if (result.error) {
     set({ syncStatus: `同步失败：${result.error}` });
-    return;
+    return false;
   }
   set({
     syncStatus: result.partnerOnline
@@ -243,6 +253,7 @@ async function runSyncOnce() {
         ? "已同步 · 多端"
         : "已同步 · 等待对方加入",
   });
+  return true;
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -687,10 +698,12 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       return syncInFlight;
     }
     syncInFlight = (async () => {
+      let ok = true;
       do {
         syncQueued = false;
-        await runSyncOnce();
+        ok = await runSyncOnce();
       } while (syncQueued);
+      return ok;
     })().finally(() => {
       syncInFlight = null;
     });
@@ -826,14 +839,58 @@ export async function subscribeConfigChanges(
   return () => window.removeEventListener(CONFIG_CHANGED_EVENT, handler);
 }
 
-/** Poll relay while paired / waiting. */
+/** 编辑后对方靠长轮询立刻醒来；连不上中继时改短间隔拉取。 */
 export function startCoupleSyncLoop(getConfig: () => AppConfig) {
-  const tick = () => {
-    const cfg = getConfig();
-    if (!cfg.couple.inviteCode) return;
-    void useConfigStore.getState().syncNow();
+  let stopped = false;
+  const abort = new AbortController();
+  let timer = 0;
+  let syncFirst = true;
+
+  const schedule = (ms: number) => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => void step(), ms);
   };
-  tick();
-  const id = window.setInterval(tick, 20_000);
-  return () => window.clearInterval(id);
+
+  async function step() {
+    if (stopped) return;
+    const cfg = getConfig();
+    if (!cfg.couple.inviteCode) {
+      syncFirst = true;
+      schedule(COUPLE_SYNC_FALLBACK_MS);
+      return;
+    }
+    if (syncFirst) {
+      const ok = await useConfigStore.getState().syncNow();
+      if (stopped) return;
+      if (!ok) {
+        schedule(COUPLE_SYNC_FALLBACK_MS);
+        return;
+      }
+    }
+    const code = getConfig().couple.inviteCode;
+    const baseUrl = getConfig().syncRelayUrl;
+    if (!code) {
+      syncFirst = true;
+      schedule(COUPLE_SYNC_FALLBACK_MS);
+      return;
+    }
+    const wait = await waitForRoomChange({
+      inviteCode: code,
+      sinceRev: lastRoomRev,
+      timeoutMs: COUPLE_SYNC_WAIT_MS,
+      baseUrl,
+      signal: abort.signal,
+    });
+    if (stopped || abort.signal.aborted) return;
+    const next = decideAfterRoomWait(wait);
+    syncFirst = next.sync;
+    schedule(next.delayMs);
+  }
+
+  void step();
+  return () => {
+    stopped = true;
+    abort.abort();
+    window.clearTimeout(timer);
+  };
 }
