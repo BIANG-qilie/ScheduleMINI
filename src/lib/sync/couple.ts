@@ -6,7 +6,12 @@ import {
   encryptPayload,
   normalizeInviteCode,
 } from "@/lib/sync/crypto";
-import { fetchRoom, pushMemberSlice } from "@/lib/sync/relay";
+import {
+  fetchRoom,
+  pushMemberSlice,
+  relayPersonId,
+  type RelayMember,
+} from "@/lib/sync/relay";
 
 /** 一个称呼：短标签 + 写入时间。空文本表示清掉 */
 export type AddressStamp = { text: string; updatedAt: string };
@@ -34,7 +39,106 @@ export type PersonSlice = {
   addressForThem?: AddressStamp;
   /** 正在进行的共处。记入之前不产生日程条目 */
   coexistence?: SyncedCoexistence;
+  /**
+   * 本身份的绑定快照。同一人的其他设备靠它知道已经和谁配对；
+   * 邀请码变了则跟着去新房间。不占第二个身份席位。
+   */
+  binding?: CoupleBinding;
 };
+
+/** 加密切片里的绑定。partnerMemberId 为空表示还没配对 */
+export type CoupleBinding = {
+  inviteCode: string;
+  partnerMemberId: string | null;
+  partnerName: string;
+  partnerColor: string;
+  pairedAt: string | null;
+  updatedAt: string;
+};
+
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+
+export function bindingFromCouple(couple: CoupleIdentity): CoupleBinding | null {
+  if (!couple.bindingUpdatedAt) return null;
+  const inviteCode = couple.inviteCode
+    ? normalizeInviteCode(couple.inviteCode)
+    : "";
+  if (!inviteCode) return null;
+  return {
+    inviteCode,
+    partnerMemberId: couple.partnerMemberId ?? null,
+    partnerName: couple.partnerName,
+    partnerColor: couple.partnerColor,
+    pairedAt: couple.pairedAt ?? null,
+    updatedAt: couple.bindingUpdatedAt,
+  };
+}
+
+function sameBindingIdentity(a: CoupleIdentity, b: CoupleIdentity) {
+  const roomA = a.inviteCode ? normalizeInviteCode(a.inviteCode) : "";
+  const roomB = b.inviteCode ? normalizeInviteCode(b.inviteCode) : "";
+  return (
+    roomA === roomB &&
+    (a.partnerMemberId ?? null) === (b.partnerMemberId ?? null) &&
+    a.partnerName === b.partnerName &&
+    a.partnerColor === b.partnerColor &&
+    (a.pairedAt ?? null) === (b.pairedAt ?? null)
+  );
+}
+
+/** 绑定内容变了才换时间戳，没变就沿用，明文指纹才不会每次都变 */
+export function stampBinding(before: CoupleIdentity, after: CoupleIdentity): CoupleIdentity {
+  if (sameBindingIdentity(before, after)) {
+    return { ...after, bindingUpdatedAt: before.bindingUpdatedAt || "" };
+  }
+  return { ...after, bindingUpdatedAt: new Date().toISOString() };
+}
+
+function applyBindingHint(couple: CoupleIdentity, binding?: CoupleBinding | null): CoupleIdentity {
+  if (!binding?.updatedAt || !binding.partnerMemberId) return couple;
+  if (couple.bindingUpdatedAt && couple.bindingUpdatedAt > binding.updatedAt) {
+    return couple;
+  }
+  const color = HEX_COLOR.test(binding.partnerColor || "")
+    ? binding.partnerColor
+    : couple.partnerColor;
+  return {
+    ...couple,
+    partnerMemberId: binding.partnerMemberId,
+    partnerName: binding.partnerName || couple.partnerName,
+    partnerColor: color,
+    pairedAt: binding.pairedAt || couple.pairedAt,
+    bindingUpdatedAt: binding.updatedAt,
+  };
+}
+
+function roomCodeOf(raw: unknown) {
+  if (typeof raw !== "string" || !raw.trim()) return "";
+  const code = normalizeInviteCode(raw);
+  return code.length >= 4 ? code : "";
+}
+
+/** 本身份要去的新房间。redirect 优先，它不会被后续日程推送擦掉 */
+export function followRoomCode(
+  current: string,
+  redirect: unknown,
+  binding?: CoupleBinding | null,
+) {
+  const here = roomCodeOf(current);
+  const fromRedirect = roomCodeOf(redirect);
+  if (fromRedirect && fromRedirect !== here) return fromRedirect;
+  const fromBinding = roomCodeOf(binding?.inviteCode);
+  if (fromBinding && fromBinding !== here) return fromBinding;
+  return "";
+}
+
+function otherPersonId(members: RelayMember[] | undefined, selfId: string) {
+  for (const member of members ?? []) {
+    const id = relayPersonId(member);
+    if (id && id !== selfId) return id;
+  }
+  return "";
+}
 
 export function addressStamp(
   text: string | undefined,
@@ -218,6 +322,7 @@ export async function buildEncryptedSelfSlice(
     owner: (it.owner ?? "self") as ItemOwner,
   }));
   const address = addressStamp(couple.addressForThem, couple.addressForThemAt);
+  const binding = bindingFromCouple(couple);
   const slice: PersonSlice = {
     items: all,
     selfName: couple.selfName,
@@ -226,6 +331,7 @@ export async function buildEncryptedSelfSlice(
     deletedItems,
     ...(address ? { addressForThem: address } : {}),
     ...(coexistence?.updatedAt ? { coexistence } : {}),
+    ...(binding ? { binding } : {}),
   };
   const payload = await encryptPayload(inviteCode, slice);
   return {
@@ -256,6 +362,8 @@ export async function pullAndMergePartner(args: {
   coexistence: SyncedCoexistence | null;
   partnerOnline: boolean;
   selfSliceMerged: boolean;
+  /** 本身份已经换到这间房。调用方应改去同步它，不要再把旧切片推回原房间 */
+  followInviteCode?: string;
   error?: string;
 }> {
   const code = normalizeInviteCode(args.inviteCode);
@@ -273,8 +381,12 @@ export async function pullAndMergePartner(args: {
     };
   }
 
-  const selfEntry = room.data.members.find((m) => m.memberId === selfId);
-  const others = room.data.members.filter((m) => m.memberId !== selfId);
+  const members = room.data.members ?? [];
+  const selfEntry = members.find((m) => relayPersonId(m) === selfId);
+  const others = members.filter((m) => {
+    const id = relayPersonId(m);
+    return Boolean(id) && id !== selfId;
+  });
 
   let merged = [...args.items];
   let tombstones = mergeTombstones(args.deletedItems);
@@ -288,6 +400,7 @@ export async function pullAndMergePartner(args: {
     args.couple.addressForMeAt,
   );
   let coexistence = args.coexistence ?? null;
+  let selfBinding: CoupleBinding | null = null;
   let nextCouple: CoupleIdentity = {
     ...args.couple,
     inviteCode: code,
@@ -296,6 +409,7 @@ export async function pullAndMergePartner(args: {
   const applySliceMeta = (slice: PersonSlice, mine: boolean) => {
     if (mine) {
       addressForThem = mergeAddressLww(addressForThem, slice.addressForThem);
+      if (slice.binding?.updatedAt) selfBinding = slice.binding;
     }
     coexistence = mergeCoexistenceLww(coexistence, slice.coexistence);
   };
@@ -316,6 +430,13 @@ export async function pullAndMergePartner(args: {
     }
   }
 
+  nextCouple = applyBindingHint(nextCouple, selfBinding);
+  const followInviteCode = followRoomCode(
+    code,
+    selfEntry?.redirect,
+    selfBinding,
+  );
+
   const withAddress = (couple: CoupleIdentity): CoupleIdentity => ({
     ...couple,
     addressForThem: addressForThem?.text ?? "",
@@ -324,15 +445,31 @@ export async function pullAndMergePartner(args: {
     addressForMeAt: addressForMe?.updatedAt ?? "",
   });
 
-  if (others.length === 0) {
+  if (followInviteCode) {
     return {
       items: applyTombstones(merged, tombstones),
       deletedItems: tombstones,
-      couple: withAddress({
-        ...nextCouple,
-        partnerMemberId: null,
-        pairedAt: args.couple.pairedAt,
-      }),
+      couple: withAddress(stampBinding(args.couple, nextCouple)),
+      coexistence,
+      partnerOnline: Boolean(nextCouple.partnerMemberId),
+      selfSliceMerged,
+      followInviteCode,
+    };
+  }
+
+  if (others.length === 0) {
+    const keepHint = Boolean(nextCouple.partnerMemberId);
+    const alone: CoupleIdentity = keepHint
+      ? nextCouple
+      : {
+          ...nextCouple,
+          partnerMemberId: null,
+          pairedAt: args.couple.pairedAt,
+        };
+    return {
+      items: applyTombstones(merged, tombstones),
+      deletedItems: tombstones,
+      couple: withAddress(stampBinding(args.couple, alone)),
       coexistence,
       partnerOnline: false,
       selfSliceMerged,
@@ -340,6 +477,7 @@ export async function pullAndMergePartner(args: {
   }
 
   const partner = others[0];
+  const partnerId = relayPersonId(partner);
   let slice: PersonSlice;
   try {
     slice = await decryptPayload<PersonSlice>(code, partner.payload);
@@ -358,13 +496,13 @@ export async function pullAndMergePartner(args: {
   const fromPartner = (slice.items ?? []).map((it) => ({
     ...it,
     owner: flipOwnerForLocal(it.owner),
-    ownerId: it.ownerId || partner.memberId,
+    ownerId: it.ownerId || partnerId,
   }));
   merged = mergeItemsLww(merged, fromPartner);
   tombstones = mergeTombstones(tombstones, slice.deletedItems);
   if (
     args.couple.partnerMemberId &&
-    args.couple.partnerMemberId !== partner.memberId
+    args.couple.partnerMemberId !== partnerId
   ) {
     addressForThem = { text: "", updatedAt: new Date().toISOString() };
     addressForMe = null;
@@ -375,13 +513,15 @@ export async function pullAndMergePartner(args: {
   return {
     items: applyTombstones(merged, tombstones),
     deletedItems: tombstones,
-    couple: withAddress({
-      ...nextCouple,
-      partnerMemberId: partner.memberId,
-      partnerName: slice.selfName || partner.name || args.couple.partnerName,
-      partnerColor: slice.selfColor || partner.color || args.couple.partnerColor,
-      pairedAt: args.couple.pairedAt || new Date().toISOString(),
-    }),
+    couple: withAddress(
+      stampBinding(args.couple, {
+        ...nextCouple,
+        partnerMemberId: partnerId,
+        partnerName: slice.selfName || partner.name || args.couple.partnerName,
+        partnerColor: slice.selfColor || partner.color || args.couple.partnerColor,
+        pairedAt: args.couple.pairedAt || nextCouple.pairedAt || new Date().toISOString(),
+      }),
+    ),
     coexistence,
     partnerOnline: true,
     selfSliceMerged,
@@ -435,11 +575,7 @@ export type SyncLatest = {
   coexistence?: SyncedCoexistence | null;
 };
 
-/**
- * 一次完整同步：拉取 → 合并 → 推送。
- * latest() 返回推送前的最新本地状态，避免覆盖同步期间的本地编辑。
- */
-export async function syncRoomOnce(args: {
+export type SyncRoomArgs = {
   inviteCode: string;
   couple: CoupleIdentity;
   items: ScheduleItem[];
@@ -447,8 +583,41 @@ export async function syncRoomOnce(args: {
   coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
   latest?: () => SyncLatest;
-}): Promise<SyncOnceResult> {
+  /**
+   * 测试用：拉取之后、推送之前。用来把「对方这时才加入」插进同一次同步。
+   */
+  afterPull?: () => Promise<void> | void;
+};
+
+/**
+ * 一次完整同步：拉取 → 合并 → 推送。
+ * latest() 返回推送前的最新本地状态，避免覆盖同步期间的本地编辑。
+ * 若这次拉取时对方还没进房间，推送返回的成员列表里已经有对方，会再合并一次。
+ * 若本身份留了换房间标记，则改去新房间同步，不再把旧切片推回原房间。
+ */
+export async function syncRoomOnce(args: SyncRoomArgs): Promise<SyncOnceResult> {
+  return syncRoomOnceAt(args, 0);
+}
+
+async function syncRoomOnceAt(
+  args: SyncRoomArgs,
+  depth: number,
+): Promise<SyncOnceResult> {
   const pulled = await pullAndMergePartner(args);
+  if (pulled.followInviteCode && depth < 2) {
+    return syncRoomOnceAt(
+      {
+        ...args,
+        afterPull: undefined,
+        inviteCode: pulled.followInviteCode,
+        couple: { ...pulled.couple, inviteCode: pulled.followInviteCode },
+        items: pulled.items,
+        deletedItems: pulled.deletedItems,
+        coexistence: pulled.coexistence,
+      },
+      depth + 1,
+    );
+  }
   if (pulled.error && !pulled.selfSliceMerged && !pulled.partnerOnline) {
     return {
       ...pulled,
@@ -457,6 +626,8 @@ export async function syncRoomOnce(args: {
       coexistence: args.coexistence ?? null,
     };
   }
+
+  if (args.afterPull) await args.afterPull();
 
   const now = args.latest?.() ?? {
     items: args.items,
@@ -504,7 +675,7 @@ export async function syncRoomOnce(args: {
     : pushed.data.rejected
       ? "中继拒收，稍后重试"
       : pulled.error;
-  return {
+  const result: SyncOnceResult = {
     ...pulled,
     items,
     deletedItems,
@@ -513,4 +684,77 @@ export async function syncRoomOnce(args: {
     error,
     roomRev: pushed.ok ? pushed.data.rev : undefined,
   };
+  if (!pushed.ok || depth >= 2) return result;
+
+  const redirect = followRoomCode(
+    args.inviteCode,
+    pushed.data.members.find((m) => relayPersonId(m) === couple.memberId)?.redirect,
+    null,
+  );
+  if (redirect) {
+    return syncRoomOnceAt(
+      {
+        ...args,
+        afterPull: undefined,
+        inviteCode: redirect,
+        couple: { ...couple, inviteCode: redirect },
+        items,
+        deletedItems,
+        coexistence,
+      },
+      depth + 1,
+    );
+  }
+  const other = otherPersonId(pushed.data.members, couple.memberId);
+  if (other && other !== (couple.partnerMemberId || "")) {
+    return syncRoomOnceAt(
+      {
+        ...args,
+        afterPull: undefined,
+        couple,
+        items,
+        deletedItems,
+        coexistence,
+      },
+      depth + 1,
+    );
+  }
+  return result;
+}
+
+/** 把「这个身份去了新房间」写进旧房间。日程推送不会清掉 redirect */
+export async function publishRoomRedirect(args: {
+  fromCode: string;
+  toCode: string;
+  couple: CoupleIdentity;
+  items: ScheduleItem[];
+  deletedItems?: Tombstones;
+  coexistence?: SyncedCoexistence | null;
+  baseUrl?: string | null;
+}) {
+  const fromCode = normalizeInviteCode(args.fromCode);
+  const toCode = normalizeInviteCode(args.toCode);
+  const couple: CoupleIdentity = {
+    ...args.couple,
+    inviteCode: toCode,
+    bindingUpdatedAt: new Date().toISOString(),
+  };
+  const { payload, docRev, updatedAt } = await buildEncryptedSelfSlice(
+    fromCode,
+    couple,
+    args.items,
+    args.deletedItems,
+    args.coexistence ?? null,
+  );
+  return pushMemberSlice({
+    inviteCode: fromCode,
+    memberId: args.couple.memberId,
+    name: args.couple.selfName,
+    color: args.couple.selfColor,
+    payload,
+    docRev,
+    updatedAt,
+    redirect: toCode,
+    baseUrl: args.baseUrl,
+  });
 }

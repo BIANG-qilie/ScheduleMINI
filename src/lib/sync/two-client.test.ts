@@ -4,17 +4,30 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   coexistenceElapsedMs,
   coexistenceIsPaused,
+  defaultConfig,
   defaultCouple,
+  pairBanner,
   partnerFacingName,
+  widgetCoupleTitle,
   type CoupleIdentity,
   type ScheduleItem,
 } from "@/lib/config";
-import { syncRoomOnce, type SyncedCoexistence } from "@/lib/sync/couple";
-import { encryptPayload, generateInviteCode } from "@/lib/sync/crypto";
+import { useConfigStore } from "@/store/config-store";
+import {
+  publishRoomRedirect,
+  syncRoomOnce,
+  type SyncedCoexistence,
+} from "@/lib/sync/couple";
+import {
+  decryptPayload,
+  encryptPayload,
+  generateInviteCode,
+} from "@/lib/sync/crypto";
 import {
   decideAfterRoomWait,
   fetchRoom,
   LEGACY_COUPLE_SYNC_POLL_MS,
+  pushMemberSlice,
   waitForRoomChange,
 } from "@/lib/sync/relay";
 
@@ -412,7 +425,236 @@ describe("two clients against a local relay", () => {
     await sync(b);
     expect(titles(b)).toEqual(["旧端事项"]);
   });
+
+  it("B 的第二台在绑定前就已经在同步，A 加入后也显示已配对", async () => {
+    const code = generateInviteCode(6);
+    const ba = client({ inviteCode: code, selfName: "B" });
+    add(ba, "b1", "B 的课");
+    await sync(ba);
+    const bb = client({
+      inviteCode: code,
+      memberId: ba.couple.memberId,
+      selfName: "B",
+    });
+    await sync(bb);
+    expect(pairBanner(bb.couple)).toBeNull();
+    expect(widgetCoupleTitle(bb.couple)).toBe("今日安排");
+
+    const a = client({ inviteCode: code, selfName: "A" });
+    a.couple.addressForThem = "小B";
+    a.couple.addressForThemAt = stamp();
+    add(a, "a1", "A 的事");
+    await sync(a);
+    ba.couple.addressForThem = "小A";
+    ba.couple.addressForThemAt = stamp();
+    await sync(ba);
+    await sync(bb);
+
+    expect(bb.couple.partnerMemberId).toBe(a.couple.memberId);
+    expect(bb.couple.partnerName).toBe("A");
+    expect(pairBanner(bb.couple)).toBe("已与「小A」配对");
+    expect(widgetCoupleTitle(bb.couple)).toBe("B · 小A");
+    expect(bb.couple.addressForMe).toBe("小B");
+    expect(titles(bb)).toContain("A 的事");
+
+    const room = await fetchRoom(code, BASE);
+    expect(room.ok).toBe(true);
+    if (!room.ok) return;
+    expect(room.data.members).toHaveLength(2);
+    const slot = room.data.members.find((m) => m.memberId === ba.couple.memberId);
+    const slice = await decryptPayload<{
+      binding?: { partnerMemberId: string | null; partnerName: string };
+    }>(code, slot!.payload);
+    expect(slice.binding?.partnerMemberId).toBe(a.couple.memberId);
+    expect(slice.binding?.partnerName).toBe("A");
+  });
+
+  it("正在拉取的第二台，会在这次同步结束时看到中途加入的 A", async () => {
+    const code = generateInviteCode(6);
+    const ba = client({ inviteCode: code, selfName: "B" });
+    await sync(ba);
+    const bb = client({
+      inviteCode: code,
+      memberId: ba.couple.memberId,
+      selfName: "B",
+    });
+    await sync(bb);
+    const a = client({ inviteCode: code, selfName: "A" });
+
+    const result = await syncRoomOnce({
+      inviteCode: code,
+      couple: bb.couple,
+      items: bb.items,
+      deletedItems: bb.deletedItems,
+      coexistence: bb.coexistence,
+      baseUrl: BASE,
+      latest: () => ({
+        items: bb.items,
+        deletedItems: bb.deletedItems,
+        couple: bb.couple,
+        coexistence: bb.coexistence,
+      }),
+      afterPull: async () => {
+        await sync(a);
+        await sync(ba);
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.couple.partnerMemberId).toBe(a.couple.memberId);
+    expect(result.couple.partnerName).toBe("A");
+    expect(pairBanner(result.couple)).toBe("已与「A」配对");
+    expect(widgetCoupleTitle(result.couple)).toBe("B · A");
+    const room = await fetchRoom(code, BASE);
+    expect(room.ok && room.data.members).toHaveLength(2);
+  });
+
+  it("B-a 改去 A 的房间后，已经在同步的 B-b 跟着显示已和 A 配对", async () => {
+    const roomB = generateInviteCode(6);
+    const roomA = generateInviteCode(6);
+    const ba = client({ inviteCode: roomB, selfName: "B" });
+    add(ba, "b1", "B 的课");
+    await sync(ba);
+    const bb = client({
+      inviteCode: roomB,
+      memberId: ba.couple.memberId,
+      selfName: "B",
+    });
+    await sync(bb);
+
+    const a = client({ inviteCode: roomA, selfName: "A" });
+    a.couple.addressForThem = "小B";
+    a.couple.addressForThemAt = stamp();
+    await sync(a);
+
+    const moved = await syncRoomOnce({
+      inviteCode: roomB,
+      couple: bb.couple,
+      items: bb.items,
+      deletedItems: bb.deletedItems,
+      coexistence: bb.coexistence,
+      baseUrl: BASE,
+      latest: () => ({
+        items: bb.items,
+        deletedItems: bb.deletedItems,
+        couple: bb.couple,
+        coexistence: bb.coexistence,
+      }),
+      afterPull: async () => {
+        await publishRoomRedirect({
+          fromCode: roomB,
+          toCode: roomA,
+          couple: { ...ba.couple, partnerMemberId: null, pairedAt: null },
+          items: ba.items,
+          deletedItems: ba.deletedItems,
+          coexistence: ba.coexistence,
+          baseUrl: BASE,
+        });
+        ba.couple.inviteCode = roomA;
+        ba.couple.partnerMemberId = null;
+        ba.couple.pairedAt = null;
+        await sync(ba);
+        await sync(a);
+        await sync(ba);
+      },
+    });
+
+    expect(moved.error).toBeUndefined();
+    expect(moved.couple.inviteCode).toBe(roomA);
+    expect(moved.couple.partnerMemberId).toBe(a.couple.memberId);
+    expect(moved.couple.partnerName).toBe("A");
+    expect(pairBanner(moved.couple)).toBe("已与「A」配对");
+    expect(moved.couple.addressForMe).toBe("小B");
+    const room = await fetchRoom(roomA, BASE);
+    expect(room.ok).toBe(true);
+    if (!room.ok) return;
+    expect(room.data.members).toHaveLength(2);
+    expect(room.data.members.map((m) => m.memberId).sort()).toEqual(
+      [a.couple.memberId, ba.couple.memberId].sort(),
+    );
+
+    const stale = await pushWithoutRedirect(roomB, ba);
+    expect(stale.redirect).toBe(roomA);
+  });
+
+  it("设置页这一端加入 A 的房间后，另一台设备的配置变成已配对", async () => {
+    const mem = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (k: string) => mem.get(k) ?? null,
+        setItem: (k: string, v: string) => void mem.set(k, String(v)),
+        removeItem: (k: string) => void mem.delete(k),
+        clear: () => mem.clear(),
+        key: (i: number) => [...mem.keys()][i] ?? null,
+        get length() {
+          return mem.size;
+        },
+      },
+    });
+
+    const roomA = generateInviteCode(6);
+    const a = client({ inviteCode: roomA, selfName: "A" });
+    await sync(a);
+
+    const ba = defaultConfig();
+    ba.items = [];
+    ba.syncRelayUrl = BASE;
+    ba.couple = { ...ba.couple, selfName: "B", inviteCode: null };
+    useConfigStore.setState({
+      config: ba,
+      hydrated: true,
+      loading: false,
+      syncStatus: null,
+    });
+    const roomB = await useConfigStore.getState().createInvite();
+    const bb = client({
+      inviteCode: roomB,
+      memberId: useConfigStore.getState().config.couple.memberId,
+      selfName: "B",
+    });
+    await sync(bb);
+    expect(pairBanner(bb.couple)).toBeNull();
+
+    await useConfigStore.getState().joinWithCode(roomA);
+    await sync(bb);
+
+    const mine = useConfigStore.getState().config.couple;
+    expect(mine.inviteCode).toBe(roomA);
+    expect(pairBanner(mine)).toBe("已与「A」配对");
+    expect(bb.couple.inviteCode).toBe(roomA);
+    expect(bb.couple.partnerMemberId).toBe(a.couple.memberId);
+    expect(pairBanner(bb.couple)).toBe("已与「A」配对");
+    expect(widgetCoupleTitle(bb.couple)).toBe("B · A");
+    const room = await fetchRoom(roomA, BASE);
+    expect(room.ok && room.data.members).toHaveLength(2);
+  });
 });
+
+async function pushWithoutRedirect(code: string, who: Client) {
+  const payload = await encryptPayload(code, {
+    items: who.items,
+    selfName: who.couple.selfName,
+    selfColor: who.couple.selfColor,
+    doc: "shared-v2",
+    deletedItems: who.deletedItems,
+  });
+  const pushed = await pushMemberSlice({
+    inviteCode: code,
+    memberId: who.couple.memberId,
+    name: who.couple.selfName,
+    color: who.couple.selfColor,
+    payload,
+    updatedAt: new Date().toISOString(),
+    baseUrl: BASE,
+  });
+  expect(pushed.ok).toBe(true);
+  const room = await fetchRoom(code, BASE);
+  expect(room.ok).toBe(true);
+  if (!room.ok) throw new Error(room.error);
+  const slot = room.data.members.find((m) => m.memberId === who.couple.memberId);
+  return { redirect: slot?.redirect ?? null };
+}
 
 describe("room wait fallback", () => {
   it("断线走短间隔，房间变更立刻再同步", () => {

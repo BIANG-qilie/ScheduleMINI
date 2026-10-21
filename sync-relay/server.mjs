@@ -67,6 +67,7 @@ function roomMembers(room) {
     color: m.color,
     updatedAt: m.updatedAt,
     payload: m.payload,
+    ...(m.redirect ? { redirect: m.redirect } : {}),
   }));
 }
 
@@ -228,6 +229,17 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      // redirect 指向该身份的新房间。请求没带这个字段时保留原值，
+      // 否则同一身份另一台设备随后推的日程会把「跟过去」擦掉。
+      const hasRedirect = Object.prototype.hasOwnProperty.call(body, "redirect");
+      const prevRedirect = existing?.redirect || "";
+      const redirect = hasRedirect
+        ? body.redirect
+          ? normalizeCode(String(body.redirect))
+          : ""
+        : prevRedirect;
+      const redirectChanged = redirect !== prevRedirect;
+
       // Same personId: keep newer slice (multi-device LWW)
       if (existing && existing.updatedAt > updatedAt) {
         json(res, 200, roomBody(code, room, { rejected: true }));
@@ -235,7 +247,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Same plaintext: do not move the slot clock or wake waiters.
-      if (existing && docRev && existing.docRev === docRev) {
+      if (existing && docRev && existing.docRev === docRev && !redirectChanged) {
         json(res, 200, roomBody(code, room, { unchanged: true }));
         return;
       }
@@ -247,6 +259,7 @@ const server = http.createServer(async (req, res) => {
         payload,
         updatedAt,
         ...(docRev ? { docRev } : {}),
+        ...(redirect ? { redirect } : {}),
       });
       room.rev += 1;
       room.updatedAt = new Date().toISOString();

@@ -46,7 +46,7 @@ import {
   formatDateKey,
   formatItemSpan,
   formatScheduleScope,
-  isPaired,
+  pairBanner,
   itemCallChannel,
   itemDisplayTitle,
   itemGamePlatform,
@@ -1107,10 +1107,10 @@ export function SettingsPage() {
 
             <div className="space-y-3 rounded-2xl border border-[var(--color-line)] p-4">
               <h3 className="text-sm font-semibold">邀请对方</h3>
-              {isPaired(config.couple) ? (
+              {pairBanner(config.couple) ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <p>
-                    已与「{partnerFacingName(config.couple)}」配对
+                    {pairBanner(config.couple)}
                     {config.couple.inviteCode
                       ? ` · ${config.couple.inviteCode}`
                       : ""}
