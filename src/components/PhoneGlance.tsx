@@ -20,7 +20,6 @@ import { getTodayLabel, onHolidayData } from "@/lib/holidays";
 import { formatItemSubline } from "@/lib/schedule-style";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import { useConfigStore } from "@/store/config-store";
-import { AddressLine } from "@/components/AddressLine";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 
 function upcomingWhen(ref: UpcomingRef, todayKey: string) {
@@ -218,8 +217,6 @@ export function PhoneGlance({
       </div>
 
       {bothFree ? <p className="now-hint">你们现在都空着</p> : null}
-
-      <AddressLine />
 
       <div className="phone-coex">
         <CoexistenceBar />

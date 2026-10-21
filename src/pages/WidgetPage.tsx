@@ -32,7 +32,6 @@ import {
   TAG_WIDGET,
   formatItemSubline,
 } from "@/lib/schedule-style";
-import { AddressLine } from "@/components/AddressLine";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import {
@@ -307,11 +306,8 @@ function DualFocusWidget({
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-1 px-2.5 pb-2 pt-0.5">
-          <AddressLine tone="glass" />
-          <div className="flex min-h-8 items-center justify-center">
-            <CoexistenceBar compact />
-          </div>
+        <div className="flex min-h-8 items-center justify-center px-2.5 pb-2 pt-0.5">
+          <CoexistenceBar compact />
         </div>
 
         {holidayName ? (
