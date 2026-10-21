@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -9,19 +10,21 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
   clockToCycleMinutes,
+  columnSegmentsOnDate,
   compareTime,
   computeOverlapLayout,
   formatDateKey,
+  formatLowerBandHour,
   formatWeekRangeLabel,
   getCurrentWeekColumns,
   getWeekAnchor,
   gridDayHours,
   gridViewSpanHours,
+  parseDateKey,
   itemDisplayTitle,
-  itemOccursOnDate,
   itemRecurrence,
-  itemSegmentOnDate,
   itemTag,
+  shiftDateKey,
   ownerColor,
   type CoupleIdentity,
   type DayOverride,
@@ -43,6 +46,19 @@ function minutesToClock(cycleStartHour: number, offsetMins: number) {
   const h = Math.floor(total / 60) % 24;
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function columnOn(dateKey: string): {
+  weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  dateKey: string;
+  monthDay: string;
+} {
+  const date = parseDateKey(dateKey);
+  return {
+    weekday: date.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6,
+    dateKey,
+    monthDay: `${date.getMonth() + 1}/${date.getDate()}`,
+  };
 }
 
 type WeekGridProps = {
@@ -100,7 +116,11 @@ export function WeekGrid({
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const pressTimer = useRef<number | null>(null);
   const suppressClick = useRef(false);
-  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const ignoreScrollSync = useRef(false);
+  const prependAdjust = useRef(0);
+  const touchY = useRef<number | null>(null);
+  const [phoneSpan, setPhoneSpan] = useState({ before: 1, after: 8 });
   const [holidayTick, setHolidayTick] = useState(0);
 
   useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
@@ -123,18 +143,53 @@ export function WeekGrid({
   const rangeLabel = formatWeekRangeLabel(columns);
   const isCurrentWeek = weekOffset === 0;
   const dayLayout = layout === "day";
+  const weekStartKey = columns[0]?.dateKey;
+  const phoneDays = useMemo(() => {
+    if (!weekStartKey) return [];
+    const start = shiftDateKey(weekStartKey, -phoneSpan.before);
+    const count = phoneSpan.before + columns.length + phoneSpan.after;
+    return Array.from({ length: count }, (_, i) =>
+      columnOn(shiftDateKey(start, i)),
+    );
+  }, [weekStartKey, columns.length, phoneSpan.before, phoneSpan.after]);
   const focusCol =
-    columns.find((col) => col.dateKey === focusKey) ??
+    (dayLayout ? phoneDays : columns).find((col) => col.dateKey === focusKey) ??
     columns.find((col) => col.dateKey === todayKey) ??
     columns[0];
-  const shown = dayLayout && focusCol ? [focusCol] : columns;
+  const shown = dayLayout ? [] : columns;
 
   useEffect(() => {
     if (!dayLayout) return;
-    if (columns.some((col) => col.dateKey === focusKey)) return;
+    if (phoneDays.some((col) => col.dateKey === focusKey)) return;
     const today = columns.find((col) => col.dateKey === todayKey);
     setFocusKey((today ?? columns[0])?.dateKey ?? null);
-  }, [columns, dayLayout, focusKey, todayKey]);
+  }, [columns, dayLayout, focusKey, phoneDays, todayKey]);
+
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    const extra = prependAdjust.current;
+    if (!dayLayout || !el || !extra) return;
+    prependAdjust.current = 0;
+    // 顶上再往上：停在前一天的末尾，凌晨尾巴还在，不跳过
+    el.scrollTop = Math.max(0, extra - 80);
+  }, [dayLayout, phoneSpan.before]);
+
+  useLayoutEffect(() => {
+    if (!dayLayout) return;
+    if (ignoreScrollSync.current) {
+      ignoreScrollSync.current = false;
+      return;
+    }
+    const el = scrollerRef.current;
+    const section = el?.querySelector<HTMLElement>(
+      `[data-day="${focusKey}"]`,
+    );
+    if (!el || !section) return;
+    const delta =
+      section.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    if (Math.abs(delta) < 1) return;
+    el.scrollTop += delta;
+  }, [dayLayout, focusKey]);
 
   const clearPress = () => {
     if (pressTimer.current != null) window.clearTimeout(pressTimer.current);
@@ -154,13 +209,18 @@ export function WeekGrid({
   const totalHeight = 24 * DAY_PX + bottomPad;
   const viewHeight = viewSpan * DAY_PX + bottomPad;
 
-  const nowLineTop = useMemo(() => {
+  const nowLineTopFor = (columnDateKey: string) => {
     if (!isCurrentWeek) return null;
-    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const hour = now.getHours();
+    const hhmm = `${String(hour).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const today = formatDateKey(now);
+    // 起点之前的钟点画在前一日列的下半段（那里才是今天凌晨）
+    const ownerKey = hour < gridStartHour ? shiftDateKey(today, -1) : today;
+    if (columnDateKey !== ownerKey) return null;
     const offset = clockToCycleMinutes(hhmm, gridStartHour);
     if (offset < 0 || offset > CYCLE_MINUTES) return null;
     return (offset / 60) * DAY_PX;
-  }, [now, isCurrentWeek, gridStartHour]);
+  };
 
   const enabledItems = useMemo(
     () => items.filter((it) => it.enabled).sort((a, b) => compareTime(a.start, b.start)),
@@ -169,24 +229,13 @@ export function WeekGrid({
 
   const dayLabels = useMemo(() => {
     const map = new Map<string, DayLabel>();
-    for (const col of columns) {
+    const cols = dayLayout ? phoneDays : columns;
+    for (const col of cols) {
       map.set(col.dateKey, resolveDayState(col.dateKey, dayOverrides));
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, dayOverrides, holidayTick]);
-
-  const stepDay = (dir: 1 | -1) => {
-    if (!focusCol) return;
-    const idx = columns.findIndex((c) => c.dateKey === focusCol.dateKey);
-    const next = columns[idx + dir];
-    if (next) {
-      setFocusKey(next.dateKey);
-      return;
-    }
-    setWeekOffset((o) => o + dir);
-    setFocusKey(null);
-  };
+  }, [columns, dayLayout, phoneDays, dayOverrides, holidayTick]);
 
   const handleLaneClick = (
     weekday: number,
@@ -209,222 +258,48 @@ export function WeekGrid({
     );
   };
 
-  return (
-    <div
-      className={cn(
-        "paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl",
-        dayLayout && "phone-week",
-      )}
-      onClick={() => setMenu(null)}
-      onPointerDown={(e) => {
-        if (dayLayout) swipe.current = { x: e.clientX, y: e.clientY };
-      }}
-      onPointerUp={(e) => {
-        const from = swipe.current;
-        swipe.current = null;
-        if (!dayLayout || !from) return;
-        const dx = e.clientX - from.x;
-        const dy = e.clientY - from.y;
-        if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-        suppressClick.current = true;
-        window.setTimeout(() => (suppressClick.current = false), 0);
-        stepDay(dx < 0 ? 1 : -1);
-      }}
-    >
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
-        <div>
-          <p className="font-display text-2xl leading-none tracking-tight text-[var(--color-ink)]">
-            {isCurrentWeek
-              ? "本周"
-              : weekOffset > 0
-                ? `往后第 ${weekOffset} 周`
-                : `往前第 ${-weekOffset} 周`}
-          </p>
-          <p className="mt-1 font-mono text-[11px] tracking-wide text-[var(--color-ink-muted)]">
-            {rangeLabel}
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="上一周"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
-            onClick={() => setWeekOffset((o) => o - 1)}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="下一周"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
-            onClick={() => setWeekOffset((o) => o + 1)}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          {!isCurrentWeek ? (
-            <button
-              type="button"
-              className="ml-1 inline-flex h-8 items-center rounded-full border border-[var(--color-line)] px-3 text-xs tracking-wide text-[var(--color-ink-muted)] transition hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-ink)]"
-              onClick={() => setWeekOffset(0)}
-            >
-              回到本周
-            </button>
-          ) : null}
-        </div>
-      </div>
+  const syncPhoneDay = () => {
+    const el = scrollerRef.current;
+    if (!dayLayout || !el) return;
+    const edge = el.getBoundingClientRect().top + 1;
+    const sections = [...el.querySelectorAll<HTMLElement>("[data-day]")];
+    let current = sections[0];
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= edge + 8) current = section;
+      else break;
+    }
+    const key = current?.dataset.day;
+    if (key && key !== focusKey) {
+      ignoreScrollSync.current = true;
+      setFocusKey(key);
+    }
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24) {
+      setPhoneSpan((span) =>
+        span.after >= 21 ? span : { ...span, after: span.after + 1 },
+      );
+    }
+  };
 
-      {dayLayout ? (
-        <div className="phone-days flex shrink-0 gap-1 overflow-x-auto px-2 py-2">
-          {columns.map((col) => {
+  const extendPhoneUp = () => {
+    const el = scrollerRef.current;
+    if (!dayLayout || !el || el.scrollTop > 1) return;
+    if (phoneSpan.before >= 21) return;
+    const first = el.querySelector<HTMLElement>("[data-day]");
+    prependAdjust.current = first?.offsetHeight ?? totalHeight;
+    setPhoneSpan((span) => ({ ...span, before: span.before + 1 }));
+  };
+
+  const renderLane = (col: (typeof columns)[number]) => {
+
             const label = dayLabels.get(col.dateKey);
-            const active = col.dateKey === focusCol?.dateKey;
-            return (
-              <button
-                key={`chip-${col.dateKey}`}
-                type="button"
-                className={cn(
-                  "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5",
-                  active
-                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
-                    : "text-[var(--color-ink)]",
-                  !active &&
-                    col.dateKey === todayKey &&
-                    "bg-[var(--color-accent-soft)]",
-                )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFocusKey(col.dateKey);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const pos = placeMenu(e.clientX, e.clientY);
-                  setMenu({ kind: "day", dateKey: col.dateKey, ...pos });
-                }}
-              >
-                <span className="text-[10px] tracking-wide">
-                  周{WEEKDAY_LABELS[col.weekday]}
-                </span>
-                <span className="mt-0.5 font-display text-lg leading-none tabular-nums">
-                  {Number(col.dateKey.slice(8, 10))}
-                </span>
-                {showHolidays && label && label.kind !== "none" ? (
-                  <span
-                    className={cn(
-                      "mt-1 h-1 w-1 rounded-full",
-                      label.isOff ? "bg-[var(--color-warn)]" : "bg-current opacity-50",
-                    )}
-                    title={label.name}
-                  />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
-      <div
-        className="min-h-0 flex-1 overflow-auto"
-        style={{ maxHeight: viewHeight + 8 }}
-      >
-        <div
-          className={cn("grid", dayLayout ? "min-w-0" : "min-w-[720px]")}
-          style={{
-            gridTemplateColumns: dayLayout
-              ? "52px minmax(0, 1fr)"
-              : "52px repeat(7, minmax(0, 1fr))",
-          }}
-        >
-          <div className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-surface)]" />
-          {shown.map((col) => {
-            const label = dayLabels.get(col.dateKey);
-            const off = label?.isOff;
-            return (
-              <button
-                key={`h-${col.dateKey}`}
-                type="button"
-                className={cn(
-                  "sticky top-0 z-20 border-b border-l border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-2.5 text-center",
-                  col.dateKey === todayKey && "bg-[var(--color-accent-soft)]",
-                  off &&
-                    showHolidays &&
-                    "bg-[color-mix(in_oklab,var(--color-warn)_8%,var(--color-surface))]",
-                )}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setMenu({
-                    kind: "day",
-                    dateKey: col.dateKey,
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const pos = placeMenu(e.clientX, e.clientY);
-                  setMenu({
-                    kind: "day",
-                    dateKey: col.dateKey,
-                    ...pos,
-                  });
-                }}
-              >
-                <div
-                  className={cn(
-                    "text-[11px] tracking-[0.14em] text-[var(--color-ink-muted)]",
-                    col.dateKey === todayKey && "text-[var(--color-accent)]",
-                  )}
-                >
-                  周{WEEKDAY_LABELS[col.weekday]}
-                </div>
-                <div
-                  className={cn(
-                    "font-display mt-0.5 text-lg font-medium leading-none tabular-nums",
-                    col.dateKey === todayKey
-                      ? "text-[var(--color-accent)]"
-                      : "text-[var(--color-ink)]",
-                  )}
-                >
-                  {col.monthDay}
-                </div>
-                {showHolidays && label && label.kind !== "none" ? (
-                  <div
-                    className={cn(
-                      "mt-1 truncate text-[10px] font-normal",
-                      label.isOff
-                        ? "text-[var(--color-warn)]"
-                        : "text-[var(--color-accent)]",
-                    )}
-                    title={label.name}
-                  >
-                    {label.name}
-                  </div>
-                ) : null}
-              </button>
-            );
-          })}
-
-          <div className="relative" style={{ height: totalHeight }}>
-            {hours.map((h, i) => (
-              <div
-                key={`t-${i}-${h}`}
-                className="absolute right-1.5 font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]"
-                style={{ top: i === 0 ? 4 : i * DAY_PX - 7 }}
-              >
-                {h < gridStartHour ? (
-                  <span title="次日">{String(h).padStart(2, "0")}</span>
-                ) : (
-                  String(h).padStart(2, "0")
-                )}
-              </div>
-            ))}
-          </div>
-
-          {shown.map((col) => {
-            const label = dayLabels.get(col.dateKey);
-            const dayItems = enabledItems.filter((it) =>
-              itemOccursOnDate(it, col.dateKey, col.weekday, dayOverrides),
+            const dayItems = enabledItems.flatMap((it) =>
+              columnSegmentsOnDate(
+                it,
+                col.dateKey,
+                col.weekday,
+                dayOverrides,
+                gridStartHour,
+              ).map((segment) => ({ item: it, segment })),
             );
             return (
               <div
@@ -455,16 +330,18 @@ export function WeekGrid({
                   />
                 ))}
 
+                {hours.indexOf(0) > 0 ? (
+                  <div
+                    className="pointer-events-none absolute right-1 z-30 -translate-y-1/2 rounded bg-[var(--color-surface)]/95 px-1 font-mono text-[10px] tabular-nums text-[var(--color-ink-muted)]"
+                    style={{ top: hours.indexOf(0) * DAY_PX }}
+                  >
+                    {formatLowerBandHour(0, col.dateKey)}
+                  </div>
+                ) : null}
+
                 {(() => {
                   const placed = dayItems
-                    .map((item) => {
-                      const segment = itemSegmentOnDate(
-                        item,
-                        col.dateKey,
-                        col.weekday,
-                        dayOverrides,
-                      );
-                      if (!segment) return null;
+                    .map(({ item, segment }) => {
                       let start = clockToCycleMinutes(
                         segment.start,
                         gridStartHour,
@@ -473,6 +350,10 @@ export function WeekGrid({
                         segment.end,
                         gridStartHour,
                       );
+                      const cycleStartLabel = `${String(gridStartHour).padStart(2, "0")}:00`;
+                      if (segment.start === "00:00" && segment.end === cycleStartLabel) {
+                        end = CYCLE_MINUTES;
+                      }
                       // 跨周期边界（极少）：钳到日内
                       if (end <= start) {
                         if (segment.end === "24:00" || segment.end === "00:00") {
@@ -493,7 +374,7 @@ export function WeekGrid({
                     );
                   const layout = computeOverlapLayout(
                     placed.map((p) => ({
-                      id: p.item.id,
+                      id: `${p.item.id}@${p.segment.start}`,
                       start: p.start,
                       end: p.end,
                     })),
@@ -513,7 +394,7 @@ export function WeekGrid({
                     const showOvernight = overnight && height >= 40 && !showNote;
                     const color = ownerColor(item, couple);
                     const tagSurface = TAG_SURFACE[itemTag(item)];
-                    const slot = layout.get(item.id) ?? {
+                    const slot = layout.get(`${item.id}@${segment.start}`) ?? {
                       column: 0,
                       columnCount: 1,
                     };
@@ -521,7 +402,7 @@ export function WeekGrid({
                     const z = 10 + slot.column;
                     return (
                       <button
-                        key={`${item.id}-${col.dateKey}`}
+                        key={`${item.id}-${col.dateKey}-${segment.start}`}
                         type="button"
                         title={itemHoverText(item)}
                         className={cn(
@@ -637,17 +518,352 @@ export function WeekGrid({
                   });
                 })()}
 
-                {col.dateKey === todayKey && nowLineTop != null ? (
-                  <div
-                    className="pointer-events-none absolute inset-x-0 z-30"
-                    style={{ top: nowLineTop }}
-                  >
-                    <div className="now-line relative" />
-                  </div>
-                ) : null}
+                {(() => {
+                  const nowLineTop = nowLineTopFor(col.dateKey);
+                  if (nowLineTop == null) return null;
+                  return (
+                    <div
+                      className="pointer-events-none absolute inset-x-0 z-30"
+                      style={{ top: nowLineTop }}
+                    >
+                      <div className="now-line relative" />
+                    </div>
+                  );
+                })()}
               </div>
             );
+  };
+
+
+  return (
+    <div
+      className={cn(
+        "paper-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl",
+        dayLayout && "phone-week",
+      )}
+      onClick={() => setMenu(null)}
+    >
+      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
+        <div>
+          <p className="font-display text-2xl leading-none tracking-tight text-[var(--color-ink)]">
+            {isCurrentWeek
+              ? "本周"
+              : weekOffset > 0
+                ? `往后第 ${weekOffset} 周`
+                : `往前第 ${-weekOffset} 周`}
+          </p>
+          <p className="mt-1 font-mono text-[11px] tracking-wide text-[var(--color-ink-muted)]">
+            {rangeLabel}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="上一周"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
+            onClick={() => setWeekOffset((o) => o - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="下一周"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink)] transition hover:bg-[var(--color-accent-soft)]"
+            onClick={() => setWeekOffset((o) => o + 1)}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          {!isCurrentWeek ? (
+            <button
+              type="button"
+              className="ml-1 inline-flex h-8 items-center rounded-full border border-[var(--color-line)] px-3 text-xs tracking-wide text-[var(--color-ink-muted)] transition hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-ink)]"
+              onClick={() => setWeekOffset(0)}
+            >
+              回到本周
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {dayLayout ? (
+        <div className="phone-days flex shrink-0 gap-1 overflow-x-auto px-2 py-2">
+          {columns.map((col) => {
+            const label = dayLabels.get(col.dateKey);
+            const active = col.dateKey === focusCol?.dateKey;
+            return (
+              <button
+                key={`chip-${col.dateKey}`}
+                type="button"
+                className={cn(
+                  "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5",
+                  active
+                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                    : "text-[var(--color-ink)]",
+                  !active &&
+                    col.dateKey === todayKey &&
+                    "bg-[var(--color-accent-soft)]",
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ignoreScrollSync.current = false;
+                  setFocusKey(col.dateKey);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const pos = placeMenu(e.clientX, e.clientY);
+                  setMenu({ kind: "day", dateKey: col.dateKey, ...pos });
+                }}
+              >
+                <span className="text-[10px] tracking-wide">
+                  周{WEEKDAY_LABELS[col.weekday]}
+                </span>
+                <span className="mt-0.5 font-display text-lg leading-none tabular-nums">
+                  {Number(col.dateKey.slice(8, 10))}
+                </span>
+                {showHolidays && label && label.kind !== "none" ? (
+                  <span
+                    className={cn(
+                      "mt-1 h-1 w-1 rounded-full",
+                      label.isOff ? "bg-[var(--color-warn)]" : "bg-current opacity-50",
+                    )}
+                    title={label.name}
+                  />
+                ) : null}
+              </button>
+            );
           })}
+        </div>
+      ) : null}
+
+      <div
+        ref={scrollerRef}
+        data-week-scroll=""
+        className="min-h-0 flex-1 overflow-auto"
+        style={{ maxHeight: viewHeight + 8 }}
+        onScroll={() => {
+          if (dayLayout) syncPhoneDay();
+        }}
+        onWheel={(e) => {
+          if (!dayLayout || e.deltaY >= 0) return;
+          const el = scrollerRef.current;
+          if (el && el.scrollTop <= 1) extendPhoneUp();
+        }}
+        onTouchStart={(e) => {
+          touchY.current = e.touches[0]?.clientY ?? null;
+        }}
+        onTouchMove={(e) => {
+          if (!dayLayout) return;
+          const y = e.touches[0]?.clientY;
+          if (y == null || touchY.current == null) return;
+          const pullingDown = y - touchY.current > 0;
+          touchY.current = y;
+          if (pullingDown) extendPhoneUp();
+        }}
+      >
+        {dayLayout
+          ? phoneDays.map((col) => {
+              const label = dayLabels.get(col.dateKey);
+              const off = label?.isOff;
+              return (
+                <section key={col.dateKey} data-day={col.dateKey}>
+                  <button
+                    type="button"
+                    data-day-header=""
+                    data-date={col.dateKey}
+                    className={cn(
+                      "sticky top-0 z-20 w-full border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-center",
+                      col.dateKey === todayKey && "bg-[var(--color-accent-soft)]",
+                      off &&
+                        showHolidays &&
+                        "bg-[color-mix(in_oklab,var(--color-warn)_8%,var(--color-surface))]",
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const pos = placeMenu(e.clientX, e.clientY);
+                      setMenu({ kind: "day", dateKey: col.dateKey, ...pos });
+                    }}
+                  >
+                    <div
+                      className={cn(
+                        "text-[11px] tracking-[0.14em] text-[var(--color-ink-muted)]",
+                        col.dateKey === todayKey && "text-[var(--color-accent)]",
+                      )}
+                    >
+                      周{WEEKDAY_LABELS[col.weekday]}
+                    </div>
+                    <div
+                      className={cn(
+                        "font-display mt-0.5 text-lg font-medium leading-none tabular-nums",
+                        col.dateKey === todayKey
+                          ? "text-[var(--color-accent)]"
+                          : "text-[var(--color-ink)]",
+                      )}
+                    >
+                      {col.monthDay}
+                    </div>
+                    {showHolidays && label && label.kind !== "none" ? (
+                      <div
+                        className={cn(
+                          "mt-1 truncate text-[10px] font-normal",
+                          label.isOff
+                            ? "text-[var(--color-warn)]"
+                            : "text-[var(--color-accent)]",
+                        )}
+                      >
+                        {label.name}
+                      </div>
+                    ) : null}
+                  </button>
+                  <div
+                    className="grid min-w-0"
+                    style={{ gridTemplateColumns: "52px minmax(0, 1fr)" }}
+                  >
+                    <div className="relative" style={{ height: totalHeight }}>
+                      {hours.map((h, i) => (
+                        <div
+                          key={`t-${col.dateKey}-${i}-${h}`}
+                          className="absolute right-1 font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]"
+                          style={{ top: i === 0 ? 4 : i * DAY_PX - 7 }}
+                        >
+                          {h < gridStartHour ? (
+                            <span
+                              className="block text-right leading-tight"
+                              title={formatLowerBandHour(h, col.dateKey)}
+                            >
+                              {h === 0 ? (
+                                <span className="block text-[9px]">
+                                  {formatLowerBandHour(0, col.dateKey).split(" ")[0]}
+                                </span>
+                              ) : null}
+                              <span className="block">
+                                {String(h).padStart(2, "0")}:00
+                              </span>
+                            </span>
+                          ) : (
+                            String(h).padStart(2, "0")
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {renderLane(col)}
+                  </div>
+                </section>
+              );
+            })
+          : null}
+        <div
+          className={cn(
+            "grid",
+            dayLayout ? "hidden" : "min-w-[720px]",
+          )}
+          style={{
+            gridTemplateColumns: dayLayout
+              ? "52px minmax(0, 1fr)"
+              : "52px repeat(7, minmax(0, 1fr))",
+          }}
+        >
+          <div className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-surface)]" />
+          {shown.map((col) => {
+            const label = dayLabels.get(col.dateKey);
+            const off = label?.isOff;
+            return (
+              <button
+                key={`h-${col.dateKey}`}
+                type="button"
+                className={cn(
+                  "sticky top-0 z-20 border-b border-l border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-2.5 text-center",
+                  col.dateKey === todayKey && "bg-[var(--color-accent-soft)]",
+                  off &&
+                    showHolidays &&
+                    "bg-[color-mix(in_oklab,var(--color-warn)_8%,var(--color-surface))]",
+                )}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenu({
+                    kind: "day",
+                    dateKey: col.dateKey,
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const pos = placeMenu(e.clientX, e.clientY);
+                  setMenu({
+                    kind: "day",
+                    dateKey: col.dateKey,
+                    ...pos,
+                  });
+                }}
+              >
+                <div
+                  className={cn(
+                    "text-[11px] tracking-[0.14em] text-[var(--color-ink-muted)]",
+                    col.dateKey === todayKey && "text-[var(--color-accent)]",
+                  )}
+                >
+                  周{WEEKDAY_LABELS[col.weekday]}
+                </div>
+                <div
+                  className={cn(
+                    "font-display mt-0.5 text-lg font-medium leading-none tabular-nums",
+                    col.dateKey === todayKey
+                      ? "text-[var(--color-accent)]"
+                      : "text-[var(--color-ink)]",
+                  )}
+                >
+                  {col.monthDay}
+                </div>
+                {showHolidays && label && label.kind !== "none" ? (
+                  <div
+                    className={cn(
+                      "mt-1 truncate text-[10px] font-normal",
+                      label.isOff
+                        ? "text-[var(--color-warn)]"
+                        : "text-[var(--color-accent)]",
+                    )}
+                    title={label.name}
+                  >
+                    {label.name}
+                  </div>
+                ) : null}
+              </button>
+            );
+          })}
+
+          <div className="relative" style={{ height: totalHeight }}>
+            {hours.map((h, i) => (
+              <div
+                key={`t-${i}-${h}`}
+                className="absolute right-1.5 font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]"
+                style={{ top: i === 0 ? 4 : i * DAY_PX - 7 }}
+              >
+                {h < gridStartHour ? (
+                  dayLayout && focusCol ? (
+                    <span className="block text-right leading-tight" title={formatLowerBandHour(h, focusCol.dateKey)}>
+                      {h === 0 ? (
+                        <span className="block text-[9px]">
+                          {formatLowerBandHour(0, focusCol.dateKey).split(" ")[0]}
+                        </span>
+                      ) : null}
+                      <span className="block">{String(h).padStart(2, "0")}:00</span>
+                    </span>
+                  ) : (
+                    <span className="block text-right leading-tight" title="次日">
+                      {h === 0 ? <span className="block text-[9px]">次日</span> : null}
+                      <span className="block">{String(h).padStart(2, "0")}</span>
+                    </span>
+                  )
+                ) : (
+                  String(h).padStart(2, "0")
+                )}
+              </div>
+            ))}
+          </div>
+
+          {shown.map((col) => renderLane(col))}
         </div>
       </div>
 

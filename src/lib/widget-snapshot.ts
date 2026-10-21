@@ -4,7 +4,7 @@ import {
   isOvernightItem,
   itemDisplayTitle,
   itemOccursOnDate,
-  itemRecurrence,
+  itemStartsOnDate,
   itemTag,
   partnerFacingName,
   selfWidgetName,
@@ -79,10 +79,7 @@ function startsOn(
   weekday: number,
   dayOverrides: Record<string, DayOverride>,
 ) {
-  if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return false;
-  if (!isOvernightItem(item)) return true;
-  if (itemRecurrence(item) === "once") return item.date === dateKey;
-  return item.weekdays.includes(weekday);
+  return itemStartsOnDate(item, dateKey, weekday, dayOverrides);
 }
 
 function expandLane(
