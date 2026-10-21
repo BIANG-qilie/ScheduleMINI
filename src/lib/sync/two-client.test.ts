@@ -10,7 +10,13 @@ import {
   type ScheduleItem,
 } from "@/lib/config";
 import { syncRoomOnce, type SyncedCoexistence } from "@/lib/sync/couple";
-import { generateInviteCode } from "@/lib/sync/crypto";
+import { encryptPayload, generateInviteCode } from "@/lib/sync/crypto";
+import {
+  decideAfterRoomWait,
+  fetchRoom,
+  LEGACY_COUPLE_SYNC_POLL_MS,
+  waitForRoomChange,
+} from "@/lib/sync/relay";
 
 const PORT = 18000 + Math.floor(Math.random() * 2000);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -261,5 +267,167 @@ describe("two clients against a local relay", () => {
     expect(b.coexistence?.current).toBeNull();
     expect(a.items.some((it) => it.title.includes("共处"))).toBe(false);
     expect(b.items.some((it) => it.title.includes("共处"))).toBe(false);
+  });
+
+  it("A 新建后唤醒 B 的长轮询，B 同步即可见", async () => {
+    const code = generateInviteCode(6);
+    const a = client({ inviteCode: code, selfName: "甲" });
+    const b = client({ inviteCode: code, selfName: "乙" });
+    await sync(a);
+    await sync(b);
+    const before = await fetchRoom(code, BASE);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    const sinceRev = before.data.rev ?? 0;
+
+    const wake = waitForRoomChange({
+      inviteCode: code,
+      sinceRev,
+      timeoutMs: LEGACY_COUPLE_SYNC_POLL_MS,
+      baseUrl: BASE,
+    });
+
+    add(a, "live", "即时事项");
+    await sync(a);
+
+    const result = await wake;
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changed).toBe(true);
+    expect(result.room.rev).toBeGreaterThan(sinceRev);
+
+    await sync(b);
+    expect(titles(b)).toEqual(["即时事项"]);
+    expect(b.items[0].owner).toBe("partner");
+
+    const settled = await fetchRoom(code, BASE);
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+    await sync(a);
+    await sync(b);
+    const again = await fetchRoom(code, BASE);
+    expect(again.ok && again.data.rev).toBe(settled.data.rev);
+  });
+
+  it("同一身份的另一台设备也被长轮询唤醒", async () => {
+    const code = generateInviteCode(6);
+    const pc = client({ inviteCode: code });
+    add(pc, "x1", "上课");
+    await sync(pc);
+    const phone = client({ inviteCode: code, memberId: pc.couple.memberId });
+    await sync(phone);
+    const before = await fetchRoom(code, BASE);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+
+    const wake = waitForRoomChange({
+      inviteCode: code,
+      sinceRev: before.data.rev ?? 0,
+      timeoutMs: LEGACY_COUPLE_SYNC_POLL_MS,
+      baseUrl: BASE,
+    });
+    add(pc, "x2", "带读");
+    await sync(pc);
+    const result = await wake;
+    expect(result.ok && result.changed).toBe(true);
+    await sync(phone);
+    expect(titles(phone)).toEqual(["上课", "带读"]);
+  });
+
+  it("内容未变的再推送不唤醒等待方", async () => {
+    const code = generateInviteCode(6);
+    const a = client({ inviteCode: code });
+    add(a, "a1", "早餐");
+    await sync(a);
+    const before = await fetchRoom(code, BASE);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    const sinceRev = before.data.rev ?? 0;
+
+    const wake = waitForRoomChange({
+      inviteCode: code,
+      sinceRev,
+      timeoutMs: 400,
+      baseUrl: BASE,
+    });
+    await sync(a);
+    const result = await wake;
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changed).toBe(false);
+    expect(result.room.rev).toBe(sinceRev);
+  });
+
+  it("不带 docRev 的旧客户端推送仍能写入并唤醒", async () => {
+    const code = generateInviteCode(6);
+    const b = client({ inviteCode: code, selfName: "乙" });
+    await sync(b);
+    const before = await fetchRoom(code, BASE);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+
+    const wake = waitForRoomChange({
+      inviteCode: code,
+      sinceRev: before.data.rev ?? 0,
+      timeoutMs: LEGACY_COUPLE_SYNC_POLL_MS,
+      baseUrl: BASE,
+    });
+    const payload = await encryptPayload(code, {
+      items: [
+        {
+          id: "old1",
+          start: "09:00",
+          end: "10:00",
+          title: "旧端事项",
+          weekdays: [1],
+          enabled: true,
+          recurrence: "weekly",
+          tag: "life",
+          skippedDates: [],
+          owner: "self",
+          updatedAt: stamp(),
+        },
+      ],
+      selfName: "旧端",
+      selfColor: "#a21caf",
+      doc: "shared-v2",
+      deletedItems: {},
+    });
+    const put = await fetch(
+      `${BASE}/v1/rooms/${code}/members/${encodeURIComponent("legacy-person")}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "旧端",
+          color: "#a21caf",
+          payload,
+          updatedAt: stamp(),
+        }),
+      },
+    );
+    expect(put.ok).toBe(true);
+    const result = await wake;
+    expect(result.ok && result.changed).toBe(true);
+    await sync(b);
+    expect(titles(b)).toEqual(["旧端事项"]);
+  });
+});
+
+describe("room wait fallback", () => {
+  it("断线走短间隔，房间变更立刻再同步", () => {
+    expect(LEGACY_COUPLE_SYNC_POLL_MS).toBe(20_000);
+    expect(decideAfterRoomWait({ ok: false, error: "连不上中继" })).toEqual({
+      sync: true,
+      delayMs: 2_000,
+    });
+    expect(decideAfterRoomWait({ ok: true, changed: true })).toEqual({
+      sync: true,
+      delayMs: 0,
+    });
+    expect(decideAfterRoomWait({ ok: true, changed: false })).toEqual({
+      sync: false,
+      delayMs: 0,
+    });
   });
 });

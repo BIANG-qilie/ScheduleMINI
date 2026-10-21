@@ -11,10 +11,29 @@ export type RelayMember = {
 export type RelayRoom = {
   code: string;
   updatedAt: string | null;
+  /** 有实质写入才加一。0.2.2 客户端忽略此字段 */
+  rev?: number;
   members: RelayMember[];
   /** 中继认为本次推送比已存槽位旧而未写入 */
   rejected?: boolean;
+  /** 明文指纹未变，中继没有改房间 */
+  unchanged?: boolean;
 };
+
+/** 0.2.2 的拉取间隔。对方要等下一次轮询才看得见编辑。 */
+export const LEGACY_COUPLE_SYNC_POLL_MS = 20_000;
+/** 长轮询挂起上限。到点没变化就重新挂起。 */
+export const COUPLE_SYNC_WAIT_MS = 25_000;
+/** 长轮询连不上时的拉取间隔。 */
+export const COUPLE_SYNC_FALLBACK_MS = 2_000;
+
+export function decideAfterRoomWait(
+  wait: { ok: true; changed: boolean } | { ok: false; error: string },
+): { sync: boolean; delayMs: number } {
+  if (!wait.ok) return { sync: true, delayMs: COUPLE_SYNC_FALLBACK_MS };
+  if (wait.changed) return { sync: true, delayMs: 0 };
+  return { sync: false, delayMs: 0 };
+}
 
 /** 内置默认中继（Railway） */
 export const BUILTIN_SYNC_RELAY_URL =
@@ -94,6 +113,8 @@ export async function pushMemberSlice(args: {
   name: string;
   color: string;
   payload: string;
+  /** 明文指纹。旧中继忽略；新中继用来避免无变化推送唤醒对方 */
+  docRev?: string;
   updatedAt: string;
   baseUrl?: string | null;
 }) {
@@ -106,9 +127,37 @@ export async function pushMemberSlice(args: {
         name: args.name,
         color: args.color,
         payload: args.payload,
+        docRev: args.docRev,
         updatedAt: args.updatedAt,
       }),
     },
     args.baseUrl,
   );
+}
+
+/** 房间代数变化就返回。旧中继没有这条路径时由调用方改走短间隔。 */
+export async function waitForRoomChange(args: {
+  inviteCode: string;
+  sinceRev: number;
+  timeoutMs?: number;
+  baseUrl?: string | null;
+  signal?: AbortSignal;
+}) {
+  const code = normalizeInviteCode(args.inviteCode);
+  const timeoutMs = args.timeoutMs ?? COUPLE_SYNC_WAIT_MS;
+  const q = new URLSearchParams({
+    sinceRev: String(args.sinceRev),
+    timeoutMs: String(timeoutMs),
+  });
+  const res = await request<RelayRoom & { changed?: boolean }>(
+    `/v1/rooms/${encodeURIComponent(code)}/wait?${q}`,
+    { signal: args.signal },
+    args.baseUrl,
+  );
+  if (!res.ok) return res;
+  return {
+    ok: true as const,
+    changed: res.data.changed === true,
+    room: res.data,
+  };
 }

@@ -36,6 +36,17 @@ export async function deriveInviteKey(inviteCode: string): Promise<CryptoKey> {
   );
 }
 
+/** 明文文档指纹。密文每次随机，不能用来判断内容有没有变。 */
+export async function digestJson(data: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(data)),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function encryptPayload(
   inviteCode: string,
   data: unknown,
