@@ -9,19 +9,20 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   WEEKDAY_LABELS,
   clockToCycleMinutes,
+  columnSegmentsOnDate,
   compareTime,
   computeOverlapLayout,
   formatDateKey,
+  formatLowerBandHour,
   formatWeekRangeLabel,
   getCurrentWeekColumns,
   getWeekAnchor,
   gridDayHours,
   gridViewSpanHours,
   itemDisplayTitle,
-  itemOccursOnDate,
   itemRecurrence,
-  itemSegmentOnDate,
   itemTag,
+  shiftDateKey,
   ownerColor,
   type CoupleIdentity,
   type DayOverride,
@@ -154,13 +155,18 @@ export function WeekGrid({
   const totalHeight = 24 * DAY_PX + bottomPad;
   const viewHeight = viewSpan * DAY_PX + bottomPad;
 
-  const nowLineTop = useMemo(() => {
+  const nowLineTopFor = (columnDateKey: string) => {
     if (!isCurrentWeek) return null;
-    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const hour = now.getHours();
+    const hhmm = `${String(hour).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const today = formatDateKey(now);
+    // 起点之前的钟点画在前一日列的下半段（那里才是今天凌晨）
+    const ownerKey = hour < gridStartHour ? shiftDateKey(today, -1) : today;
+    if (columnDateKey !== ownerKey) return null;
     const offset = clockToCycleMinutes(hhmm, gridStartHour);
     if (offset < 0 || offset > CYCLE_MINUTES) return null;
     return (offset / 60) * DAY_PX;
-  }, [now, isCurrentWeek, gridStartHour]);
+  };
 
   const enabledItems = useMemo(
     () => items.filter((it) => it.enabled).sort((a, b) => compareTime(a.start, b.start)),
@@ -413,7 +419,21 @@ export function WeekGrid({
                 style={{ top: i === 0 ? 4 : i * DAY_PX - 7 }}
               >
                 {h < gridStartHour ? (
-                  <span title="次日">{String(h).padStart(2, "0")}</span>
+                  dayLayout && focusCol ? (
+                    <span className="block text-right leading-tight" title={formatLowerBandHour(h, focusCol.dateKey)}>
+                      {h === 0 ? (
+                        <span className="block text-[9px]">
+                          {formatLowerBandHour(0, focusCol.dateKey).split(" ")[0]}
+                        </span>
+                      ) : null}
+                      <span className="block">{String(h).padStart(2, "0")}:00</span>
+                    </span>
+                  ) : (
+                    <span className="block text-right leading-tight" title="次日">
+                      {h === 0 ? <span className="block text-[9px]">次日</span> : null}
+                      <span className="block">{String(h).padStart(2, "0")}</span>
+                    </span>
+                  )
                 ) : (
                   String(h).padStart(2, "0")
                 )}
@@ -423,8 +443,14 @@ export function WeekGrid({
 
           {shown.map((col) => {
             const label = dayLabels.get(col.dateKey);
-            const dayItems = enabledItems.filter((it) =>
-              itemOccursOnDate(it, col.dateKey, col.weekday, dayOverrides),
+            const dayItems = enabledItems.flatMap((it) =>
+              columnSegmentsOnDate(
+                it,
+                col.dateKey,
+                col.weekday,
+                dayOverrides,
+                gridStartHour,
+              ).map((segment) => ({ item: it, segment })),
             );
             return (
               <div
@@ -455,16 +481,18 @@ export function WeekGrid({
                   />
                 ))}
 
+                {hours.indexOf(0) > 0 ? (
+                  <div
+                    className="pointer-events-none absolute right-1 z-30 -translate-y-1/2 rounded bg-[var(--color-surface)]/95 px-1 font-mono text-[10px] tabular-nums text-[var(--color-ink-muted)]"
+                    style={{ top: hours.indexOf(0) * DAY_PX }}
+                  >
+                    {formatLowerBandHour(0, col.dateKey)}
+                  </div>
+                ) : null}
+
                 {(() => {
                   const placed = dayItems
-                    .map((item) => {
-                      const segment = itemSegmentOnDate(
-                        item,
-                        col.dateKey,
-                        col.weekday,
-                        dayOverrides,
-                      );
-                      if (!segment) return null;
+                    .map(({ item, segment }) => {
                       let start = clockToCycleMinutes(
                         segment.start,
                         gridStartHour,
@@ -473,6 +501,10 @@ export function WeekGrid({
                         segment.end,
                         gridStartHour,
                       );
+                      const cycleStartLabel = `${String(gridStartHour).padStart(2, "0")}:00`;
+                      if (segment.start === "00:00" && segment.end === cycleStartLabel) {
+                        end = CYCLE_MINUTES;
+                      }
                       // 跨周期边界（极少）：钳到日内
                       if (end <= start) {
                         if (segment.end === "24:00" || segment.end === "00:00") {
@@ -493,7 +525,7 @@ export function WeekGrid({
                     );
                   const layout = computeOverlapLayout(
                     placed.map((p) => ({
-                      id: p.item.id,
+                      id: `${p.item.id}@${p.segment.start}`,
                       start: p.start,
                       end: p.end,
                     })),
@@ -513,7 +545,7 @@ export function WeekGrid({
                     const showOvernight = overnight && height >= 40 && !showNote;
                     const color = ownerColor(item, couple);
                     const tagSurface = TAG_SURFACE[itemTag(item)];
-                    const slot = layout.get(item.id) ?? {
+                    const slot = layout.get(`${item.id}@${segment.start}`) ?? {
                       column: 0,
                       columnCount: 1,
                     };
@@ -521,7 +553,7 @@ export function WeekGrid({
                     const z = 10 + slot.column;
                     return (
                       <button
-                        key={`${item.id}-${col.dateKey}`}
+                        key={`${item.id}-${col.dateKey}-${segment.start}`}
                         type="button"
                         title={itemHoverText(item)}
                         className={cn(
@@ -637,14 +669,18 @@ export function WeekGrid({
                   });
                 })()}
 
-                {col.dateKey === todayKey && nowLineTop != null ? (
-                  <div
-                    className="pointer-events-none absolute inset-x-0 z-30"
-                    style={{ top: nowLineTop }}
-                  >
-                    <div className="now-line relative" />
-                  </div>
-                ) : null}
+                {(() => {
+                  const nowLineTop = nowLineTopFor(col.dateKey);
+                  if (nowLineTop == null) return null;
+                  return (
+                    <div
+                      className="pointer-events-none absolute inset-x-0 z-30"
+                      style={{ top: nowLineTop }}
+                    >
+                      <div className="now-line relative" />
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

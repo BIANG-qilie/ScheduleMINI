@@ -793,6 +793,22 @@ export function formatGridHourLabel(hour: number, cycleStartHour: number) {
   return label;
 }
 
+export function shiftDateKey(dateKey: string, days: number) {
+  const next = parseDateKey(dateKey);
+  next.setDate(next.getDate() + days);
+  return formatDateKey(next);
+}
+
+/**
+ * 周列下半段（钟点早于日周期起点）是下一日历日。
+ * 20 日列的 00:00 读作「21日 00:00」，不是再下一列的凌晨。
+ */
+export function formatLowerBandHour(hour: number, columnDateKey: string) {
+  const day = Number(shiftDateKey(columnDateKey, 1).slice(8, 10));
+  const hh = String(hour).padStart(2, "0");
+  return `${day}日 ${hh}:00`;
+}
+
 export function defaultConfig(): AppConfig {
   const couple = defaultCouple();
   const now = new Date().toISOString();
@@ -1070,36 +1086,101 @@ export function itemOccursOnDate(
   return true;
 }
 
+export type TimeSegment = { start: string; end: string };
+
+function overnightStartsOn(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday: number,
+) {
+  if (itemRecurrence(item) === "once") return item.date === dateKey;
+  return item.weekdays.includes(weekday);
+}
+
+/** 00:00–end 整段落在起始日列的下半段（次日凌晨），而不是下一列 */
+function morningFitsStartColumn(end: string, cycleStartHour: number) {
+  if (cycleStartHour <= 0) return false;
+  const [h, m] = end.split(":").map(Number);
+  return h * 60 + m <= cycleStartHour * 60;
+}
+
 /**
- * 跨日条目在某一列应渲染的时段（同一天内的片段）。
- * 起始日：start→24:00；次日：00:00→end；非跨日：start→end。
+ * 某一列要画的片段。
+ * 跨日的凌晨留在起始日列：20 日 22:00–06:00 是该列里的
+ * 22:00–24:00 再接 21日 00:00–06:00。下一列的 00:00 已是再下一天。
+ * 次日若因放假不再发生，凌晨段不画，晚上收到 24:00。
+ */
+export function columnSegmentsOnDate(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+  dayOverrides: Record<string, DayOverride> = {},
+  cycleStartHour = 7,
+): TimeSegment[] {
+  if (!item.enabled) return [];
+  if (!isOvernightItem(item)) {
+    if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return [];
+    return [{ start: item.start, end: item.end }];
+  }
+
+  const onStart = overnightStartsOn(item, dateKey, weekday);
+  if (onStart && itemOccursOnDate(item, dateKey, weekday, dayOverrides)) {
+    const parts: TimeSegment[] = [{ start: item.start, end: "24:00" }];
+    const nextKey = shiftDateKey(dateKey, 1);
+    const next = parseDateKey(nextKey);
+    if (
+      itemOccursOnDate(item, nextKey, next.getDay(), dayOverrides) &&
+      morningFitsStartColumn(item.end, cycleStartHour)
+    ) {
+      parts.push({ start: "00:00", end: item.end });
+    }
+    return parts;
+  }
+
+  // 日周期从 0 点起时没有「次日」下半段，凌晨才落到结束日列的顶部
+  const prevKey = shiftDateKey(dateKey, -1);
+  const prev = parseDateKey(prevKey);
+  const continuesHere =
+    itemOccursOnDate(item, dateKey, weekday, dayOverrides) &&
+    overnightStartsOn(item, prevKey, prev.getDay());
+  if (continuesHere && !morningFitsStartColumn(item.end, cycleStartHour)) {
+    return [{ start: "00:00", end: item.end }];
+  }
+  return [];
+}
+
+/**
+ * 跨日条目在某一列的第一段。完整放置用 columnSegmentsOnDate。
+ * 非跨日：start→end。跨日起始日：start→24:00。结束日列不承接凌晨尾巴。
  */
 export function itemSegmentOnDate(
   item: ScheduleItem,
   dateKey: string,
   weekday = parseDateKey(dateKey).getDay(),
   dayOverrides: Record<string, DayOverride> = {},
-): { start: string; end: string } | null {
-  if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return null;
-  if (!isOvernightItem(item)) {
-    return { start: item.start, end: item.end };
-  }
-  const prevWeekday = (weekday + 6) % 7;
-  const onStartDay =
-    itemRecurrence(item) === "once"
-      ? item.date === dateKey
-      : item.weekdays.includes(weekday);
-  const onEndDay =
-    itemRecurrence(item) === "once"
-      ? item.date !== dateKey
-      : item.weekdays.includes(prevWeekday);
-  if (onStartDay && onEndDay) {
-    // 理论上同星期不会同时，once 不会；防御
-    return { start: item.start, end: "24:00" };
-  }
-  if (onStartDay) return { start: item.start, end: "24:00" };
-  if (onEndDay) return { start: "00:00", end: item.end };
-  return null;
+  cycleStartHour = 7,
+): TimeSegment | null {
+  return (
+    columnSegmentsOnDate(
+      item,
+      dateKey,
+      weekday,
+      dayOverrides,
+      cycleStartHour,
+    )[0] ?? null
+  );
+}
+
+/** 这一天是一次真正的开始，而不是跨日尾巴 */
+export function itemStartsOnDate(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+  dayOverrides: Record<string, DayOverride> = {},
+) {
+  if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return false;
+  if (!isOvernightItem(item)) return true;
+  return overnightStartsOn(item, dateKey, weekday);
 }
 
 export function nowTimeString(now = new Date()) {
@@ -1189,7 +1270,9 @@ export function getUpcomingItem(
 ): UpcomingRef | null {
   let best: UpcomingRef | null = null;
 
-  for (let offset = 0; offset < horizonDays; offset++) {
+  const horizonMs = horizonDays * 24 * 60 * 60 * 1000;
+  // 含整整一周后的同一次开始（周三夜里仍在进行时，下一次是下周三）
+  for (let offset = 0; offset <= horizonDays; offset++) {
     const day = new Date(now);
     day.setHours(12, 0, 0, 0);
     day.setDate(now.getDate() + offset);
@@ -1197,11 +1280,12 @@ export function getUpcomingItem(
     const weekday = day.getDay();
 
     for (const item of items) {
-      if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) continue;
+      if (!itemStartsOnDate(item, dateKey, weekday, dayOverrides)) continue;
       const [h, m] = item.start.split(":").map(Number);
       const at = new Date(day);
       at.setHours(h, m, 0, 0);
       if (at.getTime() <= now.getTime()) continue;
+      if (at.getTime() - now.getTime() > horizonMs) continue;
       if (!best || at.getTime() < best.at.getTime()) {
         best = { item, at, dateKey };
       }
