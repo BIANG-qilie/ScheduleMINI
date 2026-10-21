@@ -100,17 +100,46 @@ describe("describeCallBackfill", () => {
     expect(described.resolved.date).toBe("2026-10-21");
   });
 
-  it("refuses a same clock span before it is stored", () => {
+  it("keeps a 24 hour backfill", () => {
+    const described = describeCallBackfill({
+      backfillEnd: "2026-10-21T15:30",
+      preset: null,
+      custom: "1440",
+      now: new Date(2026, 9, 21, 15, 30, 0, 0),
+    });
+    expect(described.state).toBe("ready");
+    if (described.state !== "ready") return;
+    expect(described.resolved.durationMinutes).toBe(1440);
+    expect(described.resolved.startAt.getTime()).toBe(
+      described.resolved.endAt.getTime() - 1440 * 60_000,
+    );
+    expect(described.resolved).toMatchObject({
+      start: "15:30",
+      end: "15:30",
+      date: "2026-10-20",
+    });
+    expect(described.preview).toBe("10月20日 15:30–10月21日 15:30");
+  });
+
+  it("keeps a 48 hour backfill", () => {
     const described = describeCallBackfill({
       backfillEnd: "2026-10-21T15:30",
       preset: null,
       custom: "2880",
       now: new Date(2026, 9, 21, 15, 30, 0, 0),
     });
-    expect(described).toEqual({
-      state: "invalid",
-      message: "整 24 小时或 48 小时时，起止是同一钟点",
+    expect(described.state).toBe("ready");
+    if (described.state !== "ready") return;
+    expect(described.resolved.durationMinutes).toBe(2880);
+    expect(described.resolved.startAt.getTime()).toBe(
+      described.resolved.endAt.getTime() - 2880 * 60_000,
+    );
+    expect(described.resolved).toMatchObject({
+      start: "15:30",
+      end: "15:30",
+      date: "2026-10-19",
     });
+    expect(described.preview).toBe("10月19日 15:30–10月21日 15:30");
   });
 });
 
@@ -123,6 +152,31 @@ describe("reconstructCallBackfill", () => {
     });
     expect(rebuilt.durationMinutes).toBe(30);
     expect(rebuilt.backfillEnd).toBe("2026-10-21T15:30");
+  });
+
+  it("rebuilds 24h and 48h from durationMinutes when the clocks match", () => {
+    expect(
+      reconstructCallBackfill({
+        start: "15:30",
+        end: "15:30",
+        date: "2026-10-20",
+        durationMinutes: 1440,
+      }),
+    ).toMatchObject({
+      durationMinutes: 1440,
+      backfillEnd: "2026-10-21T15:30",
+    });
+    expect(
+      reconstructCallBackfill({
+        start: "15:30",
+        end: "15:30",
+        date: "2026-10-19",
+        durationMinutes: 2880,
+      }),
+    ).toMatchObject({
+      durationMinutes: 2880,
+      backfillEnd: "2026-10-21T15:30",
+    });
   });
 
   it("rebuilds an overnight call onto the next morning", () => {

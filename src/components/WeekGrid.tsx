@@ -12,12 +12,15 @@ import {
   compareTime,
   computeOverlapLayout,
   formatDateKey,
+  formatItemSpan,
   formatWeekRangeLabel,
   getCurrentWeekColumns,
   getWeekAnchor,
   gridDayHours,
   gridViewSpanHours,
+  itemCycleSlice,
   itemDisplayTitle,
+  itemDurationMinutes,
   itemOccursOnDate,
   itemRecurrence,
   itemSegmentOnDate,
@@ -424,7 +427,9 @@ export function WeekGrid({
           {shown.map((col) => {
             const label = dayLabels.get(col.dateKey);
             const dayItems = enabledItems.filter((it) =>
-              itemOccursOnDate(it, col.dateKey, col.weekday, dayOverrides),
+              itemDurationMinutes(it)
+                ? itemCycleSlice(it, col.dateKey, gridStartHour) != null
+                : itemOccursOnDate(it, col.dateKey, col.weekday, dayOverrides),
             );
             return (
               <div
@@ -458,24 +463,30 @@ export function WeekGrid({
                 {(() => {
                   const placed = dayItems
                     .map((item) => {
-                      const segment = itemSegmentOnDate(
-                        item,
-                        col.dateKey,
-                        col.weekday,
-                        dayOverrides,
-                      );
-                      if (!segment) return null;
-                      let start = clockToCycleMinutes(
-                        segment.start,
-                        gridStartHour,
-                      );
-                      let end = clockToCycleMinutes(
-                        segment.end,
-                        gridStartHour,
-                      );
+                      const cycle = itemDurationMinutes(item)
+                        ? itemCycleSlice(item, col.dateKey, gridStartHour)
+                        : null;
+                      const segment = cycle
+                        ? null
+                        : itemSegmentOnDate(
+                            item,
+                            col.dateKey,
+                            col.weekday,
+                            dayOverrides,
+                          );
+                      if (!cycle && !segment) return null;
+                      let start = cycle
+                        ? cycle.startMin
+                        : clockToCycleMinutes(segment!.start, gridStartHour);
+                      let end = cycle
+                        ? cycle.endMin
+                        : clockToCycleMinutes(segment!.end, gridStartHour);
                       // 跨周期边界（极少）：钳到日内
                       if (end <= start) {
-                        if (segment.end === "24:00" || segment.end === "00:00") {
+                        if (
+                          segment &&
+                          (segment.end === "24:00" || segment.end === "00:00")
+                        ) {
                           end = Math.min(CYCLE_MINUTES, start + 40);
                         } else {
                           return null;
@@ -486,7 +497,8 @@ export function WeekGrid({
                         10,
                         ((end - start) / 60) * DAY_PX - 1,
                       );
-                      return { item, segment, start, end, top, height };
+                      const spanned = cycle != null;
+                      return { item, segment, start, end, top, height, spanned };
                     })
                     .filter(
                       (x): x is NonNullable<typeof x> => x != null,
@@ -498,12 +510,14 @@ export function WeekGrid({
                       end: p.end,
                     })),
                   );
-                  return placed.map(({ item, segment, top, height }) => {
+                  return placed.map(({ item, segment, start, end, top, height, spanned }) => {
                     const once = itemRecurrence(item) === "once";
                     const courseSwap = !!item.isCourseSwap;
                     const subline = formatItemSubline(item);
-                    const overnight =
-                      segment.end === "24:00" || segment.start === "00:00";
+                    const midnight = clockToCycleMinutes("00:00", gridStartHour);
+                    const overnight = spanned
+                      ? start < midnight && end > midnight
+                      : segment!.end === "24:00" || segment!.start === "00:00";
                     // 短块优先标题；完整信息靠 hover
                     const note = item.note?.trim() ?? "";
                     const showNote =
@@ -610,9 +624,14 @@ export function WeekGrid({
                               </p>
                             ) : (
                               <p className="truncate font-mono text-[10px] leading-tight opacity-70">
-                                {item.start}–{item.end}
+                                {formatItemSpan(item)}
                               </p>
                             )
+                          ) : null}
+                          {spanned && height >= 36 ? (
+                            <p className="truncate font-mono text-[10px] leading-tight opacity-70">
+                              {formatItemSpan(item)}
+                            </p>
                           ) : null}
                           {showNote ? (
                             <p

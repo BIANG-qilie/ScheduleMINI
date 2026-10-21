@@ -70,6 +70,7 @@ export type Draft = {
   backfillPreset: CallBackfillPreset | null;
   backfillCustom: string;
   backfillSeeded: boolean;
+  durationMinutes?: number;
 };
 
 type Props = {
@@ -158,12 +159,16 @@ export function ScheduleEditor({
   const enterBackfill = () => {
     setDraft((prev) => {
       if (prev.callEntry === "backfill") return prev;
+      if (prev.backfillSeeded) {
+        return { ...prev, callEntry: "backfill", recurrence: "once" };
+      }
       const seed =
-        !prev.backfillSeeded && prev.id && prev.recurrence === "once" && prev.date
+        prev.id && prev.recurrence === "once" && prev.date
           ? reconstructCallBackfill({
               start: prev.start,
               end: prev.end,
               date: prev.date,
+              durationMinutes: prev.durationMinutes,
             })
           : null;
       const useSeed = Boolean(seed && seed.durationMinutes > 0);

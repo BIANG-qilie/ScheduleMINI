@@ -5,6 +5,7 @@ import {
   formatTagLabel,
   formatWorkKindLabel,
   itemCallChannel,
+  formatItemSpan,
   itemDisplayTitle,
   itemGamePlatform,
   itemRecurrence,
@@ -186,7 +187,7 @@ export function scheduleChipClass(tag: ScheduleTag) {
 
 export function itemHoverText(item: ScheduleItem) {
   const parts = [
-    `${item.start}–${item.end} · ${formatTagLabel(itemTag(item))}`,
+    `${formatItemSpan(item)} · ${formatTagLabel(itemTag(item))}`,
     itemDisplayTitle(item),
   ];
   const sub = formatItemSubline(item);

@@ -5,11 +5,12 @@ import {
   WEEKDAY_LABELS,
   formatDateKey,
   formatDurationCompact,
+  formatItemSpan,
   getCurrentItem,
   getUpcomingItem,
   itemDisplayTitle,
   msUntilDate,
-  msUntilTime,
+  msUntilItemEnd,
   partnerFacingName,
   progressThroughItem,
   type CoupleIdentity,
@@ -53,7 +54,7 @@ function Half({
   todayKey: string;
 }) {
   const subline = current ? formatItemSubline(current) : null;
-  const remaining = current ? msUntilTime(current.end, now) : null;
+  const remaining = current ? msUntilItemEnd(current, now) : null;
   const untilNext = upcoming ? msUntilDate(upcoming.at, now) : null;
   const progress = current ? progressThroughItem(current, now) : 0;
 
@@ -83,7 +84,7 @@ function Half({
       {current ? (
         <p className="ticket-meta">
           <span className="font-mono tabular">
-            {current.start}–{current.end}
+            {formatItemSpan(current)}
           </span>
           {subline ? <span>{subline}</span> : null}
         </p>

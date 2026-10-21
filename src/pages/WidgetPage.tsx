@@ -7,6 +7,7 @@ import {
   formatDateKey,
   formatDurationCompact,
   formatDurationZh,
+  formatItemSpan,
   formatTagLabel,
   getCurrentItem,
   getUpcomingItem,
@@ -16,7 +17,7 @@ import {
   itemRecurrence,
   itemTag,
   msUntilDate,
-  msUntilTime,
+  msUntilItemEnd,
   ownerColor,
   partnerFacingName,
   progressThroughItem,
@@ -78,7 +79,7 @@ function FullModeItemCard({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="tabular font-mono text-xs text-white/65">
-          {item.start}–{item.end}
+          {formatItemSpan(item)}
         </span>
         <div className="flex items-center gap-1.5">
           <span
@@ -192,7 +193,7 @@ function PersonColumn({
             </p>
           ) : null}
           <p className="mt-1 font-mono text-[10px] tabular-nums text-white/60">
-            {currentItem.start}–{currentItem.end}
+            {formatItemSpan(currentItem)}
           </p>
           <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-white/20">
             <div
@@ -451,11 +452,11 @@ export function WidgetPage() {
   const focusMode = config.widgetMode === "current";
 
   const selfRemaining =
-    selfCurrent != null ? msUntilTime(selfCurrent.end, now) : null;
+    selfCurrent != null ? msUntilItemEnd(selfCurrent, now) : null;
   const selfUntilNext =
     selfUpcoming != null ? msUntilDate(selfUpcoming.at, now) : null;
   const partnerRemaining =
-    partnerCurrent != null ? msUntilTime(partnerCurrent.end, now) : null;
+    partnerCurrent != null ? msUntilItemEnd(partnerCurrent, now) : null;
   const partnerUntilNext =
     partnerUpcoming != null ? msUntilDate(partnerUpcoming.at, now) : null;
   const selfProgress = selfCurrent

@@ -44,6 +44,7 @@ import {
   SCHEDULE_TAG_OPTIONS,
   WORK_KIND_META,
   formatDateKey,
+  formatItemSpan,
   formatScheduleScope,
   isPaired,
   itemCallChannel,
@@ -122,6 +123,7 @@ function itemToDraft(item: ScheduleItem): Draft {
           start: item.start,
           end: item.end,
           date: item.date,
+          durationMinutes: item.durationMinutes,
         })
       : null;
   const preset =
@@ -156,6 +158,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     backfillCustom:
       rebuilt && preset == null ? String(rebuilt.durationMinutes) : "",
     backfillSeeded: backfill,
+    durationMinutes: item.durationMinutes,
   };
 }
 
@@ -478,6 +481,10 @@ export function SettingsPage() {
             ? draft.workSecondary
             : undefined,
         isCourseSwap: courseSwap || undefined,
+        durationMinutes:
+          described?.state === "ready"
+            ? described.resolved.durationMinutes
+            : undefined,
       });
       setEditorOpen(false);
       setOccurrenceDate(null);
@@ -839,7 +846,7 @@ export function SettingsPage() {
                     <div className="min-w-0 space-y-1 pl-7">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="tabular font-mono text-sm tracking-tight text-[var(--color-ink)]">
-                          {item.start}–{item.end}
+                          {formatItemSpan(item)}
                         </span>
                         <span
                           className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide"

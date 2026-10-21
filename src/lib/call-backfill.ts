@@ -22,6 +22,7 @@ export type CallBackfillResolved = {
   start: string;
   end: string;
   date: string;
+  durationMinutes: number;
 };
 
 export type CallEntryMode = "plan" | "backfill";
@@ -104,12 +105,18 @@ export function resolveCallBackfill(input: {
     start: toHhmm(startAt),
     end: toHhmm(endAt),
     date: formatDateKey(startAt),
+    durationMinutes: input.durationMinutes,
   };
 }
 
 export function formatBackfillSpan(resolved: CallBackfillResolved) {
-  const date = parseDateKey(resolved.date);
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${resolved.start}–${resolved.end}`;
+  const startKey = resolved.date;
+  const endKey = formatDateKey(resolved.endAt);
+  const start = parseDateKey(startKey);
+  const startLabel = `${start.getMonth() + 1}月${start.getDate()}日`;
+  if (startKey === endKey) return `${startLabel} ${resolved.start}–${resolved.end}`;
+  const end = parseDateKey(endKey);
+  return `${startLabel} ${resolved.start}–${end.getMonth() + 1}月${end.getDate()}日 ${resolved.end}`;
 }
 
 /** 从已保存的起止还原补录结束时刻与时长。跨午夜按过夜：结束在起始日的次日。 */
@@ -117,15 +124,20 @@ export function reconstructCallBackfill(item: {
   start: string;
   end: string;
   date: string;
+  durationMinutes?: number;
 }) {
   const startAt = parseDateKey(item.date);
   const [sh, sm] = item.start.split(":").map(Number);
   startAt.setHours(sh, sm, 0, 0);
   const endAt = new Date(startAt);
-  const [eh, em] = item.end.split(":").map(Number);
-  endAt.setHours(eh, em, 0, 0);
-  if (compareTime(item.end, item.start) < 0) {
-    endAt.setDate(endAt.getDate() + 1);
+  if (item.durationMinutes != null && item.durationMinutes > 0) {
+    endAt.setTime(startAt.getTime() + item.durationMinutes * 60_000);
+  } else {
+    const [eh, em] = item.end.split(":").map(Number);
+    endAt.setHours(eh, em, 0, 0);
+    if (compareTime(item.end, item.start) < 0) {
+      endAt.setDate(endAt.getDate() + 1);
+    }
   }
   const durationMinutes = Math.round(
     (endAt.getTime() - startAt.getTime()) / 60_000,
@@ -173,12 +185,6 @@ export function describeCallBackfill(input: {
     now: input.now,
   });
   if (!resolved.ok) return { state: "invalid", message: resolved.message };
-  if (resolved.start === resolved.end) {
-    return {
-      state: "invalid",
-      message: "整 24 小时或 48 小时时，起止是同一钟点",
-    };
-  }
   return {
     state: "ready",
     resolved,
