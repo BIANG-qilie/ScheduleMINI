@@ -9,6 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  CALL_BACKFILL_PRESETS,
+  describeCallBackfill,
+  isCallBackfillPreset,
+  reconstructCallBackfill,
+  toDatetimeLocalValue,
+  type CallBackfillPreset,
+  type CallEntryMode,
+} from "@/lib/call-backfill";
+import {
   CALL_CHANNEL_OPTIONS,
   DEFAULT_CALL_CHANNEL,
   DEFAULT_WORK_KIND,
@@ -56,6 +65,11 @@ export type Draft = {
   workSecondary: string;
   isCourseSwap: boolean;
   owner: ItemOwner;
+  callEntry: CallEntryMode;
+  backfillEnd: string;
+  backfillPreset: CallBackfillPreset | null;
+  backfillCustom: string;
+  backfillSeeded: boolean;
 };
 
 type Props = {
@@ -129,7 +143,47 @@ export function ScheduleEditor({
   onUnskip,
 }: Props) {
   const courseLocked = draft.isCourseSwap;
-  const onceMode = draft.recurrence === "once" || courseLocked;
+  const backfill = draft.tag === "call" && draft.callEntry === "backfill";
+  const entryLocked = courseLocked || backfill;
+  const onceMode = draft.recurrence === "once" || entryLocked;
+  const backfillDescribed = backfill
+    ? describeCallBackfill({
+        backfillEnd: draft.backfillEnd,
+        preset: draft.backfillPreset,
+        custom: draft.backfillCustom,
+      })
+    : null;
+  const customDuration = draft.backfillCustom.trim() !== "";
+
+  const enterBackfill = () => {
+    setDraft((prev) => {
+      if (prev.callEntry === "backfill") return prev;
+      const seed =
+        !prev.backfillSeeded && prev.id && prev.recurrence === "once" && prev.date
+          ? reconstructCallBackfill({
+              start: prev.start,
+              end: prev.end,
+              date: prev.date,
+            })
+          : null;
+      const useSeed = Boolean(seed && seed.durationMinutes > 0);
+      const preset =
+        useSeed && seed && isCallBackfillPreset(seed.durationMinutes)
+          ? seed.durationMinutes
+          : null;
+      return {
+        ...prev,
+        callEntry: "backfill",
+        recurrence: "once",
+        owner: prev.id ? prev.owner : "self",
+        backfillSeeded: true,
+        backfillEnd: useSeed && seed ? seed.backfillEnd : toDatetimeLocalValue(new Date()),
+        backfillPreset: useSeed ? preset : null,
+        backfillCustom:
+          useSeed && seed && preset == null ? String(seed.durationMinutes) : "",
+      };
+    });
+  };
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-0">
@@ -291,6 +345,39 @@ export function ScheduleEditor({
         ) : null}
 
         {draft.tag === "call" ? (
+          <Block label="方式">
+            <div className="inline-flex self-start rounded-full border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_55%,var(--color-surface))] p-1">
+              <button
+                type="button"
+                className={cn(
+                  "h-8 rounded-full px-3.5 text-xs tracking-wide",
+                  !backfill
+                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                    : "text-[var(--color-ink-muted)]",
+                )}
+                onClick={() =>
+                  setDraft((prev) => ({ ...prev, callEntry: "plan" }))
+                }
+              >
+                安排
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "h-8 rounded-full px-3.5 text-xs tracking-wide",
+                  backfill
+                    ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
+                    : "text-[var(--color-ink-muted)]",
+                )}
+                onClick={enterBackfill}
+              >
+                补录
+              </button>
+            </div>
+          </Block>
+        ) : null}
+
+        {draft.tag === "call" ? (
           <Block label="通话渠道">
             <div className="flex flex-wrap gap-1.5">
               {CALL_CHANNEL_OPTIONS.map((opt) => (
@@ -335,44 +422,110 @@ export function ScheduleEditor({
           </Block>
         ) : null}
 
-        <Block label="时间">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label htmlFor="start" className="text-xs text-[var(--color-ink-muted)]">
-                开始
-              </Label>
+        {backfill ? (
+          <>
+            <Block label="结束时间">
               <Input
-                id="start"
-                type="time"
+                id="backfill-end"
+                type="datetime-local"
                 step={60}
-                value={draft.start}
+                max={toDatetimeLocalValue(new Date())}
+                value={draft.backfillEnd}
                 onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, start: e.target.value }))
+                  setDraft((prev) => ({ ...prev, backfillEnd: e.target.value }))
                 }
               />
-              <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
-                24 小时制
-              </p>
+            </Block>
+            <Block label="时长">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {CALL_BACKFILL_PRESETS.map((minutes) => (
+                  <Chip
+                    key={minutes}
+                    active={draft.backfillPreset === minutes && !customDuration}
+                    className={
+                      draft.backfillPreset === minutes && !customDuration
+                        ? TAG_SURFACE.call.chip
+                        : undefined
+                    }
+                    onClick={() =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        backfillPreset: minutes,
+                        backfillCustom: "",
+                      }))
+                    }
+                  >
+                    {minutes} 分钟
+                  </Chip>
+                ))}
+                <Input
+                  id="backfill-duration"
+                  inputMode="numeric"
+                  aria-label="自定义分钟"
+                  placeholder="自定义"
+                  className="h-8 w-24 rounded-full px-3"
+                  value={draft.backfillCustom}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      backfillCustom: e.target.value,
+                    }))
+                  }
+                />
+                <span className="text-xs text-[var(--color-ink-muted)]">分钟</span>
+              </div>
+              {backfillDescribed?.state === "ready" ? (
+                <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+                  {backfillDescribed.preview}
+                </p>
+              ) : null}
+              {backfillDescribed?.state === "invalid" ? (
+                <p className="text-sm text-[var(--color-danger)]">
+                  {backfillDescribed.message}
+                </p>
+              ) : null}
+            </Block>
+          </>
+        ) : (
+          <Block label="时间">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="start" className="text-xs text-[var(--color-ink-muted)]">
+                  开始
+                </Label>
+                <Input
+                  id="start"
+                  type="time"
+                  step={60}
+                  value={draft.start}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, start: e.target.value }))
+                  }
+                />
+                <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+                  24 小时制
+                </p>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="end" className="text-xs text-[var(--color-ink-muted)]">
+                  结束
+                </Label>
+                <Input
+                  id="end"
+                  type="time"
+                  step={60}
+                  value={draft.end}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, end: e.target.value }))
+                  }
+                />
+                <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+                  早于开始即跨日
+                </p>
+              </div>
             </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label htmlFor="end" className="text-xs text-[var(--color-ink-muted)]">
-                结束
-              </Label>
-              <Input
-                id="end"
-                type="time"
-                step={60}
-                value={draft.end}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, end: e.target.value }))
-                }
-              />
-              <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
-                早于开始即跨日
-              </p>
-            </div>
-          </div>
-        </Block>
+          </Block>
+        )}
 
       </div>
 
@@ -381,13 +534,13 @@ export function ScheduleEditor({
           <div className="inline-flex self-start rounded-full border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-bg)_55%,var(--color-surface))] p-1">
             <button
               type="button"
-              disabled={courseLocked}
+              disabled={entryLocked}
               className={cn(
                 "h-8 rounded-full px-3.5 text-xs tracking-wide",
-                draft.recurrence === "weekly" && !courseLocked
+                draft.recurrence === "weekly" && !entryLocked
                   ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
                   : "text-[var(--color-ink-muted)]",
-                courseLocked && "cursor-not-allowed opacity-40",
+                entryLocked && "cursor-not-allowed opacity-40",
               )}
               onClick={() =>
                 setDraft((prev) => ({ ...prev, recurrence: "weekly" }))
@@ -414,9 +567,13 @@ export function ScheduleEditor({
             <p className="text-xs leading-relaxed text-[#7a5a22]">
               换课中：已锁定为仅一次
             </p>
+          ) : backfill ? (
+            <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">
+              补录固定为仅一次
+            </p>
           ) : null}
 
-          {onceMode ? (
+          {backfill ? null : onceMode ? (
             <div className="flex min-w-0 flex-col gap-1.5 pt-1">
               <Label htmlFor="once-date">日期</Label>
               <Input
@@ -515,7 +672,7 @@ export function ScheduleEditor({
           </Block>
         ) : null}
 
-        {draft.tag === "work" && draft.workKind !== "other" ? (
+        {backfill ? null : draft.tag === "work" && draft.workKind !== "other" ? (
           <Block label="内容">
             {(() => {
               const meta = WORK_KIND_META[draft.workKind];

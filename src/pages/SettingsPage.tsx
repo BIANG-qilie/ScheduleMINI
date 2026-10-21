@@ -23,6 +23,14 @@ import { WeekGrid } from "@/components/WeekGrid";
 import { PhoneGlance } from "@/components/PhoneGlance";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 import type { Draft } from "@/components/ScheduleEditor";
+import {
+  callBackfillTitle,
+  describeCallBackfill,
+  isBackfillCallItem,
+  isCallBackfillPreset,
+  reconstructCallBackfill,
+  toDatetimeLocalValue,
+} from "@/lib/call-backfill";
 
 const ScheduleEditor = lazy(() =>
   import("@/components/ScheduleEditor").then((m) => ({ default: m.ScheduleEditor })),
@@ -96,12 +104,30 @@ const emptyDraft = (): Draft => {
     workSecondary: "",
     isCourseSwap: false,
     owner: "self",
+    callEntry: "plan",
+    backfillEnd: toDatetimeLocalValue(new Date()),
+    backfillPreset: null,
+    backfillCustom: "",
+    backfillSeeded: false,
   };
 };
 
 function itemToDraft(item: ScheduleItem): Draft {
   const today = formatDateKey(new Date());
   const workKind = itemWorkKind(item) ?? DEFAULT_WORK_KIND;
+  const backfill = isBackfillCallItem(item);
+  const rebuilt =
+    backfill && item.date
+      ? reconstructCallBackfill({
+          start: item.start,
+          end: item.end,
+          date: item.date,
+        })
+      : null;
+  const preset =
+    rebuilt && isCallBackfillPreset(rebuilt.durationMinutes)
+      ? rebuilt.durationMinutes
+      : null;
   return {
     id: item.id,
     start: item.start,
@@ -124,6 +150,12 @@ function itemToDraft(item: ScheduleItem): Draft {
     workSecondary: item.workSecondary ?? "",
     isCourseSwap: itemIsCourseSwap(item),
     owner: item.owner ?? "self",
+    callEntry: backfill ? "backfill" : "plan",
+    backfillEnd: rebuilt?.backfillEnd ?? toDatetimeLocalValue(new Date()),
+    backfillPreset: preset,
+    backfillCustom:
+      rebuilt && preset == null ? String(rebuilt.durationMinutes) : "",
+    backfillSeeded: backfill,
   };
 }
 
@@ -337,7 +369,26 @@ export function SettingsPage() {
       draft.tag === "work" &&
       draft.workKind === "class" &&
       draft.isCourseSwap;
-    const recurrence = courseSwap ? "once" : draft.recurrence;
+    const backfill = draft.tag === "call" && draft.callEntry === "backfill";
+    const described = backfill
+      ? describeCallBackfill({
+          backfillEnd: draft.backfillEnd,
+          preset: draft.backfillPreset,
+          custom: draft.backfillCustom,
+        })
+      : null;
+    if (described && described.state !== "ready") {
+      setFormError(described.message);
+      return;
+    }
+    const recurrence = courseSwap || backfill ? "once" : draft.recurrence;
+    const start = described?.state === "ready" ? described.resolved.start : draft.start;
+    const end = described?.state === "ready" ? described.resolved.end : draft.end;
+    const date = described?.state === "ready" ? described.resolved.date : draft.date;
+    const title =
+      described?.state === "ready"
+        ? callBackfillTitle(draft.callChannel || DEFAULT_CALL_CHANNEL)
+        : draft.title;
     if (structuredWork) {
       const required = workKindRequiredField(draft.workKind);
       if (required === "primary" && !draft.workPrimary.trim()) {
@@ -348,7 +399,7 @@ export function SettingsPage() {
         setFormError(`请填写${WORK_KIND_META[draft.workKind].secondaryLabel}`);
         return;
       }
-    } else if (!draft.title.trim()) {
+    } else if (!title.trim()) {
       setFormError("请填写标题");
       return;
     }
@@ -356,11 +407,11 @@ export function SettingsPage() {
       setFormError("请至少选择一个星期几");
       return;
     }
-    if (recurrence === "once" && !draft.date) {
+    if (recurrence === "once" && !date) {
       setFormError("请选择日期");
       return;
     }
-    if (draft.start === draft.end) {
+    if (start === end) {
       setFormError("结束时间不能与开始时间相同");
       return;
     }
@@ -381,18 +432,18 @@ export function SettingsPage() {
       const workTitle = structuredWork
         ? draft.workPrimary.trim() ||
           draft.workSecondary.trim() ||
-          draft.title.trim()
-        : draft.title.trim();
+          title.trim()
+        : title.trim();
       await upsertItem({
         id: draft.id,
-        start: draft.start,
-        end: draft.end,
+        start,
+        end,
         title: workTitle,
         note: draft.note,
         weekdays: recurrence === "weekly" ? draft.weekdays : [],
         enabled: draft.enabled,
         recurrence,
-        date: recurrence === "once" ? draft.date : undefined,
+        date: recurrence === "once" ? date : undefined,
         tag: draft.tag,
         owner: config.soloMode ? "self" : draft.owner,
         activeFrom:
