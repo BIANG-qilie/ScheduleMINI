@@ -173,6 +173,35 @@ describe("home widget text", () => {
     expect(both.lanes[0].tag).toBe("通话");
   });
 
+  it("48 小时补录在中间日照完整起止", async () => {
+    const now = new Date(2026, 9, 21, 12, 0, 0);
+    const snapshot = await buildWidgetSnapshot(
+      config([
+        item({
+          id: "long",
+          title: "手机通话",
+          tag: "call",
+          callChannel: "phone",
+          recurrence: "once",
+          date: "2026-10-19",
+          weekdays: [],
+          start: "15:30",
+          end: "15:30",
+          durationMinutes: 2880,
+        }),
+      ]),
+      now,
+    );
+    expect(snapshot.self).toHaveLength(1);
+    expect(snapshot.self[0].endMs - snapshot.self[0].startMs).toBe(2880 * 60_000);
+    const view = renderHomeWidget(snapshot, "self", now);
+    expect(view.lanes[0]).toMatchObject({
+      headline: "手机通话",
+      time: "10月19日 15:30–10月21日 15:30",
+      tag: "通话",
+    });
+  });
+
   it("过夜日程在次日凌晨仍是当前", async () => {
     const now = new Date(2026, 8, 22, 3, 0, 0);
     const snapshot = await buildWidgetSnapshot(

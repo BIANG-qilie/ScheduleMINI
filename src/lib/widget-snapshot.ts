@@ -1,9 +1,14 @@
 import {
   formatDateKey,
+  formatItemSpan,
+  parseDateKey,
   formatTagLabel,
   isOvernightItem,
+  itemAbsoluteInterval,
+  itemDurationMinutes,
   itemDisplayTitle,
   itemOccursOnDate,
+  itemRecurrence,
   itemStartsOnDate,
   itemTag,
   partnerFacingName,
@@ -94,6 +99,29 @@ function expandLane(
     const dateKey = formatDateKey(day);
     const weekday = day.getDay();
     for (const item of items) {
+      if (itemDurationMinutes(item) && itemRecurrence(item) === "once" && item.date) {
+        const interval = itemAbsoluteInterval(item);
+        if (!interval) continue;
+        const dayStart = parseDateKey(dateKey);
+        dayStart.setHours(0, 0, 0, 0);
+        const startedHere = item.date === dateKey;
+        const carried =
+          offset === 0 && item.date < dateKey && interval.endAt > dayStart;
+        if (startedHere || carried) {
+          const tag = itemTag(item);
+          out.push({
+            startMs: interval.startAt.getTime(),
+            endMs: interval.endAt.getTime(),
+            startDate: item.date,
+            sortKey: item.start,
+            title: itemDisplayTitle(item),
+            time: formatItemSpan(item),
+            tag: formatTagLabel(tag),
+            tagColor: TAG_BAR[tag],
+          });
+        }
+        continue;
+      }
       if (!startsOn(item, dateKey, weekday, dayOverrides)) continue;
       const start = atLocal(day, item.start);
       const end = atLocal(day, item.end);

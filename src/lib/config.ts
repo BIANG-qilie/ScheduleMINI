@@ -390,9 +390,23 @@ export const ScheduleItemSchema = z
     ownerId: z.string().optional(),
     /** ISO 时间；冲突时后写覆盖 */
     updatedAt: z.string().optional(),
+    /**
+     * 仅一次的真实时长（分钟）。钟点相同或跨过不止一个午夜时，用它还原起止。
+     * 缺省则仍按 start/end 钟点；旧端去掉该字段后只显示钟点。
+     */
+    durationMinutes: z.number().int().min(1).max(48 * 60).optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.start === val.end) {
+    if (val.durationMinutes != null && (val.recurrence !== "once" || !val.date)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "时长只记在仅一次上",
+        path: ["durationMinutes"],
+      });
+    }
+    const sameClockSpansFullDays =
+      val.durationMinutes != null && val.durationMinutes % (24 * 60) === 0;
+    if (val.start === val.end && !sameClockSpansFullDays) {
       ctx.addIssue({
         code: "custom",
         message: "结束时间不能与开始时间相同",
@@ -1050,6 +1064,8 @@ export function itemOccursOnDate(
   if (!item.enabled) return false;
 
   if (itemRecurrence(item) === "once") {
+    const spanned = spannedDates(item, dateKey);
+    if (spanned != null) return spanned;
     // 仅一次：按指定日期出现，不受放假/调休冲掉
     if (item.date === dateKey) return true;
     // 跨日仅一次：次日凌晨仍属该日程
@@ -1086,6 +1102,78 @@ export function itemOccursOnDate(
   return true;
 }
 
+export function itemDurationMinutes(item: { durationMinutes?: number }) {
+  const minutes = item.durationMinutes;
+  if (minutes == null || !Number.isInteger(minutes) || minutes <= 0) return undefined;
+  return minutes;
+}
+
+/** 带 durationMinutes 的仅一次：从起始日的开始钟点起，顺延这段分钟。 */
+export function itemAbsoluteInterval(item: ScheduleItem) {
+  const minutes = itemDurationMinutes(item);
+  if (minutes == null || itemRecurrence(item) !== "once" || !item.date) return null;
+  const startAt = parseDateKey(item.date);
+  const [hour, minute] = item.start.split(":").map(Number);
+  startAt.setHours(hour, minute, 0, 0);
+  return {
+    startAt,
+    endAt: new Date(startAt.getTime() + minutes * 60_000),
+  };
+}
+
+function dayBounds(dateKey: string) {
+  const start = parseDateKey(dateKey);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+/** 有真实时长时，按日历日判断是否相交；否则返回 null，走钟点规则。 */
+function spannedDates(item: ScheduleItem, dateKey: string) {
+  const interval = itemAbsoluteInterval(item);
+  if (!interval) return null;
+  const day = dayBounds(dateKey);
+  return interval.startAt < day.end && interval.endAt > day.start;
+}
+
+export function formatItemSpan(item: ScheduleItem) {
+  const interval = itemAbsoluteInterval(item);
+  if (!interval) return `${item.start}–${item.end}`;
+  const startKey = formatDateKey(interval.startAt);
+  const endKey = formatDateKey(interval.endAt);
+  const startClock = toHhmm(interval.startAt);
+  const endClock = toHhmm(interval.endAt);
+  if (startKey === endKey) return `${startClock}–${endClock}`;
+  const start = parseDateKey(startKey);
+  const end = parseDateKey(endKey);
+  return `${start.getMonth() + 1}月${start.getDate()}日 ${startClock}–${end.getMonth() + 1}月${end.getDate()}日 ${endClock}`;
+}
+
+/**
+ * 周列窗口是「当日 gridStartHour → 次日同一钟点」。
+ * 返回这段日程落在该列里的分钟偏移；跨过的午夜都在对应列里。
+ */
+export function itemCycleSlice(
+  item: ScheduleItem,
+  dateKey: string,
+  cycleStartHour: number,
+) {
+  const interval = itemAbsoluteInterval(item);
+  if (!interval) return null;
+  const columnStart = parseDateKey(dateKey);
+  columnStart.setHours(cycleStartHour, 0, 0, 0);
+  const columnEnd = new Date(columnStart);
+  columnEnd.setDate(columnEnd.getDate() + 1);
+  const segStart = Math.max(interval.startAt.getTime(), columnStart.getTime());
+  const segEnd = Math.min(interval.endAt.getTime(), columnEnd.getTime());
+  if (segEnd <= segStart) return null;
+  return {
+    startMin: (segStart - columnStart.getTime()) / 60_000,
+    endMin: (segEnd - columnStart.getTime()) / 60_000,
+  };
+}
+
 export type TimeSegment = { start: string; end: string };
 
 function overnightStartsOn(
@@ -1109,6 +1197,7 @@ function morningFitsStartColumn(end: string, cycleStartHour: number) {
  * 跨日的凌晨留在起始日列：20 日 22:00–06:00 是该列里的
  * 22:00–24:00 再接 21日 00:00–06:00。下一列的 00:00 已是再下一天。
  * 次日若因放假不再发生，凌晨段不画，晚上收到 24:00。
+ * 带真实时长的条目由 itemCycleSlice 按列切开，这里不重复给出钟点段。
  */
 export function columnSegmentsOnDate(
   item: ScheduleItem,
@@ -1118,6 +1207,7 @@ export function columnSegmentsOnDate(
   cycleStartHour = 7,
 ): TimeSegment[] {
   if (!item.enabled) return [];
+  if (itemAbsoluteInterval(item)) return [];
   if (!isOvernightItem(item)) {
     if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return [];
     return [{ start: item.start, end: item.end }];
@@ -1150,8 +1240,9 @@ export function columnSegmentsOnDate(
 }
 
 /**
- * 跨日条目在某一列的第一段。完整放置用 columnSegmentsOnDate。
- * 非跨日：start→end。跨日起始日：start→24:00。结束日列不承接凌晨尾巴。
+ * 某一日历日上的第一段。
+ * 有时长字段时按真实区间切到当日。
+ * 无时长时取该列第一段：跨日凌晨留在起始日列，结束日列不再承接尾巴。
  */
 export function itemSegmentOnDate(
   item: ScheduleItem,
@@ -1160,6 +1251,18 @@ export function itemSegmentOnDate(
   dayOverrides: Record<string, DayOverride> = {},
   cycleStartHour = 7,
 ): TimeSegment | null {
+  const interval = itemAbsoluteInterval(item);
+  if (interval) {
+    if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return null;
+    const day = dayBounds(dateKey);
+    const segStart = new Date(Math.max(interval.startAt.getTime(), day.start.getTime()));
+    const segEnd = new Date(Math.min(interval.endAt.getTime(), day.end.getTime()));
+    if (segEnd.getTime() <= segStart.getTime()) return null;
+    return {
+      start: segStart.getTime() === day.start.getTime() ? "00:00" : toHhmm(segStart),
+      end: segEnd.getTime() === day.end.getTime() ? "24:00" : toHhmm(segEnd),
+    };
+  }
   return (
     columnSegmentsOnDate(
       item,
@@ -1171,13 +1274,19 @@ export function itemSegmentOnDate(
   );
 }
 
-/** 这一天是一次真正的开始，而不是跨日尾巴 */
+/** 这一天是一次真正的开始，而不是跨日尾巴或补录的后续日 */
 export function itemStartsOnDate(
   item: ScheduleItem,
   dateKey: string,
   weekday = parseDateKey(dateKey).getDay(),
   dayOverrides: Record<string, DayOverride> = {},
 ) {
+  if (itemAbsoluteInterval(item)) {
+    return (
+      item.date === dateKey &&
+      itemOccursOnDate(item, dateKey, weekday, dayOverrides)
+    );
+  }
   if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return false;
   if (!isOvernightItem(item)) return true;
   return overnightStartsOn(item, dateKey, weekday);
@@ -1228,6 +1337,13 @@ export function isItemNow(
 ) {
   const dateKey = formatDateKey(now);
   const weekday = now.getDay();
+  const interval = itemAbsoluteInterval(item);
+  if (interval) {
+    if (!item.enabled) return false;
+    const nowMs = now.getTime();
+    return nowMs >= interval.startAt.getTime() && nowMs < interval.endAt.getTime();
+  }
+
   if (!itemOccursOnDate(item, dateKey, weekday, dayOverrides)) return false;
 
   const current = nowTimeString(now);
@@ -1315,6 +1431,12 @@ export function msUntilTime(hhmm: string, now = new Date()) {
   return target.getTime() - now.getTime();
 }
 
+export function msUntilItemEnd(item: ScheduleItem, now = new Date()) {
+  const interval = itemAbsoluteInterval(item);
+  if (interval) return interval.endAt.getTime() - now.getTime();
+  return msUntilTime(item.end, now);
+}
+
 /** 中文相对时长，如「23 分钟」「1 小时 5 分钟」 */
 export function formatDurationZh(ms: number) {
   if (ms <= 0) return "不到 1 分钟";
@@ -1341,6 +1463,14 @@ export function formatDurationCompact(ms: number) {
 
 /** 当前时段进度 0–1（含跨日：end < start） */
 export function progressThroughItem(item: ScheduleItem, now = new Date()) {
+  const interval = itemAbsoluteInterval(item);
+  if (interval) {
+    const total = interval.endAt.getTime() - interval.startAt.getTime();
+    if (total <= 0) return 1;
+    const elapsed = now.getTime() - interval.startAt.getTime();
+    return Math.min(1, Math.max(0, elapsed / total));
+  }
+
   const [sh, sm] = item.start.split(":").map(Number);
   const [eh, em] = item.end.split(":").map(Number);
   const [ch, cm] = nowTimeString(now).split(":").map(Number);

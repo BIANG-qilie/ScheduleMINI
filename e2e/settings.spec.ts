@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("小日程设置页", () => {
+  test.use({ timezoneId: "UTC" });
   test("显示品牌与日程区", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "小日程" })).toBeVisible();
@@ -29,6 +30,26 @@ test.describe("小日程设置页", () => {
     await expect(
       page.getByRole("button", { name: "游戏", exact: true }),
     ).toBeVisible();
+  });
+
+  test("通话补录按结束时间与时长写入仅一次", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-21T15:40:00Z") });
+    await page.goto("/");
+    await page.getByRole("button", { name: "新建日程" }).click();
+    const dialog = page.getByRole("dialog", { name: "新建日程" });
+    await dialog.getByRole("button", { name: "通话", exact: true }).click();
+    await dialog.getByRole("button", { name: "补录", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "每周重复" })).toBeDisabled();
+    await dialog.locator("#backfill-end").fill("2026-10-21T15:30");
+    await dialog.getByRole("button", { name: "30 分钟", exact: true }).click();
+    await expect(dialog.getByText("10月21日 15:00–15:30")).toBeVisible();
+    await dialog.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("已添加日程")).toBeVisible();
+    await page.getByRole("button", { name: "列表" }).click();
+    const row = page.locator("li").filter({ hasText: "手机通话" });
+    await expect(row.getByText("15:00–15:30")).toBeVisible();
+    await expect(row.getByText("仅一次", { exact: true })).toBeVisible();
+    await expect(row.getByText("通话", { exact: true })).toBeVisible();
   });
 
   test("通话标签可选渠道并显示在列表", async ({ page }) => {

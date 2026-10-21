@@ -5,8 +5,10 @@ import {
   columnSegmentsOnDate,
   emptyConfig,
   formatCallChannelLabel,
+  formatItemSpan,
   formatLowerBandHour,
   formatWorkDisplay,
+  itemCycleSlice,
   getCurrentItem,
   getUpcomingItem,
   gridDayHours,
@@ -66,6 +68,28 @@ describe("ScheduleItemSchema", () => {
     if (r.success) expect(isOvernightItem(r.data)).toBe(true);
   });
 
+  it("keeps durationMinutes so a 24h or 48h call can share the same clock", () => {
+    const call = {
+      ...base,
+      tag: "call" as const,
+      callChannel: "phone" as const,
+      title: "手机通话",
+      recurrence: "once" as const,
+      date: "2026-10-19",
+      weekdays: [] as number[],
+      start: "15:30",
+      end: "15:30",
+    };
+    expect(
+      ScheduleItemSchema.safeParse({ ...call, durationMinutes: 1440, date: "2026-10-20" })
+        .success,
+    ).toBe(true);
+    const saved = ScheduleItemSchema.safeParse({ ...call, durationMinutes: 2880 });
+    expect(saved.success).toBe(true);
+    if (saved.success) expect(saved.data.durationMinutes).toBe(2880);
+    expect(ScheduleItemSchema.safeParse(call).success).toBe(false);
+  });
+
   it("accepts call tag with callChannel", () => {
     const r = ScheduleItemSchema.safeParse({
       ...base,
@@ -78,6 +102,89 @@ describe("ScheduleItemSchema", () => {
       expect(r.data.tag).toBe("call");
       expect(r.data.callChannel).toBe("wechat");
     }
+  });
+});
+
+describe("long call backfill", () => {
+  const fortyEight = {
+    id: "long",
+    start: "15:30",
+    end: "15:30",
+    title: "手机通话",
+    weekdays: [] as number[],
+    enabled: true,
+    recurrence: "once" as const,
+    date: "2026-10-19",
+    tag: "call" as const,
+    callChannel: "phone" as const,
+    durationMinutes: 2880,
+    skippedDates: [] as string[],
+  };
+  const twentyFour = {
+    ...fortyEight,
+    id: "day",
+    date: "2026-10-20",
+    durationMinutes: 1440,
+  };
+
+  it("parse keeps durationMinutes", () => {
+    const cfg = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [fortyEight],
+    });
+    expect(cfg.items[0].durationMinutes).toBe(2880);
+    expect(cfg.items[0].start).toBe("15:30");
+    expect(cfg.items[0].end).toBe("15:30");
+  });
+
+  it("shows a 48h span across two midnights", () => {
+    expect(itemOccursOnDate(fortyEight, "2026-10-19", 1)).toBe(true);
+    expect(itemOccursOnDate(fortyEight, "2026-10-20", 2)).toBe(true);
+    expect(itemOccursOnDate(fortyEight, "2026-10-21", 3)).toBe(true);
+    expect(itemOccursOnDate(fortyEight, "2026-10-18", 0)).toBe(false);
+    expect(itemOccursOnDate(fortyEight, "2026-10-22", 4)).toBe(false);
+    expect(itemSegmentOnDate(fortyEight, "2026-10-19", 1)).toEqual({
+      start: "15:30",
+      end: "24:00",
+    });
+    expect(itemSegmentOnDate(fortyEight, "2026-10-20", 2)).toEqual({
+      start: "00:00",
+      end: "24:00",
+    });
+    expect(itemSegmentOnDate(fortyEight, "2026-10-21", 3)).toEqual({
+      start: "00:00",
+      end: "15:30",
+    });
+    const midnight = 17 * 60;
+    const monday = itemCycleSlice(fortyEight, "2026-10-19", 7);
+    const tuesday = itemCycleSlice(fortyEight, "2026-10-20", 7);
+    const wednesday = itemCycleSlice(fortyEight, "2026-10-21", 7);
+    expect(monday).toEqual({ startMin: 8.5 * 60, endMin: 24 * 60 });
+    expect(tuesday).toEqual({ startMin: 0, endMin: 24 * 60 });
+    expect(wednesday).toEqual({ startMin: 0, endMin: 8.5 * 60 });
+    expect(monday && monday.startMin < midnight && monday.endMin > midnight).toBe(true);
+    expect(tuesday && tuesday.startMin < midnight && tuesday.endMin > midnight).toBe(true);
+    expect(formatItemSpan(fortyEight)).toBe("10月19日 15:30–10月21日 15:30");
+    const middle = new Date(2026, 9, 20, 12, 0, 0);
+    expect(isItemNow(fortyEight, middle)).toBe(true);
+    expect(progressThroughItem(fortyEight, middle)).toBeCloseTo(20.5 / 48, 5);
+  });
+
+  it("shows a 24h span across one midnight", () => {
+    expect(itemSegmentOnDate(twentyFour, "2026-10-20", 2)).toEqual({
+      start: "15:30",
+      end: "24:00",
+    });
+    expect(itemSegmentOnDate(twentyFour, "2026-10-21", 3)).toEqual({
+      start: "00:00",
+      end: "15:30",
+    });
+    expect(itemOccursOnDate(twentyFour, "2026-10-19", 1)).toBe(false);
+    expect(formatItemSpan(twentyFour)).toBe("10月20日 15:30–10月21日 15:30");
+    const during = new Date(2026, 9, 21, 3, 0, 0);
+    expect(isItemNow(twentyFour, during)).toBe(true);
   });
 });
 
