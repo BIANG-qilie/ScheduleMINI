@@ -22,6 +22,49 @@ import {
 
 const LOCAL_STORAGE_KEY = "desktop-schedule-widget:config";
 
+/** 安卓上配置目录 IPC 的回包可能被丢掉，Promise 不再结束。 */
+export const CONFIG_IO_TIMEOUT_MS = 4_000;
+export const CONFIG_IO_ATTEMPTS = 3;
+
+export class ConfigIoTimeoutError extends Error {
+  readonly step: string;
+  constructor(step: string) {
+    super(step);
+    this.name = "ConfigIoTimeoutError";
+    this.step = step;
+  }
+}
+
+export type ConfigIo = {
+  mkdir: () => Promise<void>;
+  exists: () => Promise<boolean>;
+  readText: () => Promise<string>;
+  writeText: (text: string) => Promise<void>;
+};
+
+/** 挂起的 IPC 不拒绝。到点只放弃这一次，调用方再读。 */
+export function withIoTimeout<T>(
+  work: Promise<T>,
+  ms: number,
+  step: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new ConfigIoTimeoutError(step));
+    }, ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export class ConfigLoadError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message);
@@ -105,6 +148,62 @@ function parseConfigText(text: string): AppConfig {
   return parsed.data;
 }
 
+async function readConfigOnce(
+  io: ConfigIo,
+  timeoutMs: number,
+  afterLoad?: (config: AppConfig) => void,
+): Promise<AppConfig> {
+  try {
+    await withIoTimeout(io.mkdir(), timeoutMs, "mkdir");
+  } catch (error) {
+    if (error instanceof ConfigIoTimeoutError) throw error;
+  }
+
+  const fileExists = await withIoTimeout(io.exists(), timeoutMs, "exists");
+  if (!fileExists) {
+    const initial = parseAppConfig(defaultConfig());
+    await withIoTimeout(
+      io.writeText(JSON.stringify(initial, null, 2)),
+      timeoutMs,
+      "write",
+    );
+    afterLoad?.(initial);
+    return initial;
+  }
+
+  const text = await withIoTimeout(io.readText(), timeoutMs, "read");
+  const config = parseConfigText(text);
+  afterLoad?.(config);
+  return config;
+}
+
+/**
+ * 从注入的读写读配置。目录或文件 IPC 超时则整段重读，次数有上限。
+ * 超时不当成「文件不存在」，避免把已有配置写成默认样例。
+ * 次数用尽抛出 ConfigLoadError，交给现有的空日程错误页。
+ */
+export async function loadConfigWithIo(
+  io: ConfigIo,
+  options?: {
+    timeoutMs?: number;
+    attempts?: number;
+    afterLoad?: (config: AppConfig) => void;
+  },
+): Promise<AppConfig> {
+  const timeoutMs = options?.timeoutMs ?? CONFIG_IO_TIMEOUT_MS;
+  const attempts = options?.attempts ?? CONFIG_IO_ATTEMPTS;
+  let lastTimeout: ConfigIoTimeoutError | null = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await readConfigOnce(io, timeoutMs, options?.afterLoad);
+    } catch (error) {
+      if (!(error instanceof ConfigIoTimeoutError)) throw error;
+      lastTimeout = error;
+    }
+  }
+  throw new ConfigLoadError("读取配置超时", { cause: lastTimeout ?? undefined });
+}
+
 /**
  * 加载配置。文件不存在时写入并返回默认样例；
  * 文件损坏或校验失败时抛出 ConfigLoadError（不静默回退样例）。
@@ -120,21 +219,25 @@ export async function loadConfig(): Promise<AppConfig> {
     return parseConfigText(raw);
   }
 
-  await ensureConfigDir();
-  const fileExists = await exists(CONFIG_FILE_NAME, {
-    baseDir: BaseDirectory.AppConfig,
-  });
-  if (!fileExists) {
-    const initial = defaultConfig();
-    await saveConfig(initial);
-    return initial;
-  }
-  const text = await readTextFile(CONFIG_FILE_NAME, {
-    baseDir: BaseDirectory.AppConfig,
-  });
-  const config = parseConfigText(text);
-  void persistWidgetSnapshot(config);
-  return config;
+  return loadConfigWithIo(
+    {
+      mkdir: () =>
+        mkdir("", { baseDir: BaseDirectory.AppConfig, recursive: true }),
+      exists: () =>
+        exists(CONFIG_FILE_NAME, { baseDir: BaseDirectory.AppConfig }),
+      readText: () =>
+        readTextFile(CONFIG_FILE_NAME, { baseDir: BaseDirectory.AppConfig }),
+      writeText: (text) =>
+        writeTextFile(CONFIG_FILE_NAME, text, {
+          baseDir: BaseDirectory.AppConfig,
+        }),
+    },
+    {
+      afterLoad: (config) => {
+        void persistWidgetSnapshot(config);
+      },
+    },
+  );
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
