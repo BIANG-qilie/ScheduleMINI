@@ -51,10 +51,17 @@ describe("pickApk", () => {
 
 describe("summarizeNotes", () => {
   it("去掉 Markdown 标记与 changelog 链接", () => {
-    expect(summarizeNotes(release.body)).toEqual(["新功能", "自动检查更新", "修复 同步 问题"]);
+    const notes = summarizeNotes(release.body);
+    expect(notes.lines).toEqual(["新功能", "自动检查更新", "修复 同步 问题"]);
+    expect(notes.preview).toEqual(notes.lines);
+    expect(notes.hidden).toBe(0);
   });
-  it("超出行数时折叠", () => {
-    expect(summarizeNotes("- a\n- b\n- c", 2)).toEqual(["a", "b", "等 1 项"]);
+  it("超出行数时只预览，完整列表仍可展开，不再塞入「等 n 项」", () => {
+    const notes = summarizeNotes("- a\n- b\n- c", 2);
+    expect(notes.preview).toEqual(["a", "b"]);
+    expect(notes.hidden).toBe(1);
+    expect(notes.lines).toEqual(["a", "b", "c"]);
+    expect(notes.lines.some((line) => /^等 /.test(line))).toBe(false);
   });
 });
 

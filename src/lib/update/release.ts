@@ -58,8 +58,17 @@ export function pickApk(assets: ReleaseAsset[]) {
   return apks.find((a) => /universal/i.test(a.name)) ?? apks[0] ?? null;
 }
 
-/** Markdown 发布说明 → 最多 maxLines 行纯文本要点 */
-export function summarizeNotes(markdown: string, maxLines = 4) {
+export type ReleaseNotes = {
+  /** 清洗后的全部要点，供应用内展开阅读 */
+  lines: string[];
+  /** 对话框里先展示的前几条 */
+  preview: string[];
+  /** preview 之外还能展开的条数 */
+  hidden: number;
+};
+
+/** Markdown 发布说明 → 纯文本要点。超出 maxLines 只做预览，完整列表仍在 lines。 */
+export function summarizeNotes(markdown: string, maxLines = 4): ReleaseNotes {
   const lines = markdown
     .split(/\r?\n/)
     .map((l) =>
@@ -73,9 +82,8 @@ export function summarizeNotes(markdown: string, maxLines = 4) {
         .trim(),
     )
     .filter((l) => l && !/^full changelog/i.test(l));
-  return lines.length > maxLines
-    ? [...lines.slice(0, maxLines), `等 ${lines.length - maxLines} 项`]
-    : lines;
+  const preview = lines.slice(0, Math.max(0, maxLines));
+  return { lines, preview, hidden: lines.length - preview.length };
 }
 
 export async function fetchLatestRelease(fetchImpl: typeof fetch = fetch) {

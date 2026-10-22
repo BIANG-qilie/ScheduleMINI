@@ -38,6 +38,45 @@ test.describe("检查更新", () => {
     await expect(page.getByRole("dialog", { name: "发现新版本 v9.0.0" })).toBeHidden();
   });
 
+  test("长更新说明可以在弹窗里展开看完", async ({ page }) => {
+    await page.route(FEED, (route) =>
+      route.fulfill({
+        json: {
+          tag_name: "v9.1.0",
+          name: "v9.1.0",
+          body: [
+            "- 第一项",
+            "- 第二项",
+            "- 第三项",
+            "- 第四项",
+            "- 第五项完整说明",
+            "- 第六项也不该丢",
+          ].join("\n"),
+          html_url: "https://github.com/BIANG-qilie/ScheduleMINI/releases/tag/v9.1.0",
+          published_at: "2026-10-20T00:00:00Z",
+          draft: false,
+          prerelease: false,
+          assets: [],
+        },
+      }),
+    );
+    await page.goto("/");
+    const dialog = page.getByRole("dialog", { name: "发现新版本 v9.1.0" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("第一项")).toBeVisible();
+    await expect(dialog.getByText("第四项")).toBeVisible();
+    await expect(dialog.getByText("第五项完整说明")).toHaveCount(0);
+    await expect(dialog.getByText(/等 \d+ 项/)).toHaveCount(0);
+
+    await dialog.getByRole("button", { name: "查看全部更新说明（还有 2 项）" }).click();
+    await expect(dialog.getByText("第五项完整说明")).toBeVisible();
+    await expect(dialog.getByText("第六项也不该丢")).toBeVisible();
+
+    await dialog.getByRole("button", { name: "收起" }).click();
+    await expect(dialog.getByText("第五项完整说明")).toHaveCount(0);
+    await expect(dialog.getByText("第一项")).toBeVisible();
+  });
+
   test("更新按钮在网页端打开发布页", async ({ page, context }) => {
     await mockFeed(page, "v9.0.0");
     await page.goto("/");

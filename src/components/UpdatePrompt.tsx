@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { summarizeNotes } from "@/lib/update/release";
@@ -25,6 +26,45 @@ function installLabel(status: string, percent: number | null) {
   return "更新";
 }
 
+function ReleaseNotes({ markdown }: { markdown: string }) {
+  const [showAll, setShowAll] = useState(false);
+  const summary = summarizeNotes(markdown);
+  const notes = showAll ? summary.lines : summary.preview;
+  return (
+    <>
+      {notes.length > 0 && (
+        <ul className="list-disc space-y-1 pl-5 text-[var(--color-ink-muted)]">
+          {notes.map((line, i) => (
+            <li key={`${i}-${line}`}>{line}</li>
+          ))}
+        </ul>
+      )}
+      {summary.hidden > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto whitespace-normal px-1 text-left"
+          aria-expanded={showAll}
+          onClick={() => setShowAll((open) => !open)}
+        >
+          {showAll ? (
+            <>
+              收起
+              <ChevronUp className="h-4 w-4" aria-hidden />
+            </>
+          ) : (
+            <>
+              查看全部更新说明（还有 {summary.hidden} 项）
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </>
+          )}
+        </Button>
+      )}
+    </>
+  );
+}
+
 export function UpdatePrompt() {
   const {
     release,
@@ -37,8 +77,8 @@ export function UpdatePrompt() {
     later,
     skip,
   } = useUpdateStore();
+
   if (!release) return null;
-  const notes = summarizeNotes(release.notes);
   const android = updatePlatform() === "android";
 
   return (
@@ -68,13 +108,7 @@ export function UpdatePrompt() {
       }
     >
       <div className="space-y-3 px-5 py-4 text-sm">
-        {notes.length > 0 && (
-          <ul className="list-disc space-y-1 pl-5 text-[var(--color-ink-muted)]">
-            {notes.map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ul>
-        )}
+        <ReleaseNotes key={release.version} markdown={release.notes} />
         {status === "installing" && android && (
           <p>下载完成后会打开系统安装界面。</p>
         )}
