@@ -377,6 +377,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         recurrence: effectiveRecurrence,
         weekdays: effectiveRecurrence === "weekly" ? item.weekdays : [],
         date: effectiveRecurrence === "once" ? item.date : undefined,
+        endDate:
+          effectiveRecurrence === "once" && item.endDate
+            ? item.endDate
+            : undefined,
+        durationMinutes:
+          effectiveRecurrence === "once" && item.durationMinutes
+            ? item.durationMinutes
+            : undefined,
         tag,
         skippedDates:
           effectiveRecurrence === "weekly" ? [...(item.skippedDates ?? [])] : [],

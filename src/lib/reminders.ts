@@ -6,6 +6,7 @@ import {
 import {
   APP_DISPLAY_NAME,
   formatDateKey,
+  itemAbsoluteInterval,
   todaysItems,
   type AppConfig,
   type ScheduleItem,
@@ -72,7 +73,9 @@ export async function tickReminders(config: AppConfig, now = new Date()) {
     now,
     config.dayOverrides,
   )) {
-    const startAt = itemStartDate(item, now);
+    const interval = itemAbsoluteInterval(item);
+    if (interval && formatDateKey(interval.startAt) !== dateKey) continue;
+    const startAt = interval ? interval.startAt : itemStartDate(item, now);
     const delta = startAt.getTime() - now.getTime();
     if (delta <= 0 || delta > windowMs) continue;
 
