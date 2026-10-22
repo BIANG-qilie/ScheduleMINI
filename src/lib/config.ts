@@ -376,6 +376,12 @@ export const ScheduleItemSchema = z
     recurrence: RecurrenceSchema.default("weekly"),
     /** once 时必填，YYYY-MM-DD */
     date: DateSchema.optional(),
+    /**
+     * once 的结束日期（YYYY-MM-DD）。
+     * 跨过不止一夜时必填，和结束钟点一起决定真实结束时刻。
+     * 只过一夜（结束钟点早于开始）不写，凌晨仍留在起始日列。
+     */
+    endDate: DateSchema.optional(),
     /** 标签；仅 weekly + work 放假日跳过；once 不受放假影响 */
     tag: ScheduleTagSchema.default("work"),
     /** 周循环：取消单次出现的日期（YYYY-MM-DD，跨日记起始日） */
@@ -411,8 +417,9 @@ export const ScheduleItemSchema = z
     /**
      * 仅一次的真实时长（分钟）。钟点相同或跨过不止一个午夜时，用它还原起止。
      * 缺省则仍按 start/end 钟点；旧端去掉该字段后只显示钟点。
+     * 通话补录另有 48 小时上限；这里允许更长的一次日程。
      */
-    durationMinutes: z.number().int().min(1).max(48 * 60).optional(),
+    durationMinutes: z.number().int().min(1).max(366 * 24 * 60).optional(),
   })
   .superRefine((val, ctx) => {
     if (val.durationMinutes != null && (val.recurrence !== "once" || !val.date)) {
@@ -421,6 +428,46 @@ export const ScheduleItemSchema = z
         message: "时长只记在仅一次上",
         path: ["durationMinutes"],
       });
+    }
+    if (val.endDate && (val.recurrence !== "once" || !val.date)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "结束日期只记在仅一次上",
+        path: ["endDate"],
+      });
+    }
+    if (val.endDate && val.date && val.recurrence === "once") {
+      if (val.endDate < val.date) {
+        ctx.addIssue({
+          code: "custom",
+          message: "结束日期不能早于开始日期",
+          path: ["endDate"],
+        });
+      } else if (val.endDate > val.date) {
+        const startAt = parseDateKey(val.date);
+        const [sh, sm] = val.start.split(":").map(Number);
+        startAt.setHours(sh, sm, 0, 0);
+        const endAt = parseDateKey(val.endDate);
+        const [eh, em] = val.end.split(":").map(Number);
+        endAt.setHours(eh, em, 0, 0);
+        const minutes = Math.round((endAt.getTime() - startAt.getTime()) / 60_000);
+        if (minutes <= 0) {
+          ctx.addIssue({
+            code: "custom",
+            message: "结束须晚于开始",
+            path: ["endDate"],
+          });
+        } else if (
+          val.durationMinutes != null &&
+          val.durationMinutes !== minutes
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "时长和结束日期不一致",
+            path: ["durationMinutes"],
+          });
+        }
+      }
     }
     const sameClockSpansFullDays =
       val.durationMinutes != null && val.durationMinutes % (24 * 60) === 0;
@@ -1126,16 +1173,99 @@ export function itemDurationMinutes(item: { durationMinutes?: number }) {
   return minutes;
 }
 
-/** 带 durationMinutes 的仅一次：从起始日的开始钟点起，顺延这段分钟。 */
+/**
+ * 带结束日期或 durationMinutes 的仅一次：真实起止。
+ * 只过一夜（没有 endDate、也没有时长）返回 null，仍走钟点跨日。
+ */
 export function itemAbsoluteInterval(item: ScheduleItem) {
-  const minutes = itemDurationMinutes(item);
-  if (minutes == null || itemRecurrence(item) !== "once" || !item.date) return null;
+  if (itemRecurrence(item) !== "once" || !item.date) return null;
   const startAt = parseDateKey(item.date);
   const [hour, minute] = item.start.split(":").map(Number);
   startAt.setHours(hour, minute, 0, 0);
+  if (item.endDate && item.endDate > item.date) {
+    const endAt = parseDateKey(item.endDate);
+    const [eh, em] = item.end.split(":").map(Number);
+    endAt.setHours(eh, em, 0, 0);
+    if (endAt.getTime() <= startAt.getTime()) return null;
+    return { startAt, endAt };
+  }
+  const minutes = itemDurationMinutes(item);
+  if (minutes == null) return null;
   return {
     startAt,
     endAt: new Date(startAt.getTime() + minutes * 60_000),
+  };
+}
+
+/** 编辑器里仅一次的结束日期。只过一夜时是起始日的次日。 */
+export function onceEndDate(item: ScheduleItem) {
+  if (itemRecurrence(item) !== "once" || !item.date) return item.date ?? "";
+  if (item.endDate) return item.endDate;
+  const interval = itemAbsoluteInterval(item);
+  if (interval) return formatDateKey(interval.endAt);
+  if (isOvernightItem(item)) return shiftDateKey(item.date, 1);
+  return item.date;
+}
+
+const ONCE_SPAN_MAX_MINUTES = 366 * 24 * 60;
+
+/**
+ * 仅一次的开始日期+钟点、结束日期+钟点。
+ * 同一天，或只过一夜（结束日是次日且结束钟点更早）不写 endDate / 时长。
+ * 更长的一段写成一条，时长可以超过通话补录的 48 小时。
+ */
+export function resolveOnceSpan(input: {
+  date: string;
+  start: string;
+  endDate: string;
+  end: string;
+}):
+  | {
+      ok: true;
+      date: string;
+      start: string;
+      end: string;
+      endDate?: string;
+      durationMinutes?: number;
+    }
+  | { ok: false; message: string } {
+  if (!input.date || !input.endDate) {
+    return { ok: false, message: "请选择开始和结束日期" };
+  }
+  if (!/^\d{2}:\d{2}$/.test(input.start) || !/^\d{2}:\d{2}$/.test(input.end)) {
+    return { ok: false, message: "请填写开始和结束时间" };
+  }
+  const startAt = parseDateKey(input.date);
+  const [sh, sm] = input.start.split(":").map(Number);
+  startAt.setHours(sh, sm, 0, 0);
+  const endAt = parseDateKey(input.endDate);
+  const [eh, em] = input.end.split(":").map(Number);
+  endAt.setHours(eh, em, 0, 0);
+  if (endAt.getTime() <= startAt.getTime()) {
+    return { ok: false, message: "结束须晚于开始" };
+  }
+  const minutes = Math.round((endAt.getTime() - startAt.getTime()) / 60_000);
+  if (minutes > ONCE_SPAN_MAX_MINUTES) {
+    return { ok: false, message: "跨度不能超过一年" };
+  }
+  const classicOvernight =
+    input.endDate === shiftDateKey(input.date, 1) &&
+    compareTime(input.end, input.start) < 0;
+  if (input.endDate === input.date || classicOvernight) {
+    return {
+      ok: true,
+      date: input.date,
+      start: input.start,
+      end: input.end,
+    };
+  }
+  return {
+    ok: true,
+    date: input.date,
+    start: input.start,
+    end: input.end,
+    endDate: input.endDate,
+    durationMinutes: minutes,
   };
 }
 
@@ -1255,6 +1385,141 @@ export function columnSegmentsOnDate(
     return [{ start: "00:00", end: item.end }];
   }
   return [];
+}
+
+export type ColumnCycleRange = {
+  startMin: number;
+  endMin: number;
+  /** 贴着午夜，周格上标「跨日」 */
+  overnight: boolean;
+};
+
+function clockMinutes(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * 把钟点段折进「当日 cycleStart → 次日 cycleStart」的分钟偏移。
+ * 00:00–cycleStart 整段顶到列底，避免 07:00 被折成 0 后丢掉。
+ */
+function segmentCycleRange(
+  segment: TimeSegment,
+  cycleStartHour: number,
+): ColumnCycleRange | null {
+  const cycleStartLabel = `${String(cycleStartHour).padStart(2, "0")}:00`;
+  let startMin = clockToCycleMinutes(segment.start, cycleStartHour);
+  let endMin = clockToCycleMinutes(segment.end, cycleStartHour);
+  if (segment.start === "00:00" && segment.end === cycleStartLabel) {
+    endMin = 24 * 60;
+  }
+  if (endMin <= startMin) {
+    if (segment.end === "24:00" || segment.end === "00:00") {
+      endMin = Math.min(24 * 60, startMin + 40);
+    } else {
+      return null;
+    }
+  }
+  return {
+    startMin,
+    endMin,
+    overnight: segment.end === "24:00" || segment.start === "00:00",
+  };
+}
+
+/**
+ * 同一天里的钟点（结束晚于开始）。
+ * 列的上半是当天 cycleStart 之后，下半是次日凌晨。
+ * 00:00–23:59 因此会拆到前一列的下半和当天列的上半，两段都有高度。
+ */
+function sameDayColumnRanges(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday: number,
+  dayOverrides: Record<string, DayOverride>,
+  cycleStartHour: number,
+): ColumnCycleRange[] {
+  const ranges: ColumnCycleRange[] = [];
+  const cycleStartMin = cycleStartHour * 60;
+  const itemStart = clockMinutes(item.start);
+  const itemEnd = clockMinutes(item.end);
+  if (itemEnd <= itemStart) return ranges;
+
+  const push = (
+    occurDate: string,
+    occurWeekday: number,
+    windowStart: number,
+    windowEnd: number,
+    toCycle: (minute: number) => number,
+  ) => {
+    if (!itemOccursOnDate(item, occurDate, occurWeekday, dayOverrides)) return;
+    const segStart = Math.max(itemStart, windowStart);
+    const segEnd = Math.min(itemEnd, windowEnd);
+    if (segEnd <= segStart) return;
+    ranges.push({
+      startMin: toCycle(segStart),
+      endMin: toCycle(segEnd),
+      overnight: false,
+    });
+  };
+
+  push(dateKey, weekday, cycleStartMin, 24 * 60, (minute) => minute - cycleStartMin);
+  if (cycleStartHour > 0) {
+    const nextKey = shiftDateKey(dateKey, 1);
+    const lowerOrigin = (24 - cycleStartHour) * 60;
+    push(
+      nextKey,
+      parseDateKey(nextKey).getDay(),
+      0,
+      cycleStartMin,
+      (minute) => lowerOrigin + minute,
+    );
+  }
+  return ranges;
+}
+
+/**
+ * 某一列要画的分钟区间（相对该列 0 点，也就是当日 gridStartHour）。
+ * 有真实结束日期的跨天日程按列窗口切开；只过一夜仍整段落在起始日列。
+ */
+export function columnCycleRanges(
+  item: ScheduleItem,
+  dateKey: string,
+  weekday = parseDateKey(dateKey).getDay(),
+  dayOverrides: Record<string, DayOverride> = {},
+  cycleStartHour = 7,
+): ColumnCycleRange[] {
+  if (!item.enabled) return [];
+  if (itemAbsoluteInterval(item)) {
+    const slice = itemCycleSlice(item, dateKey, cycleStartHour);
+    if (!slice || slice.endMin <= slice.startMin) return [];
+    const midnight = clockToCycleMinutes("00:00", cycleStartHour);
+    return [
+      {
+        startMin: slice.startMin,
+        endMin: slice.endMin,
+        overnight: slice.startMin < midnight && slice.endMin > midnight,
+      },
+    ];
+  }
+  if (isOvernightItem(item)) {
+    return columnSegmentsOnDate(
+      item,
+      dateKey,
+      weekday,
+      dayOverrides,
+      cycleStartHour,
+    )
+      .map((segment) => segmentCycleRange(segment, cycleStartHour))
+      .filter((range): range is ColumnCycleRange => range != null);
+  }
+  return sameDayColumnRanges(
+    item,
+    dateKey,
+    weekday,
+    dayOverrides,
+    cycleStartHour,
+  );
 }
 
 /**
@@ -1525,7 +1790,16 @@ function formatMonthDay(dateKey: string) {
 export function formatScheduleScope(item: ScheduleItem) {
   if (itemRecurrence(item) === "once" && item.date) {
     const d = parseDateKey(item.date);
-    return `${d.getMonth() + 1}月${d.getDate()}日`;
+    const startLabel = `${d.getMonth() + 1}月${d.getDate()}日`;
+    const interval = itemAbsoluteInterval(item);
+    if (interval) {
+      const endKey = formatDateKey(interval.endAt);
+      if (endKey !== item.date) {
+        const end = parseDateKey(endKey);
+        return `${startLabel}–${end.getMonth() + 1}月${end.getDate()}日`;
+      }
+    }
+    return startLabel;
   }
   const days = formatWeekdays(item.weekdays);
   const from = item.activeFrom ? formatMonthDay(item.activeFrom) : null;

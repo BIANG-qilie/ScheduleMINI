@@ -26,8 +26,10 @@ import {
   WEEKDAY_LABELS,
   WORK_KIND_META,
   WORK_KIND_OPTIONS,
+  compareTime,
   formatDateKey,
   partnerFacingName,
+  shiftDateKey,
   itemSkippedDates,
   tagRespectsHolidays,
   workKindRequiredField,
@@ -53,6 +55,7 @@ export type Draft = {
   enabled: boolean;
   recurrence: Recurrence;
   date: string;
+  endDate: string;
   activeFrom: string;
   activeUntil: string;
   tag: ScheduleTag;
@@ -341,6 +344,12 @@ export function ScheduleEditor({
                       recurrence: on ? "once" : prev.recurrence,
                       date:
                         on && !prev.date ? formatDateKey(new Date()) : prev.date,
+                      endDate:
+                        on && prev.recurrence !== "once"
+                          ? prev.date && compareTime(prev.end, prev.start) < 0
+                            ? shiftDateKey(prev.date, 1)
+                            : prev.date || formatDateKey(new Date())
+                          : prev.endDate,
                     }))
                   }
                 />
@@ -491,6 +500,89 @@ export function ScheduleEditor({
               ) : null}
             </Block>
           </>
+        ) : onceMode ? (
+          <Block
+            label="时间"
+            hint="结束日期可以晚于开始。跨过不止一夜时，这一条会画在它覆盖的每一天；只过一夜（例如 22:00 到次日 06:00）仍留在开始那天。"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="once-date" className="text-xs text-[var(--color-ink-muted)]">
+                  开始日期
+                </Label>
+                <Input
+                  id="once-date"
+                  type="date"
+                  value={draft.date}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setDraft((prev) => {
+                      let endDate = prev.endDate;
+                      if (!prev.endDate || prev.endDate === prev.date) {
+                        endDate = next;
+                      } else if (
+                        prev.date &&
+                        prev.endDate === shiftDateKey(prev.date, 1) &&
+                        compareTime(prev.end, prev.start) < 0
+                      ) {
+                        endDate = next ? shiftDateKey(next, 1) : prev.endDate;
+                      }
+                      return { ...prev, date: next, endDate };
+                    });
+                  }}
+                />
+                <Label htmlFor="start" className="text-xs text-[var(--color-ink-muted)]">
+                  开始时间
+                </Label>
+                <Input
+                  id="start"
+                  type="time"
+                  step={60}
+                  value={draft.start}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, start: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="once-end-date" className="text-xs text-[var(--color-ink-muted)]">
+                  结束日期
+                </Label>
+                <Input
+                  id="once-end-date"
+                  type="date"
+                  value={draft.endDate}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, endDate: e.target.value }))
+                  }
+                />
+                <Label htmlFor="end" className="text-xs text-[var(--color-ink-muted)]">
+                  结束时间
+                </Label>
+                <Input
+                  id="end"
+                  type="time"
+                  step={60}
+                  value={draft.end}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setDraft((prev) => {
+                      let endDate = prev.endDate;
+                      if (
+                        prev.date &&
+                        next &&
+                        compareTime(next, prev.start) < 0 &&
+                        (!endDate || endDate === prev.date)
+                      ) {
+                        endDate = shiftDateKey(prev.date, 1);
+                      }
+                      return { ...prev, end: next, endDate };
+                    });
+                  }}
+                />
+              </div>
+            </div>
+          </Block>
         ) : (
           <Block label="时间">
             <div className="grid grid-cols-2 gap-3">
@@ -562,7 +654,16 @@ export function ScheduleEditor({
                   : "text-[var(--color-ink-muted)]",
               )}
               onClick={() =>
-                setDraft((prev) => ({ ...prev, recurrence: "once" }))
+                setDraft((prev) => ({
+                  ...prev,
+                  recurrence: "once",
+                  endDate:
+                    prev.recurrence === "once" && prev.endDate
+                      ? prev.endDate
+                      : prev.date && compareTime(prev.end, prev.start) < 0
+                        ? shiftDateKey(prev.date, 1)
+                        : prev.date,
+                }))
               }
             >
               仅一次
@@ -578,19 +679,7 @@ export function ScheduleEditor({
             </p>
           ) : null}
 
-          {backfill ? null : onceMode ? (
-            <div className="flex min-w-0 flex-col gap-1.5 pt-1">
-              <Label htmlFor="once-date">日期</Label>
-              <Input
-                id="once-date"
-                type="date"
-                value={draft.date}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, date: e.target.value }))
-                }
-              />
-            </div>
-          ) : (
+          {backfill || onceMode ? null : (
             <div className="flex flex-col gap-3 pt-1">
               <div className="flex flex-wrap gap-1.5">
                 {[1, 2, 3, 4, 5, 6, 0].map((day) => {

@@ -5,10 +5,8 @@ import {
   formatTagLabel,
   isOvernightItem,
   itemAbsoluteInterval,
-  itemDurationMinutes,
   itemDisplayTitle,
   itemOccursOnDate,
-  itemRecurrence,
   itemStartsOnDate,
   itemTag,
   partnerFacingName,
@@ -99,9 +97,8 @@ function expandLane(
     const dateKey = formatDateKey(day);
     const weekday = day.getDay();
     for (const item of items) {
-      if (itemDurationMinutes(item) && itemRecurrence(item) === "once" && item.date) {
-        const interval = itemAbsoluteInterval(item);
-        if (!interval) continue;
+      const interval = itemAbsoluteInterval(item);
+      if (interval && item.date) {
         const dayStart = parseDateKey(dateKey);
         dayStart.setHours(0, 0, 0, 0);
         const startedHere = item.date === dateKey;
