@@ -7,6 +7,10 @@ import {
   openInstallPermissionSettings,
   updatePlatform,
 } from "@/lib/update/install";
+import {
+  readSafeAreaBottom,
+  updateDialogLift,
+} from "@/lib/update/update-dialog-layout";
 import { APP_VERSION } from "@/lib/update/version";
 import { UPDATE_INTERVAL_MS, useUpdateStore } from "@/store/update-store";
 
@@ -24,6 +28,32 @@ function installLabel(status: string, percent: number | null) {
     return percent === null ? "下载中…" : `下载中 ${percent}%`;
   }
   return "更新";
+}
+
+function downloadProgressLabel(percent: number | null) {
+  return percent === null ? "正在下载…" : `正在下载 ${percent}%`;
+}
+
+export function useUpdateDialogLift() {
+  const measure = () =>
+    updateDialogLift(
+      typeof window === "undefined" ? 800 : window.innerHeight,
+      readSafeAreaBottom(),
+    );
+  const [lift, setLift] = useState(measure);
+
+  useEffect(() => {
+    const onResize = () => setLift(measure());
+    onResize();
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
+  }, []);
+
+  return lift;
 }
 
 function ReleaseNotes({ markdown }: { markdown: string }) {
@@ -66,6 +96,7 @@ function ReleaseNotes({ markdown }: { markdown: string }) {
 }
 
 export function UpdatePrompt() {
+  const lift = useUpdateDialogLift();
   const {
     release,
     status,
@@ -80,6 +111,7 @@ export function UpdatePrompt() {
 
   if (!release) return null;
   const android = updatePlatform() === "android";
+  const actionClass = "max-sm:min-h-11";
 
   return (
     <Dialog
@@ -89,16 +121,18 @@ export function UpdatePrompt() {
       eyebrow="更新"
       description={`当前 v${APP_VERSION}`}
       dense
+      mobileLift={lift}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={skip}>
+          <Button type="button" variant="ghost" className={actionClass} onClick={skip}>
             跳过此版本
           </Button>
-          <Button type="button" variant="outline" onClick={later}>
+          <Button type="button" variant="outline" className={actionClass} onClick={later}>
             稍后
           </Button>
           <Button
             type="button"
+            className={actionClass}
             disabled={status === "installing"}
             onClick={() => void install()}
           >
@@ -109,8 +143,28 @@ export function UpdatePrompt() {
     >
       <div className="space-y-3 px-5 py-4 text-sm">
         <ReleaseNotes key={release.version} markdown={release.notes} />
-        {status === "installing" && android && (
-          <p>下载完成后会打开系统安装界面。</p>
+        {status === "installing" && (
+          <div className="space-y-2">
+            <p role="status">{downloadProgressLabel(percent)}</p>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent ?? undefined}
+              aria-label={percent === null ? "正在下载" : `已下载 ${percent}%`}
+              className="h-1.5 overflow-hidden rounded-full bg-[var(--color-line)]"
+            >
+              <div
+                className={
+                  percent === null
+                    ? "update-progress-indeterminate h-full rounded-full bg-[var(--color-accent)]"
+                    : "h-full rounded-full bg-[var(--color-accent)]"
+                }
+                style={percent === null ? undefined : { width: `${percent}%` }}
+              />
+            </div>
+            {android && <p>下载完成后会打开系统安装界面。</p>}
+          </div>
         )}
         {status === "needs-permission" && (
           <div className="space-y-2 rounded-2xl border border-[var(--color-line)] p-3">

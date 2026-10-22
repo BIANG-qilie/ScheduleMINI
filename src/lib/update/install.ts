@@ -20,6 +20,25 @@ export type InstallEvent =
   | { kind: "handed-off"; target: "installer" | "browser" }
   | { kind: "failed" };
 
+/** 把安卓壳 sm-apk 事件收成安装状态。percent 为 null 表示总大小未知。 */
+export function parseApkEvent(detail: unknown): InstallEvent | null {
+  if (detail === "installer") return { kind: "handed-off", target: "installer" };
+  if (detail === "failed") return { kind: "failed" };
+  if (!detail || typeof detail !== "object") return null;
+  const kind = (detail as { kind?: unknown }).kind;
+  if (kind === "progress") {
+    const raw = (detail as { percent?: unknown }).percent;
+    const percent =
+      typeof raw === "number" && Number.isFinite(raw)
+        ? Math.max(0, Math.min(100, Math.round(raw)))
+        : null;
+    return { kind: "progress", percent };
+  }
+  if (kind === "installer") return { kind: "handed-off", target: "installer" };
+  if (kind === "failed") return { kind: "failed" };
+  return null;
+}
+
 export function updatePlatform() {
   if (typeof window !== "undefined" && window.SmInstaller) return "android";
   if (isTauriRuntime()) return "desktop";
@@ -74,16 +93,13 @@ function installAndroid(
     onEvent({ kind: "needs-permission" });
     return;
   }
-  window.addEventListener(
-    "sm-apk",
-    (e) =>
-      onEvent(
-        (e as CustomEvent<string>).detail === "installer"
-          ? { kind: "handed-off", target: "installer" }
-          : { kind: "failed" },
-      ),
-    { once: true },
-  );
+  const onApk = (event: Event) => {
+    const parsed = parseApkEvent((event as CustomEvent<unknown>).detail);
+    if (!parsed) return;
+    onEvent(parsed);
+    if (parsed.kind !== "progress") window.removeEventListener("sm-apk", onApk);
+  };
+  window.addEventListener("sm-apk", onApk);
   installer.download(apk.url, `ScheduleMINI-${release.version}.apk`);
   onEvent({ kind: "progress", percent: null });
 }

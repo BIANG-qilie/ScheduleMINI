@@ -17,6 +17,11 @@ type DialogProps = {
   dense?: boolean;
   /** 宽幅组合面板（编辑器） */
   panel?: boolean;
+  /**
+   * 仅手机：整张卡片离底边的距离（px）。
+   * 桌面端仍居中，不使用这个值。
+   */
+  mobileLift?: number;
 };
 
 export function Dialog({
@@ -30,6 +35,7 @@ export function Dialog({
   eyebrow,
   dense = false,
   panel = false,
+  mobileLift,
 }: DialogProps) {
   const dragStart = React.useRef<number | null>(null);
   const [dragY, setDragY] = React.useState(0);
@@ -48,7 +54,17 @@ export function Dialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4",
+        mobileLift != null && "update-dialog-lift",
+      )}
+      style={
+        mobileLift == null
+          ? undefined
+          : ({ "--update-dialog-lift": `${mobileLift}px` } as React.CSSProperties)
+      }
+    >
       <button
         type="button"
         aria-label={`关闭${title}`}

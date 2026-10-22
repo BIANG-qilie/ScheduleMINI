@@ -872,7 +872,8 @@ body.widget-body #root {
   .coex-pulse,
   .coex-start-main:not(:hover):not(:active),
   .coex-start-compact:not(:hover):not(:active),
-  .owner-heart {
+  .owner-heart,
+  .update-progress-indeterminate {
     animation: none;
   }
 }
@@ -902,4 +903,41 @@ body.widget-body #root {
 }
 .phone-coex .coex-running > :first-child {
   margin-right: auto;
+}
+
+/* 更新弹窗：手机上抬离底边和系统手势条。桌面端不套用。 */
+@media (max-width: 639px) {
+  .update-dialog-lift.update-dialog-lift {
+    padding: 12px 12px
+      max(
+        var(--update-dialog-lift, 28px),
+        calc(env(safe-area-inset-bottom, 0px) + 16px)
+      );
+  }
+
+  .update-dialog-lift > [role="dialog"] {
+    min-height: 0;
+    max-height: calc(
+      100dvh -
+        max(
+          var(--update-dialog-lift, 28px),
+          env(safe-area-inset-bottom, 0px) + 16px
+        ) - 16px
+    );
+    border-radius: 1.5rem;
+  }
+}
+
+.update-progress-indeterminate {
+  width: 38%;
+  animation: update-progress-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes update-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
 }
