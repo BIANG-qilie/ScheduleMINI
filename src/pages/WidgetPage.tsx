@@ -12,7 +12,7 @@ import {
   getCurrentItem,
   getUpcomingItem,
   isItemNow,
-  isPaired,
+  widgetCoupleTitle,
   itemDisplayTitle,
   itemRecurrence,
   itemTag,
@@ -405,7 +405,7 @@ export function WidgetPage() {
   const todayKey = formatDateKey(now);
   const overrides = config.dayOverrides;
   const couple = config.couple;
-  const paired = isPaired(couple);
+  const pairedTitle = widgetCoupleTitle(couple);
   const soloMode = config.soloMode;
 
   const mine = useMemo(() => laneSelfItems(config.items), [config.items]);
@@ -510,11 +510,7 @@ export function WidgetPage() {
           />
           <div data-tauri-drag-region className="min-w-0 flex-1">
             <p data-tauri-drag-region className="truncate text-xs text-white/60">
-              {soloMode
-                ? "今日安排"
-                : paired
-                  ? `${couple.selfName} · ${partnerFacingName(couple)}`
-                  : "今日安排"}
+              {soloMode ? "今日安排" : pairedTitle}
             </p>
             <p data-tauri-drag-region className="truncate text-sm font-medium">
               {dateText}

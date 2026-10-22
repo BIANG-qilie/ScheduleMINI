@@ -46,6 +46,11 @@ export const CoupleIdentitySchema = z.object({
   inviteCode: z.string().nullable().optional(),
   partnerMemberId: z.string().nullable().optional(),
   pairedAt: z.string().nullable().optional(),
+  /**
+   * 绑定快照的写入时间。空字符串表示还没往中继写过绑定。
+   * 内容不变时保持原值，避免每次推送都改明文指纹、把对方从长轮询里叫醒。
+   */
+  bindingUpdatedAt: z.string().default(""),
 });
 export type CoupleIdentity = z.infer<typeof CoupleIdentitySchema>;
 
@@ -86,11 +91,24 @@ export function defaultCouple(): CoupleIdentity {
     inviteCode: null,
     partnerMemberId: null,
     pairedAt: null,
+    bindingUpdatedAt: "",
   };
 }
 
 export function isPaired(couple: CoupleIdentity) {
   return Boolean(couple.inviteCode && couple.partnerMemberId);
+}
+
+/** 设置里「邀请对方」一栏。未配对时是 null，界面改显示邀请码表单 */
+export function pairBanner(couple: CoupleIdentity) {
+  if (!isPaired(couple)) return null;
+  return `已与「${partnerFacingName(couple)}」配对`;
+}
+
+/** 悬浮窗标题。未配对时不点出对方的名字 */
+export function widgetCoupleTitle(couple: CoupleIdentity) {
+  if (!isPaired(couple)) return "今日安排";
+  return `${couple.selfName} · ${partnerFacingName(couple)}`;
 }
 
 export const RecurrenceSchema = z.enum(["weekly", "once"]);

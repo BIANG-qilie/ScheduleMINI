@@ -2,11 +2,26 @@ import { normalizeInviteCode } from "@/lib/sync/crypto";
 
 export type RelayMember = {
   memberId: string;
+  /** 与 memberId 相同。旧中继可能只给这个字段 */
+  personId?: string;
   name: string;
   color: string;
   payload: string;
   updatedAt: string;
+  /**
+   * 这个身份换到了另一间房间。普通日程推送不带此字段，中继会保留原值。
+   * 这样后写的日程切片不会把「跟去新房间」擦掉。
+   */
+  redirect?: string | null;
 };
+
+/** 房间成员的身份 id。memberId 缺失时用 personId */
+export function relayPersonId(member: {
+  memberId?: string | null;
+  personId?: string | null;
+}) {
+  return (member.memberId || member.personId || "").trim();
+}
 
 export type RelayRoom = {
   code: string;
@@ -116,6 +131,8 @@ export async function pushMemberSlice(args: {
   /** 明文指纹。旧中继忽略；新中继用来避免无变化推送唤醒对方 */
   docRev?: string;
   updatedAt: string;
+  /** 只在换房间时传。省略则中继保留该身份上已有的 redirect */
+  redirect?: string | null;
   baseUrl?: string | null;
 }) {
   const code = normalizeInviteCode(args.inviteCode);
@@ -129,6 +146,7 @@ export async function pushMemberSlice(args: {
         payload: args.payload,
         docRev: args.docRev,
         updatedAt: args.updatedAt,
+        ...(args.redirect !== undefined ? { redirect: args.redirect } : {}),
       }),
     },
     args.baseUrl,

@@ -44,7 +44,9 @@ import {
   mergeCoexistenceLww,
   reconcileSyncResult,
   rekeyAuthoredItems,
+  publishRoomRedirect,
   syncRoomOnce,
+  type SyncedCoexistence,
 } from "@/lib/sync/couple";
 import {
   COUPLE_SYNC_FALLBACK_MS,
@@ -145,6 +147,30 @@ let lastRoomRev = 0;
 /** 日程写入串行。单次取消的保存若与删除重叠，后完成的那次会把整段写回来。 */
 let configWrite: Promise<unknown> = Promise.resolve();
 
+function syncedCoexistence(config: AppConfig): SyncedCoexistence | null {
+  if (!config.coexistence.updatedAt) return null;
+  return {
+    current: config.coexistence.current,
+    updatedAt: config.coexistence.updatedAt,
+  };
+}
+
+async function leaveRedirect(fromCode: string, toCode: string) {
+  const { config } = useConfigStore.getState();
+  const from = normalizeInviteCode(fromCode);
+  const to = normalizeInviteCode(toCode);
+  if (!from || from === to) return;
+  await publishRoomRedirect({
+    fromCode: from,
+    toCode: to,
+    couple: config.couple,
+    items: config.items,
+    deletedItems: config.deletedItems,
+    coexistence: syncedCoexistence(config),
+    baseUrl: config.syncRelayUrl,
+  });
+}
+
 function enqueueConfigWrite<T>(task: () => Promise<T>): Promise<T> {
   const run = configWrite.then(task, task);
   configWrite = run.then(
@@ -218,10 +244,13 @@ async function runSyncOnce(): Promise<boolean> {
         ...latest,
         couple: {
           ...latest.couple,
+          inviteCode: result.couple.inviteCode || latest.couple.inviteCode,
           partnerMemberId: result.couple.partnerMemberId,
           partnerName: result.couple.partnerName,
           partnerColor: result.couple.partnerColor,
           pairedAt: result.couple.pairedAt,
+          bindingUpdatedAt:
+            result.couple.bindingUpdatedAt || latest.couple.bindingUpdatedAt,
           addressForThem: them?.text ?? latest.couple.addressForThem,
           addressForThemAt: them?.updatedAt ?? latest.couple.addressForThemAt,
           addressForMe: me?.text ?? "",
@@ -587,7 +616,21 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   createInvite: async () => {
     const { config, setConfig, syncNow } = get();
+    const previous = config.couple.inviteCode
+      ? normalizeInviteCode(config.couple.inviteCode)
+      : "";
     const code = generateInviteCode(6);
+    if (previous && previous !== code) {
+      await publishRoomRedirect({
+        fromCode: previous,
+        toCode: code,
+        couple: { ...config.couple, partnerMemberId: null, pairedAt: null },
+        items: config.items,
+        deletedItems: config.deletedItems,
+        coexistence: syncedCoexistence(config),
+        baseUrl: config.syncRelayUrl,
+      });
+    }
     await setConfig({
       ...config,
       couple: {
@@ -598,6 +641,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       },
     });
     await syncNow();
+    if (previous && previous !== code) await leaveRedirect(previous, code);
     return code;
   },
 
@@ -608,6 +652,20 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     const code = normalizeInviteCode(raw);
     if (code.length < 4) throw new Error("邀请码太短");
     const { config, setConfig, syncNow } = get();
+    const previous = config.couple.inviteCode
+      ? normalizeInviteCode(config.couple.inviteCode)
+      : "";
+    if (previous && previous !== code) {
+      await publishRoomRedirect({
+        fromCode: previous,
+        toCode: code,
+        couple: { ...config.couple, partnerMemberId: null, pairedAt: null },
+        items: config.items,
+        deletedItems: config.deletedItems,
+        coexistence: syncedCoexistence(config),
+        baseUrl: config.syncRelayUrl,
+      });
+    }
     await setConfig({
       ...config,
       couple: {
@@ -618,6 +676,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       },
     });
     await syncNow();
+    if (previous && previous !== code) await leaveRedirect(previous, code);
   },
 
   ensureDeviceSyncCode: async () => {
