@@ -6,13 +6,18 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      probe_only:
+        description: 只探测镜像桶，不构建、不发布
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   desktop:
-    if: ${{ !endsWith(github.ref_name, '-widget') }}
+    if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -188,3 +193,19 @@ jobs:
           mirror_s3_put "schedulemini/android-latest.json" assets/android-latest.json \
             "application/json" "no-cache"
           echo "mirrored ${prefix} and schedulemini/latest.json schedulemini/android-latest.json"
+
+  # 新 workflow 文件在合进 main 之前不能单独 workflow_dispatch。
+  # Release 这个文件已经在 main 上，所以用 probe_only 在功能分支上探测同一个上传路径。
+  probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_only }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload, fetch, and delete a probe object
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.MIRROR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_S3_SECRET_KEY }}
+          MIRROR_S3_ENDPOINT: ${{ secrets.MIRROR_S3_ENDPOINT }}
+          MIRROR_S3_BUCKET: ${{ secrets.MIRROR_S3_BUCKET }}
+          MIRROR_PUBLIC_BASE: ${{ secrets.MIRROR_PUBLIC_BASE }}
+        run: bash scripts/mirror-probe.sh
