@@ -29,7 +29,9 @@ describe("parseApkEvent", () => {
       kind: "handed-off",
       target: "installer",
     });
-    expect(parseApkEvent({ kind: "failed" })).toEqual({ kind: "failed" });
-    expect(parseApkEvent("failed")).toEqual({ kind: "failed" });
+    expect(parseApkEvent({ kind: "failed" })).toEqual({ kind: "failed", reason: "download" });
+    expect(parseApkEvent("failed")).toEqual({ kind: "failed", reason: "download" });
+    expect(parseApkEvent({ kind: "hash-mismatch" })).toEqual({ kind: "hash-mismatch" });
+    expect(parseApkEvent("hash-mismatch")).toEqual({ kind: "hash-mismatch" });
   });
 });

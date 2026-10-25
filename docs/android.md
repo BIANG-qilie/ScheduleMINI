@@ -53,7 +53,7 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/release/app
 
 ## 应用内更新
 
-启动时检查 GitHub 最新 Release，找到 `.apk` 附件后弹窗。点「更新」：未允许安装未知应用时提示「去开启」并跳到系统设置；已允许则下载到应用目录，完成后打开系统安装界面。清单权限 `REQUEST_INSTALL_PACKAGES`，经 `FileProvider` 交给安装器。
+启动时先请求镜像上的 `android-latest.json`（5 秒）。地址必须在镜像域名的 `schedulemini/` 下面，并且带 64 位 sha256；下载后核对，通过才打开系统安装界面。核对或下载失败则改下 GitHub Release 里的 APK，并再用同一 sha256 核对一次。镜像打不开、或清单不合法时，仍直接走 GitHub（这一路没有清单哈希，只靠系统核对 APK 签名）。未允许安装未知应用时提示「去开启」。清单权限 `REQUEST_INSTALL_PACKAGES`，经 `FileProvider` 交给安装器。
 
 不要把 `--debug` 包发给别人。debug 包不带前端，启动时去连电脑上的开发服务器 `127.0.0.1:45231`，没有电脑就一直停在启动画面。
 

@@ -41,6 +41,16 @@ class ApkInstaller(private val activity: Activity, private val webView: WebView)
 
   @JavascriptInterface
   fun download(url: String, fileName: String) {
+    enqueue(url, fileName, "")
+  }
+
+  /** 下载完成后核对 sha256。不一致就删掉文件，不交给系统安装器。 */
+  @JavascriptInterface
+  fun downloadChecked(url: String, fileName: String, sha256: String) {
+    enqueue(url, fileName, sha256)
+  }
+
+  private fun enqueue(url: String, fileName: String, sha256: String) {
     val dir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)!!
     val file = File(dir, fileName)
     file.delete()
@@ -61,7 +71,23 @@ class ApkInstaller(private val activity: Activity, private val webView: WebView)
           if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return
           activity.unregisterReceiver(this)
           stopProgress()
-          if (succeeded(manager, id)) install(file) else emit("failed")
+          if (!succeeded(manager, id)) {
+            emit("failed")
+            return
+          }
+          if (sha256.isBlank()) {
+            install(file)
+            return
+          }
+          Thread {
+            val ok = try {
+              ApkDigest.matches(file, sha256)
+            } catch (_: Exception) {
+              false
+            }
+            if (!ok) file.delete()
+            if (ok) activity.runOnUiThread { install(file) } else emit("hash-mismatch")
+          }.start()
         }
       },
       IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),

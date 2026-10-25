@@ -1,12 +1,12 @@
 # 发版与自动更新
 
-小日程从公开的 GitHub Releases 读取更新：
+小日程先读 Sealos 国内镜像，镜像失败再读 GitHub Releases。GitHub 仍是唯一真源，签名校验不变。
 
 | 端 | 来源 | 行为 |
 | --- | --- | --- |
-| 应用内提示（全部端） | `api.github.com/repos/BIANG-qilie/ScheduleMINI/releases/latest` | 启动时与每 6 小时检查一次，弹窗：更新 / 稍后 / 跳过此版本 |
-| 桌面安装 | `releases/latest/download/latest.json`（Tauri updater，签名校验） | 下载、安装、重启 |
-| 安卓安装 | Release 中的 `.apk`（优先 `universal`） | 下载后交给系统安装器 |
+| 安卓版本提示 | `…/schedulemini/android-latest.json`，失败再请求 `api.github.com/.../releases/latest` | 启动时与每 6 小时检查一次，弹窗：更新 / 稍后 / 跳过此版本 |
+| 桌面安装 | 先 `…/schedulemini/latest.json`，再 `releases/latest/download/latest.json`（Tauri updater，公钥不变） | 下载、安装、重启 |
+| 安卓安装 | 镜像 APK 核对 sha256 后交给系统安装器；校验或下载失败再下 GitHub 上的同一包并再核对。镜像清单不存在时仍直接下 GitHub | 系统还会核对 APK 签名 |
 
 设置 → 数据 → 关于：查看当前版本、手动检查更新。只有 `vX.Y.Z` 形式的正式 Release 参与比较；草稿、调试标签（如 `android-debug-ff4f`）不会触发提示。
 
@@ -53,5 +53,5 @@ base64 -w0 schedulemini-release.jks   # macOS: base64 -i schedulemini-release.jk
 
 1. 改版本号并提交（见上），合入 `main`。
 2. `git tag v0.3.0 && git push origin v0.3.0`。
-3. `Release` workflow 构建 Windows（NSIS/MSI）与 macOS（universal）并生成草稿 Release，附 `latest.json`；随后构建安卓 `ScheduleMINI-<版本>-universal.apk` 上传到同一 Release。
-4. 在 GitHub 编辑草稿 Release 的说明（首几行会显示在更新弹窗里），点 **Publish**。发布后客户端即可检测到。
+3. `Release` workflow 构建 Windows（NSIS/MSI）与 macOS（universal）并发布 Release，附 `latest.json`；随后构建安卓 `ScheduleMINI-<版本>-universal.apk` 上传到同一 Release。五个已有密钥（`MIRROR_S3_ENDPOINT`、`MIRROR_S3_BUCKET`、`MIRROR_PUBLIC_BASE`、`MIRROR_S3_ACCESS_KEY`、`MIRROR_S3_SECRET_KEY`）齐全时，再把这些安装包和签名文件同步到镜像：`schedulemini/v<版本>/` 放文件，`schedulemini/latest.json` 只改下载地址、不动 `signature`，`schedulemini/android-latest.json` 带版本、APK 地址、sha256 和说明。密钥缺了就跳过镜像；密钥在且上传失败则这个 job 失败，GitHub Release 本身已经发出来了。
+4. Release 说明写在 workflow 的 `releaseBody` 里，前几行会出现在更新弹窗。GitHub 发布完成后客户端就能检测到；镜像上的两个 json 要等安装包传完才写。

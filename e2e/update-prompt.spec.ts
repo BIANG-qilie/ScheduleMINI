@@ -1,7 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 import pkg from "../package.json" with { type: "json" };
+import { ANDROID_MIRROR_MANIFEST_URL } from "../src/lib/update/mirror-endpoints";
 
 const FEED = "https://api.github.com/repos/BIANG-qilie/ScheduleMINI/releases/latest";
+const MIRROR_APK =
+  "https://static-host-e3n8jbll-schedulemini.sealosgzg.site/schedulemini/v9.9.0/ScheduleMINI-9.9.0-universal.apk";
+
+test.beforeEach(async ({ page }) => {
+  await page.route(ANDROID_MIRROR_MANIFEST_URL, (route) =>
+    route.fulfill({ status: 404, body: "" }),
+  );
+});
 
 function mockFeed(page: Page, tag: string) {
   return page.route(FEED, (route) =>
@@ -83,6 +92,25 @@ test.describe("检查更新", () => {
     const popup = context.waitForEvent("page");
     await page.getByRole("button", { name: "更新" }).click();
     expect((await popup).url()).toContain("/releases/tag/v9.0.0");
+  });
+
+  test("镜像清单优先于 GitHub", async ({ page }) => {
+    await page.route(ANDROID_MIRROR_MANIFEST_URL, (route) =>
+      route.fulfill({
+        json: {
+          version: "9.9.0",
+          apkUrl: MIRROR_APK,
+          sha256: "ab".repeat(32),
+          notes: "- 走国内镜像",
+        },
+      }),
+    );
+    await mockFeed(page, "v1.0.0");
+    await page.goto("/");
+    const dialog = page.getByRole("dialog", { name: "发现新版本 v9.9.0" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("走国内镜像")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "发现新版本 v1.0.0" })).toHaveCount(0);
   });
 
   test("设置 → 数据里手动检查，已是最新", async ({ page }) => {

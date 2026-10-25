@@ -1,0 +1,68 @@
+name: Mirror probe
+
+# 手动往 Sealos 桶放一个小文本并确认公共地址返回 200，然后删掉。
+# 不发布、不改版本。静态站根路径没有 index.html，本来就会 404。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload, fetch, and delete a probe object
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.MIRROR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_S3_SECRET_KEY }}
+          MIRROR_S3_ENDPOINT: ${{ secrets.MIRROR_S3_ENDPOINT }}
+          MIRROR_S3_BUCKET: ${{ secrets.MIRROR_S3_BUCKET }}
+          MIRROR_PUBLIC_BASE: ${{ secrets.MIRROR_PUBLIC_BASE }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source scripts/mirror-s3.sh
+          mirror_s3_setup
+          app_base=$(node -e "
+            const fs = require('fs');
+            const s = fs.readFileSync('src/lib/update/mirror-endpoints.ts','utf8');
+            const m = s.match(/MIRROR_PUBLIC_BASE\\s*=\\s*\"([^\"]+)\"/);
+            if (!m) process.exit(1);
+            process.stdout.write(m[1]);
+          ")
+          if [ "${MIRROR_PUBLIC_BASE%/}" != "$app_base" ]; then
+            echo "MIRROR_PUBLIC_BASE does not match the in-app mirror host"
+            exit 1
+          fi
+          key="schedulemini/probe-${GITHUB_RUN_ID}.txt"
+          printf 'schedulemini-mirror-probe %s\n' "$GITHUB_RUN_ID" > probe.txt
+          mirror_s3_put "$key" probe.txt "text/plain" "no-cache"
+          public_url="${MIRROR_PUBLIC_BASE%/}/${key}"
+          root_code=$(curl -sS --max-time 30 -o /tmp/mirror-root.txt -w "%{http_code}" "${MIRROR_PUBLIC_BASE%/}/" || true)
+          echo "root_http_status=${root_code}"
+          code=$(curl -sS --max-time 30 -L -o /tmp/mirror-probe.txt -w "%{http_code}" "$public_url")
+          echo "probe_http_status=${code}"
+          cat /tmp/mirror-probe.txt
+          test "$code" = "200"
+          grep -q "schedulemini-mirror-probe ${GITHUB_RUN_ID}" /tmp/mirror-probe.txt
+          mirror_s3_delete "$key"
+          set +e
+          aws s3api head-object \
+            --endpoint-url "${MIRROR_S3_ENDPOINT%/}" \
+            --bucket "$MIRROR_S3_BUCKET" \
+            --key "$key" >/tmp/mirror-head.txt 2>&1
+          head_status=$?
+          set -e
+          if [ "$head_status" -eq 0 ]; then
+            echo "probe object still exists after delete"
+            exit 1
+          fi
+          if ! grep -Eq '404|Not Found|NoSuchKey' /tmp/mirror-head.txt; then
+            echo "could not confirm probe object was deleted"
+            exit 1
+          fi
+          echo "probe object deleted"
+          after=$(curl -sS --max-time 30 -o /dev/null -w "%{http_code}" "$public_url" || true)
+          echo "probe_http_status_after_delete=${after}"
