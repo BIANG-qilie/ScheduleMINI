@@ -6,13 +6,18 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      probe_only:
+        description: 只探测镜像桶，不构建、不发布
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   desktop:
-    if: ${{ !endsWith(github.ref_name, '-widget') }}
+    if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -108,3 +113,99 @@ jobs:
             "ScheduleMINI-${VERSION}-universal.apk"
           gh release upload "v${VERSION}" "ScheduleMINI-${VERSION}-universal.apk" --clobber
           gh release view "v${VERSION}" --json assets --jq '.assets[].name' | grep -qx latest.json
+
+  # GitHub Release 已经发布之后才上传镜像。密钥没配齐就跳过；
+  # 密钥在且上传失败则本 job 失败（没有 continue-on-error），前面的 Release 资产仍留在 GitHub。
+  mirror:
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Upload release assets to Sealos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.MIRROR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_S3_SECRET_KEY }}
+          MIRROR_S3_ENDPOINT: ${{ secrets.MIRROR_S3_ENDPOINT }}
+          MIRROR_S3_BUCKET: ${{ secrets.MIRROR_S3_BUCKET }}
+          MIRROR_PUBLIC_BASE: ${{ secrets.MIRROR_PUBLIC_BASE }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${MIRROR_S3_ENDPOINT}" ] && missing+=("MIRROR_S3_ENDPOINT")
+          [ -z "${MIRROR_S3_BUCKET}" ] && missing+=("MIRROR_S3_BUCKET")
+          [ -z "${MIRROR_PUBLIC_BASE}" ] && missing+=("MIRROR_PUBLIC_BASE")
+          [ -z "${AWS_ACCESS_KEY_ID}" ] && missing+=("MIRROR_S3_ACCESS_KEY")
+          [ -z "${AWS_SECRET_ACCESS_KEY}" ] && missing+=("MIRROR_S3_SECRET_KEY")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "mirror upload skipped, missing: ${missing[*]}"
+            exit 0
+          fi
+          app_base=$(node -e "
+            const fs = require('fs');
+            const s = fs.readFileSync('src/lib/update/mirror-endpoints.ts','utf8');
+            const m = s.match(/MIRROR_PUBLIC_BASE\\s*=\\s*\"([^\"]+)\"/);
+            if (!m) process.exit(1);
+            process.stdout.write(m[1]);
+          ")
+          if [ "${MIRROR_PUBLIC_BASE%/}" != "$app_base" ]; then
+            echo "MIRROR_PUBLIC_BASE does not match the in-app mirror host"
+            exit 1
+          fi
+          # shellcheck disable=SC1091
+          source scripts/mirror-s3.sh
+          mirror_s3_setup
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          mkdir -p assets
+          gh release download "$TAG" --dir assets --clobber
+          test -f assets/latest.json
+          node scripts/mirror-manifests.mjs rewrite-latest \
+            assets/latest.json "$MIRROR_PUBLIC_BASE" "$VERSION" assets/mirror-latest.json
+          shopt -s nullglob
+          apks=(assets/*universal*.apk)
+          if [ "${#apks[@]}" -eq 0 ]; then
+            apks=(assets/*.apk)
+          fi
+          test "${#apks[@]}" -gt 0
+          apk="${apks[0]}"
+          sha=$(sha256sum "$apk" | awk '{print $1}')
+          gh release view "$TAG" --json body --jq '.body // ""' > assets/notes.md
+          node scripts/mirror-manifests.mjs android-manifest \
+            "$MIRROR_PUBLIC_BASE" "$VERSION" "$(basename "$apk")" "$sha" assets/notes.md \
+            assets/android-latest.json
+          prefix="schedulemini/v${VERSION}"
+          for f in assets/*; do
+            base=$(basename "$f")
+            case "$base" in
+              latest.json|mirror-latest.json|android-latest.json|notes.md) continue ;;
+            esac
+            ctype=$(node scripts/mirror-manifests.mjs content-type "$base")
+            mirror_s3_put "${prefix}/${base}" "$f" "$ctype" \
+              "public, max-age=31536000, immutable" \
+              "attachment; filename=\"${base}\""
+          done
+          mirror_s3_put "schedulemini/latest.json" assets/mirror-latest.json \
+            "application/json" "no-cache"
+          mirror_s3_put "schedulemini/android-latest.json" assets/android-latest.json \
+            "application/json" "no-cache"
+          echo "mirrored ${prefix} and schedulemini/latest.json schedulemini/android-latest.json"
+
+  # 新 workflow 文件在合进 main 之前不能单独 workflow_dispatch。
+  # Release 这个文件已经在 main 上，所以用 probe_only 在功能分支上探测同一个上传路径。
+  probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_only }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload, fetch, and delete a probe object
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.MIRROR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_S3_SECRET_KEY }}
+          MIRROR_S3_ENDPOINT: ${{ secrets.MIRROR_S3_ENDPOINT }}
+          MIRROR_S3_BUCKET: ${{ secrets.MIRROR_S3_BUCKET }}
+          MIRROR_PUBLIC_BASE: ${{ secrets.MIRROR_PUBLIC_BASE }}
+        run: bash scripts/mirror-probe.sh

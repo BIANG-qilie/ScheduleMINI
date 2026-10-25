@@ -71,7 +71,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
           set({ status: "handed-off", handedOffTo: e.target });
         }
         if (e.kind === "failed") {
-          set({ status: "error", error: "下载失败，请稍后重试" });
+          set({
+            status: "error",
+            error: e.reason === "hash" ? "安装包校验未通过" : "下载失败，请稍后重试",
+          });
+        }
+        if (e.kind === "hash-mismatch") {
+          set({ status: "error", error: "安装包校验未通过" });
         }
       });
     } catch (e) {

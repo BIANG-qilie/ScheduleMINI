@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fetchAndroidMirror } from "@/lib/update/mirror";
 import { parseVersion } from "@/lib/update/version";
 
 export const UPDATE_REPO = "BIANG-qilie/ScheduleMINI";
@@ -24,7 +25,13 @@ const releaseSchema = z.object({
   ),
 });
 
-export type ReleaseAsset = { name: string; size: number; url: string };
+export type ReleaseAsset = {
+  name: string;
+  size: number;
+  url: string;
+  /** 镜像清单提供。有值时下载后必须核对，通过才安装。 */
+  sha256?: string;
+};
 
 export type ReleaseInfo = {
   version: string;
@@ -86,10 +93,27 @@ export function summarizeNotes(markdown: string, maxLines = 4): ReleaseNotes {
   return { lines, preview, hidden: lines.length - preview.length };
 }
 
-export async function fetchLatestRelease(fetchImpl: typeof fetch = fetch) {
+function hasUpdateFeedOverride() {
+  return Boolean((import.meta.env.VITE_UPDATE_FEED_URL as string | undefined)?.trim());
+}
+
+/** GitHub Releases API。镜像清单失败时用它。 */
+export async function fetchGithubLatestRelease(fetchImpl: typeof fetch = fetch) {
   const res = await fetchImpl(RELEASE_FEED_URL, {
     headers: { Accept: "application/vnd.github+json" },
   });
   if (!res.ok) throw new Error(`检查更新失败（${res.status}）`);
   return parseRelease(await res.json());
+}
+
+/**
+ * 先读镜像 android-latest.json（5 秒），失败或不合法再读 GitHub。
+ * 设置了 VITE_UPDATE_FEED_URL 时只走该地址，方便本地替换。
+ */
+export async function fetchLatestRelease(fetchImpl: typeof fetch = fetch) {
+  if (!hasUpdateFeedOverride()) {
+    const mirrored = await fetchAndroidMirror(fetchImpl);
+    if (mirrored) return mirrored;
+  }
+  return fetchGithubLatestRelease(fetchImpl);
 }

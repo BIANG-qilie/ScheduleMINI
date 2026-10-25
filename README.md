@@ -44,7 +44,7 @@ Windows 托盘 / 自启 / 通知 / 拖拽记忆：见 [docs/acceptance.md](docs/
 
 ## 自动更新
 
-应用启动时检查 GitHub 最新 Release，桌面端一键下载安装并重启。发版流程与签名密钥配置见 [docs/release.md](docs/release.md)。
+应用启动时先看国内镜像，打不开再查 GitHub 最新 Release。桌面端校验签名后安装并重启。发版流程与签名密钥配置见 [docs/release.md](docs/release.md)。
 
 ## 环境要求
 
