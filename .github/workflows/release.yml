@@ -50,11 +50,10 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 小日程 ${{ github.ref_name }}
           releaseBody: |
-            从 0.2.3 更新到 0.2.4。
+            从 0.2.4 更新到 0.2.5。
 
-            - 另一台设备也会显示已经和对方绑定
-            - 更新说明可以点开看全部
-            - 手机偶尔打不开时会再试，不再停在启动页
+            - 手机更新时，按钮好按了，能看到下载进度
+            - 跨很多天可以记成一条，整天的也会显示
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

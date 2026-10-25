@@ -63,7 +63,7 @@
     },
     "createUpdaterArtifacts": true,
     "android": {
-      "versionCode": 2005
+      "versionCode": 2006
     }
   },
   "plugins": {
