@@ -1,0 +1,62 @@
+name: Publish sync relay
+
+# 只在 main 上发布 ghcr.io/biang-qilie/schedulemini-relay。
+# 改 Dockerfile 或 sync-relay/** 时自动构建；也可手动触发。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "sync-relay/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/biang-qilie/schedulemini-relay
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.IMAGE }}:main
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Make the package public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/visibility.json -w "%{http_code}" \
+            -X PUT \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/user/packages/container/schedulemini-relay/visibility \
+            -d '{"visibility":"public"}')
+          echo "visibility_http_status=${code}"
+          cat /tmp/visibility.json
+          echo
+          test "${code}" = "200" -o "${code}" = "204"
