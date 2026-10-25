@@ -778,51 +778,212 @@ export function buildCoexistenceSharedItemFields(finished: CoexistenceFinished) 
   };
 }
 
-/** 周列重叠块：左对齐分列（同簇内缩窄） */
-export function computeOverlapLayout(
-  blocks: { id: string; start: number; end: number }[],
-): Map<string, { column: number; columnCount: number }> {
-  const sorted = [...blocks].sort(
+/** 底带阈值：时长达到此时长的块不占列。[拟定] */
+export const OVERLAP_BAND_MIN_MINUTES = 4 * 60;
+/** 周视图一列里卡片的最小宽度。[拟定] */
+export const WEEK_MIN_CARD_PX = 64;
+/** 手机日列里卡片的最小宽度。[拟定] */
+export const DAY_MIN_CARD_PX = 40;
+
+/** 条目真实跨度（分钟）。过夜按跨午夜累加；有 durationMinutes 时以它为准。 */
+export function itemSpanMinutes(item: {
+  start: string;
+  end: string;
+  durationMinutes?: number;
+}) {
+  if (item.durationMinutes != null && item.durationMinutes > 0) {
+    return item.durationMinutes;
+  }
+  const [sh, sm] = item.start.split(":").map(Number);
+  const [eh, em] = item.end.split(":").map(Number);
+  const start = sh * 60 + sm;
+  const end = eh * 60 + em;
+  if (end > start) return end - start;
+  if (end < start) return 24 * 60 - start + end;
+  return 24 * 60;
+}
+
+/**
+ * 长条背景：跨日、过夜、通话，或时长 ≥ 4 小时。
+ * 这类块铺满列宽，不参加分列。
+ */
+export function isOverlapBand(input: {
+  startMin: number;
+  endMin: number;
+  durationMin?: number;
+  overnight?: boolean;
+  spanned?: boolean;
+  call?: boolean;
+}) {
+  if (input.call || input.overnight || input.spanned) return true;
+  const minutes = input.durationMin ?? input.endMin - input.startMin;
+  return minutes >= OVERLAP_BAND_MIN_MINUTES;
+}
+
+export type OverlapBlock = {
+  id: string;
+  start: number;
+  end: number;
+  /** 底带：不占列 */
+  band?: boolean;
+};
+
+export type OverlapCardSlot = {
+  column: number;
+  /** 含自身，向右占几列 */
+  span: number;
+  columnCount: number;
+};
+
+export type OverlapPill = {
+  id: string;
+  start: number;
+  end: number;
+  column: number;
+  span: number;
+  columnCount: number;
+  hiddenIds: string[];
+};
+
+export type OverlapLayout = {
+  cards: Map<string, OverlapCardSlot>;
+  bands: string[];
+  pills: OverlapPill[];
+  hiddenIds: string[];
+};
+
+function sortOverlapBlocks<T extends { id: string; start: number; end: number }>(
+  blocks: T[],
+) {
+  return [...blocks].sort(
     (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
   );
-  const clusters: (typeof sorted)[] = [];
-  let current: typeof sorted = [];
+}
+
+function clusterOverlapBlocks<T extends { start: number; end: number }>(
+  sorted: T[],
+) {
+  const clusters: T[][] = [];
+  let current: T[] = [];
   let clusterEnd = -Infinity;
-  for (const b of sorted) {
-    if (current.length === 0 || b.start < clusterEnd) {
-      current.push(b);
-      clusterEnd = Math.max(clusterEnd, b.end);
+  for (const block of sorted) {
+    if (current.length === 0 || block.start < clusterEnd) {
+      current.push(block);
+      clusterEnd = Math.max(clusterEnd, block.end);
     } else {
       clusters.push(current);
-      current = [b];
-      clusterEnd = b.end;
+      current = [block];
+      clusterEnd = block.end;
     }
   }
   if (current.length) clusters.push(current);
+  return clusters;
+}
 
-  const result = new Map<string, { column: number; columnCount: number }>();
-  for (const cluster of clusters) {
-    const ends: number[] = [];
-    const cols = new Map<string, number>();
-    for (const b of cluster) {
-      let col = ends.findIndex((t) => t <= b.start);
-      if (col === -1) {
-        col = ends.length;
-        ends.push(b.end);
-      } else {
-        ends[col] = b.end;
+function columnsThatFit(laneWidth?: number, minCardWidth?: number) {
+  if (laneWidth == null || minCardWidth == null) return Number.POSITIVE_INFINITY;
+  if (!(laneWidth > 0) || !(minCardWidth > 0)) return Number.POSITIVE_INFINITY;
+  return Math.max(1, Math.floor(laneWidth / minCardWidth));
+}
+
+type PlacedOverlap = OverlapBlock & { column: number };
+
+function assignOverlapColumns(events: OverlapBlock[], maxColumns: number) {
+  const ends: number[] = [];
+  const placed: PlacedOverlap[] = [];
+  const hidden: OverlapBlock[] = [];
+  for (const event of events) {
+    let column = ends.findIndex((end) => end <= event.start);
+    if (column === -1) {
+      if (ends.length >= maxColumns) {
+        hidden.push(event);
+        continue;
       }
-      cols.set(b.id, col);
+      column = ends.length;
+      ends.push(event.end);
+    } else {
+      ends[column] = event.end;
     }
-    const columnCount = Math.max(1, ends.length);
-    for (const b of cluster) {
-      result.set(b.id, {
-        column: cols.get(b.id) ?? 0,
+    placed.push({ ...event, column });
+  }
+  return { placed, hidden, usedColumns: ends.length };
+}
+
+function rangesOverlap(
+  a: { start: number; end: number },
+  b: { start: number; end: number },
+) {
+  return a.start < b.end && b.start < a.end;
+}
+
+/**
+ * 前景卡片：分簇、贪心分列，再向右伸到下一张挡住的列。
+ * 列宽放不下最小宽度时，只留前 k−1 张，其余收成一颗 +N。
+ * 未给列宽时不折叠。
+ */
+export function computeOverlapLayout(
+  blocks: OverlapBlock[],
+  options?: { laneWidth?: number; minCardWidth?: number },
+): OverlapLayout {
+  const sorted = sortOverlapBlocks(blocks);
+  const bands = sorted.filter((block) => block.band).map((block) => block.id);
+  const foreground = sorted.filter((block) => !block.band);
+  const cards = new Map<string, OverlapCardSlot>();
+  const pills: OverlapPill[] = [];
+  const hiddenIds: string[] = [];
+  const limit = columnsThatFit(options?.laneWidth, options?.minCardWidth);
+
+  for (const group of clusterOverlapBlocks(foreground)) {
+    const unlimited = assignOverlapColumns(group, Number.POSITIVE_INFINITY);
+    const overflow = unlimited.usedColumns > limit;
+    const packed = overflow
+      ? assignOverlapColumns(group, Math.max(0, limit - 1))
+      : unlimited;
+    const columnCount = Math.max(
+      1,
+      packed.usedColumns + (packed.hidden.length > 0 ? 1 : 0),
+    );
+    const pillColumn = packed.usedColumns;
+    const pillObstacles: PlacedOverlap[] = [];
+    for (const cluster of clusterOverlapBlocks(packed.hidden)) {
+      const ids = cluster.map((block) => block.id);
+      hiddenIds.push(...ids);
+      const start = Math.min(...cluster.map((block) => block.start));
+      const end = Math.max(...cluster.map((block) => block.end));
+      const pill: OverlapPill = {
+        id: `+${ids.join("+")}`,
+        start,
+        end,
+        column: pillColumn,
+        span: 1,
+        columnCount,
+        hiddenIds: ids,
+      };
+      pills.push(pill);
+      pillObstacles.push({
+        id: pill.id,
+        start,
+        end,
+        column: pillColumn,
+      });
+    }
+    const obstacles = [...packed.placed, ...pillObstacles];
+    for (const event of packed.placed) {
+      let span = columnCount - event.column;
+      for (const other of obstacles) {
+        if (other.id === event.id || other.column <= event.column) continue;
+        if (!rangesOverlap(event, other)) continue;
+        span = Math.min(span, other.column - event.column);
+      }
+      cards.set(event.id, {
+        column: event.column,
+        span: Math.max(1, span),
         columnCount,
       });
     }
   }
-  return result;
+
+  return { cards, bands, pills, hiddenIds };
 }
 
 export const CONFIG_VERSION = 1 as const;

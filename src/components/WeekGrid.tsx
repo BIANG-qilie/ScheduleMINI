@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -13,6 +15,7 @@ import {
   columnCycleRanges,
   compareTime,
   computeOverlapLayout,
+  DAY_MIN_CARD_PX,
   formatDateKey,
   formatItemSpan,
   formatLowerBandHour,
@@ -24,18 +27,23 @@ import {
   parseDateKey,
   itemAbsoluteInterval,
   itemDisplayTitle,
+  isOverlapBand,
   itemRecurrence,
+  itemSpanMinutes,
   itemTag,
   shiftDateKey,
   ownerColor,
+  ownerLabel,
+  WEEK_MIN_CARD_PX,
   type CoupleIdentity,
   type DayOverride,
   type ScheduleItem,
 } from "@/lib/config";
 import { onHolidayData, resolveDayState, type DayLabel } from "@/lib/holidays";
 import {
-  TAG_SURFACE,
+  TAG_BAR,
   formatItemSubline,
+  isCallItem,
   itemHoverText,
 } from "@/lib/schedule-style";
 import { cn } from "@/lib/utils";
@@ -94,7 +102,24 @@ type GridMenu =
       dateKey: string;
       x: number;
       y: number;
+    }
+  | {
+      kind: "overflow";
+      dateKey: string;
+      entries: { item: ScheduleItem; time: string }[];
+      x: number;
+      y: number;
     };
+
+function slotFrame(slot: { column: number; span: number; columnCount: number }) {
+  const count = Math.max(1, slot.columnCount);
+  const left = (slot.column / count) * 100;
+  const width = (slot.span / count) * 100;
+  return {
+    left: `calc(${left}% + 2px)`,
+    width: `calc(${width}% - 4px)`,
+  };
+}
 
 export function WeekGrid({
   items,
@@ -124,8 +149,26 @@ export function WeekGrid({
   const touchY = useRef<number | null>(null);
   const [phoneSpan, setPhoneSpan] = useState({ before: 1, after: 8 });
   const [holidayTick, setHolidayTick] = useState(0);
+  const [laneWidth, setLaneWidth] = useState(0);
+  const laneObserver = useRef<ResizeObserver | null>(null);
 
   useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
+
+  const measureLane = (node: HTMLDivElement | null) => {
+    laneObserver.current?.disconnect();
+    laneObserver.current = null;
+    if (!node) return;
+    const update = () => {
+      const next = node.clientWidth;
+      setLaneWidth((prev) => (prev === next ? prev : next));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    laneObserver.current = observer;
+  };
+
+  useEffect(() => () => laneObserver.current?.disconnect(), []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
@@ -291,7 +334,7 @@ export function WeekGrid({
     setPhoneSpan((span) => ({ ...span, before: span.before + 1 }));
   };
 
-  const renderLane = (col: (typeof columns)[number]) => {
+  const renderLane = (col: (typeof columns)[number], index: number) => {
 
             const label = dayLabels.get(col.dateKey);
             const dayItems: {
@@ -325,6 +368,7 @@ export function WeekGrid({
                     "bg-[color-mix(in_oklab,#b45309_4%,transparent)]",
                 )}
                 style={{ height: totalHeight }}
+                ref={index === 0 ? measureLane : undefined}
                 onClick={(e) => handleLaneClick(col.weekday, col.dateKey, e)}
               >
                 {hours.map((h, i) => (
@@ -362,18 +406,131 @@ export function WeekGrid({
                       );
                       return { ...entry, top, height };
                     });
-                  const layout = computeOverlapLayout(
-                    placed.map((p) => ({
-                      id: `${p.item.id}@${p.startMin}`,
-                      start: p.startMin,
-                      end: p.endMin,
-                    })),
+                  const byId = new Map(
+                    placed.map((entry) => [
+                      `${entry.item.id}@${entry.startMin}`,
+                      entry,
+                    ]),
                   );
-                  return placed.map(({ item, startMin, overnight, spanned, top, height }) => {
+                  const minCardWidth = dayLayout ? DAY_MIN_CARD_PX : WEEK_MIN_CARD_PX;
+                  const layout = computeOverlapLayout(
+                    placed.map((entry) => ({
+                      id: `${entry.item.id}@${entry.startMin}`,
+                      start: entry.startMin,
+                      end: entry.endMin,
+                      band: isOverlapBand({
+                        startMin: entry.startMin,
+                        endMin: entry.endMin,
+                        durationMin: itemSpanMinutes(entry.item),
+                        overnight: entry.overnight,
+                        spanned: entry.spanned,
+                        call: isCallItem(entry.item),
+                      }),
+                    })),
+                    laneWidth > 0
+                      ? { laneWidth, minCardWidth }
+                      : undefined,
+                  );
+                  const bindItem = (item: ScheduleItem) => ({
+                    onClick: (e: MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      if (suppressClick.current) {
+                        suppressClick.current = false;
+                        return;
+                      }
+                      if (e.shiftKey && onToggleSelect) {
+                        onToggleSelect(item.id);
+                        return;
+                      }
+                      onEditItem(item, col.dateKey);
+                    },
+                    onPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
+                      if (e.pointerType === "mouse" && e.button !== 0) return;
+                      const el = e.currentTarget;
+                      clearPress();
+                      pressTimer.current = window.setTimeout(() => {
+                        suppressClick.current = true;
+                        const rect = el.getBoundingClientRect();
+                        const pos = placeMenu(rect.left + 8, rect.bottom);
+                        setMenu({
+                          kind: "item",
+                          item,
+                          dateKey: col.dateKey,
+                          ...pos,
+                        });
+                      }, 480);
+                    },
+                    onPointerUp: clearPress,
+                    onPointerCancel: clearPress,
+                    onPointerLeave: clearPress,
+                    onContextMenu: (e: MouseEvent<HTMLButtonElement>) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearPress();
+                      const pos = placeMenu(e.clientX, e.clientY);
+                      setMenu({
+                        kind: "item",
+                        item,
+                        dateKey: col.dateKey,
+                        ...pos,
+                      });
+                    },
+                  });
+                  const nodes: ReactNode[] = [];
+                  for (const id of layout.bands) {
+                    const entry = byId.get(id);
+                    if (!entry) continue;
+                    const { item, startMin, top } = entry;
+                    const height = Math.max(
+                      10,
+                      ((entry.endMin - entry.startMin) / 60) * DAY_PX,
+                    );
+                    const once = itemRecurrence(item) === "once";
+                    const courseSwap = !!item.isCourseSwap;
+                    const color = ownerColor(item, couple);
+                    nodes.push(
+                      <button
+                        key={`band-${item.id}-${col.dateKey}-${startMin}`}
+                        type="button"
+                        data-block="band"
+                        data-item-id={item.id}
+                        title={itemHoverText(item)}
+                        className={cn(
+                          "absolute z-[1] overflow-hidden rounded-md border border-[var(--color-line)]/80 text-left text-[var(--color-ink-muted)]",
+                          (once || courseSwap) && "border-dashed border-[#d7b15a]",
+                          selectedIds?.has(item.id) &&
+                            "ring-2 ring-[var(--color-ink)] ring-offset-1",
+                        )}
+                        style={{
+                          top,
+                          height,
+                          left: 2,
+                          right: 2,
+                          backgroundColor:
+                            "color-mix(in oklab, var(--color-ink) 4%, var(--color-surface))",
+                          boxShadow: `inset 3px 0 0 ${TAG_BAR[itemTag(item)]}`,
+                        }}
+                        {...bindItem(item)}
+                      >
+                        <span className="flex items-center gap-1 truncate px-1.5 py-0.5 text-[11px] font-medium leading-tight">
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                            title={ownerLabel(item, couple)}
+                            aria-label={ownerLabel(item, couple)}
+                          />
+                          <span className="truncate">{itemDisplayTitle(item)}</span>
+                        </span>
+                      </button>,
+                    );
+                  }
+                  for (const [id, slot] of layout.cards) {
+                    const entry = byId.get(id);
+                    if (!entry) continue;
+                    const { item, startMin, overnight, spanned, top, height } = entry;
                     const once = itemRecurrence(item) === "once";
                     const courseSwap = !!item.isCourseSwap;
                     const subline = formatItemSubline(item);
-                    // 短块优先标题；完整信息靠 hover
                     const note = item.note?.trim() ?? "";
                     const showNote =
                       !!note && (dayLayout ? height >= 44 : height >= 52);
@@ -381,78 +538,27 @@ export function WeekGrid({
                       height >= 28 && !(dayLayout && showNote && height < 68);
                     const showOvernight = overnight && height >= 40 && !showNote;
                     const color = ownerColor(item, couple);
-                    const tagSurface = TAG_SURFACE[itemTag(item)];
-                    const slot = layout.get(`${item.id}@${startMin}`) ?? {
-                      column: 0,
-                      columnCount: 1,
-                    };
-                    const widthPct = 100 / slot.columnCount;
-                    const z = 10 + slot.column;
-                    return (
+                    nodes.push(
                       <button
                         key={`${item.id}-${col.dateKey}-${startMin}`}
                         type="button"
+                        data-block="card"
+                        data-item-id={item.id}
                         title={itemHoverText(item)}
                         className={cn(
-                          "group absolute overflow-hidden rounded-md border text-left transition-[transform,filter] duration-150 hover:z-20 hover:brightness-[0.98]",
-                          tagSurface.block,
-                          height < 22 ? "px-1 py-0" : "px-1.5 py-0.5",
-                          (once || courseSwap) && "border-dashed",
+                          "group absolute overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 py-0.5 text-left text-[var(--color-ink)] transition-[transform,filter] duration-150 hover:z-30 hover:brightness-[0.98]",
+                          (once || courseSwap) && "border-dashed border-[#d7b15a]",
                           selectedIds?.has(item.id) &&
                             "ring-2 ring-[var(--color-ink)] ring-offset-1",
                         )}
                         style={{
                           top,
                           height,
-                          left: `calc(${slot.column * widthPct}% + 2px)`,
-                          width: `calc(${widthPct}% - 4px)`,
-                          right: "auto",
-                          zIndex: z,
-                          boxShadow: `inset 3px 0 0 ${color}`,
+                          ...slotFrame(slot),
+                          zIndex: 10 + slot.column,
+                          boxShadow: `inset 3px 0 0 ${TAG_BAR[itemTag(item)]}`,
                         }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (suppressClick.current) {
-                            suppressClick.current = false;
-                            return;
-                          }
-                          if (e.shiftKey && onToggleSelect) {
-                            onToggleSelect(item.id);
-                            return;
-                          }
-                          onEditItem(item, col.dateKey);
-                        }}
-                        onPointerDown={(e) => {
-                          if (e.pointerType === "mouse" && e.button !== 0) return;
-                          const el = e.currentTarget;
-                          clearPress();
-                          pressTimer.current = window.setTimeout(() => {
-                            suppressClick.current = true;
-                            const rect = el.getBoundingClientRect();
-                            const pos = placeMenu(rect.left + 8, rect.bottom);
-                            setMenu({
-                              kind: "item",
-                              item,
-                              dateKey: col.dateKey,
-                              ...pos,
-                            });
-                          }, 480);
-                        }}
-                        onPointerUp={clearPress}
-                        onPointerCancel={clearPress}
-                        onPointerLeave={clearPress}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          clearPress();
-                          const pos = placeMenu(e.clientX, e.clientY);
-                          setMenu({
-                            kind: "item",
-                            item,
-                            dateKey: col.dateKey,
-                            ...pos,
-                          });
-                        }}
+                        {...bindItem(item)}
                       >
                         <div className="h-full overflow-hidden">
                           <p
@@ -468,6 +574,12 @@ export function WeekGrid({
                                 aria-label={courseSwap ? "换课" : "仅一次"}
                               />
                             ) : null}
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: color }}
+                              title={ownerLabel(item, couple)}
+                              aria-label={ownerLabel(item, couple)}
+                            />
                             <span className="truncate">
                               {itemDisplayTitle(item)}
                             </span>
@@ -506,9 +618,48 @@ export function WeekGrid({
                             </p>
                           ) : null}
                         </div>
-                      </button>
+                      </button>,
                     );
-                  });
+                  }
+                  for (const pill of layout.pills) {
+                    const hidden = pill.hiddenIds
+                      .map((id) => byId.get(id))
+                      .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+                    const top = (pill.start / 60) * DAY_PX;
+                    nodes.push(
+                      <button
+                        key={`pill-${col.dateKey}-${pill.id}`}
+                        type="button"
+                        data-block="pill"
+                        aria-label={`还有 ${hidden.length} 项`}
+                        className="absolute z-20 flex items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[10px] font-semibold tabular-nums text-[var(--color-ink)] shadow-[0_6px_16px_-10px_rgba(28,22,18,0.7)]"
+                        style={{
+                          top,
+                          height: 22,
+                          ...slotFrame(pill),
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const pos = placeMenu(rect.left, rect.bottom + 4);
+                          setMenu({
+                            kind: "overflow",
+                            dateKey: col.dateKey,
+                            entries: hidden.map((entry) => ({
+                              item: entry.item,
+                              time: entry.spanned
+                                ? formatItemSpan(entry.item)
+                                : `${entry.item.start}–${entry.item.end}`,
+                            })),
+                            ...pos,
+                          });
+                        }}
+                      >
+                        +{hidden.length}
+                      </button>,
+                    );
+                  }
+                  return nodes;
                 })()}
 
                 {(() => {
@@ -655,7 +806,7 @@ export function WeekGrid({
         }}
       >
         {dayLayout
-          ? phoneDays.map((col) => {
+          ? phoneDays.map((col, index) => {
               const label = dayLabels.get(col.dateKey);
               const off = label?.isOff;
               return (
@@ -739,7 +890,7 @@ export function WeekGrid({
                         </div>
                       ))}
                     </div>
-                    {renderLane(col)}
+                    {renderLane(col, index)}
                   </div>
                 </section>
               );
@@ -856,7 +1007,7 @@ export function WeekGrid({
             ))}
           </div>
 
-          {shown.map((col) => renderLane(col))}
+          {shown.map((col, index) => renderLane(col, index))}
         </div>
       </div>
 
@@ -866,7 +1017,41 @@ export function WeekGrid({
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          {menu.kind === "item" ? (
+          {menu.kind === "overflow" ? (
+            <div className="max-h-72 min-w-[220px] overflow-auto">
+              <p className="border-b border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-ink-muted)]">
+                这个时段还有 {menu.entries.length} 项
+              </p>
+              {menu.entries.map((entry) => {
+                const color = ownerColor(entry.item, couple);
+                return (
+                  <button
+                    key={entry.item.id}
+                    type="button"
+                    className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                    onClick={() => {
+                      onEditItem(entry.item, menu.dateKey);
+                      setMenu(null);
+                    }}
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                      aria-label={ownerLabel(entry.item, couple)}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">
+                        {itemDisplayTitle(entry.item)}
+                      </span>
+                      <span className="block truncate font-mono text-[10px] text-[var(--color-ink-muted)]">
+                        {entry.time}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : menu.kind === "item" ? (
             <>
               {menu.item.note?.trim() ? (
                 <p className="border-b border-[var(--color-line)] px-3 py-2 text-xs leading-snug text-[var(--color-ink-muted)]">

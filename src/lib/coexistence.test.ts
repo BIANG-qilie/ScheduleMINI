@@ -131,9 +131,11 @@ describe("computeOverlapLayout", () => {
       { id: "b", start: 650, end: 750 },
       { id: "c", start: 800, end: 900 },
     ]);
-    expect(layout.get("a")).toEqual({ column: 0, columnCount: 2 });
-    expect(layout.get("b")).toEqual({ column: 1, columnCount: 2 });
-    expect(layout.get("c")).toEqual({ column: 0, columnCount: 1 });
+    expect(layout.cards.get("a")).toEqual({ column: 0, span: 1, columnCount: 2 });
+    expect(layout.cards.get("b")).toEqual({ column: 1, span: 1, columnCount: 2 });
+    expect(layout.cards.get("c")).toEqual({ column: 0, span: 1, columnCount: 1 });
+    expect(layout.pills).toEqual([]);
+    expect(layout.bands).toEqual([]);
   });
 });
 
