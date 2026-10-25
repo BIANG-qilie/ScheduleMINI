@@ -95,3 +95,72 @@ test.describe("检查更新", () => {
     await expect(page.getByRole("status").filter({ hasText: "已是最新版本" })).toBeVisible();
   });
 });
+
+async function buttonClearance(page: Page, name: string) {
+  const button = page.getByRole("dialog").getByRole("button", { name });
+  const box = await button.boundingBox();
+  const viewport = page.viewportSize();
+  if (!box || !viewport) return -1;
+  return viewport.height - (box.y + box.height);
+}
+
+test.describe("常规手机高度的更新弹窗", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("按钮留在拇指区，并离底边留出空隙", async ({ page }) => {
+    await mockFeed(page, "v9.0.0");
+    await page.goto("/");
+    const dialog = page.getByRole("dialog", { name: "发现新版本 v9.0.0" });
+    await expect(dialog).toBeVisible();
+    await expect.poll(async () => buttonClearance(page, "更新")).toBeGreaterThanOrEqual(72);
+    const box = await dialog.getByRole("button", { name: "更新" }).boundingBox();
+    const height = page.viewportSize()!.height;
+    expect(box!.y).toBeGreaterThan(height * 0.35);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(height);
+  });
+});
+
+test.describe("较矮手机上的更新弹窗", () => {
+  test.use({ viewport: { width: 390, height: 640 } });
+
+  test("按钮完整留在视口内，不贴底也不被顶出拇指区", async ({ page }) => {
+    await mockFeed(page, "v9.0.0");
+    await page.goto("/");
+    await expect(page.getByRole("dialog", { name: "发现新版本 v9.0.0" })).toBeVisible();
+    await expect.poll(async () => buttonClearance(page, "更新")).toBeGreaterThanOrEqual(24);
+    await expect.poll(async () => buttonClearance(page, "稍后")).toBeGreaterThanOrEqual(24);
+    const box = await page.getByRole("button", { name: "更新" }).boundingBox();
+    const height = page.viewportSize()!.height;
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y).toBeGreaterThan(height * 0.35);
+  });
+
+  test("长说明撑开后按钮仍完整可点", async ({ page }) => {
+    await page.route(FEED, (route) =>
+      route.fulfill({
+        json: {
+          tag_name: "v9.2.0",
+          name: "v9.2.0",
+          body: Array.from({ length: 12 }, (_, i) => `- 第${i + 1}项更新说明需要完整留在弹窗里`).join(
+            "\n",
+          ),
+          html_url: "https://github.com/BIANG-qilie/ScheduleMINI/releases/tag/v9.2.0",
+          published_at: "2026-10-20T00:00:00Z",
+          draft: false,
+          prerelease: false,
+          assets: [],
+        },
+      }),
+    );
+    await page.goto("/");
+    const dialog = page.getByRole("dialog", { name: "发现新版本 v9.2.0" });
+    await expect(dialog).toBeVisible();
+    const expand = dialog.getByRole("button", { name: /查看全部更新说明/ });
+    if (await expand.count()) await expand.click();
+    await expect.poll(async () => buttonClearance(page, "更新")).toBeGreaterThanOrEqual(24);
+    const box = await dialog.getByRole("button", { name: "更新" }).boundingBox();
+    const height = page.viewportSize()!.height;
+    expect(box!.y + box!.height).toBeLessThanOrEqual(height);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+  });
+});

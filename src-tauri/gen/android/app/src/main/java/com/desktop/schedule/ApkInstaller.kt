@@ -9,6 +9,8 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -18,6 +20,10 @@ import java.io.File
 
 /** 网页端通过 window.SmInstaller 调用：下载 APK 并交给系统安装器 */
 class ApkInstaller(private val activity: Activity, private val webView: WebView) {
+  private val progressHandler = Handler(Looper.getMainLooper())
+  private var progressPoll: Runnable? = null
+  private var lastProgress: String? = null
+
   @JavascriptInterface
   fun canInstall(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
@@ -39,6 +45,7 @@ class ApkInstaller(private val activity: Activity, private val webView: WebView)
     val file = File(dir, fileName)
     file.delete()
     val manager = activity.getSystemService(DownloadManager::class.java)
+    lastProgress = null
     val id = manager.enqueue(
       DownloadManager.Request(Uri.parse(url))
         .setTitle("小日程更新")
@@ -46,18 +53,72 @@ class ApkInstaller(private val activity: Activity, private val webView: WebView)
         .setDestinationUri(Uri.fromFile(file))
         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE),
     )
+    watchProgress(manager, id)
     ContextCompat.registerReceiver(
       activity,
       object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
           if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return
           activity.unregisterReceiver(this)
+          stopProgress()
           if (succeeded(manager, id)) install(file) else emit("failed")
         }
       },
       IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
       ContextCompat.RECEIVER_EXPORTED,
     )
+  }
+
+  /** DownloadManager 有总字节数时上报 0–100；总大小未知则上报 null，不编造百分比。 */
+  private fun watchProgress(manager: DownloadManager, id: Long) {
+    stopProgress()
+    val task = object : Runnable {
+      override fun run() {
+        if (activity.isDestroyed) {
+          stopProgress()
+          return
+        }
+        when (val sample = sample(manager, id)) {
+          is ProgressSample.Running -> {
+            emitProgress(sample.percent)
+            progressHandler.postDelayed(this, POLL_MS)
+          }
+          ProgressSample.Pending -> progressHandler.postDelayed(this, POLL_MS)
+          ProgressSample.Complete -> {
+            emitProgress(100)
+            stopProgress()
+          }
+          ProgressSample.Stop -> stopProgress()
+        }
+      }
+    }
+    progressPoll = task
+    progressHandler.post(task)
+  }
+
+  private fun stopProgress() {
+    progressPoll?.let { progressHandler.removeCallbacks(it) }
+    progressPoll = null
+  }
+
+  private fun sample(manager: DownloadManager, id: Long): ProgressSample {
+    manager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+      if (!cursor.moveToFirst()) return ProgressSample.Pending
+      val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+      if (status == DownloadManager.STATUS_SUCCESSFUL) return ProgressSample.Complete
+      if (status == DownloadManager.STATUS_FAILED) return ProgressSample.Stop
+      val soFar = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+      val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+      val percent = if (total > 0) ((soFar * 100) / total).toInt().coerceIn(0, 100) else null
+      return ProgressSample.Running(percent)
+    }
+  }
+
+  private fun emitProgress(percent: Int?) {
+    val token = percent?.toString() ?: "indeterminate"
+    if (token == lastProgress) return
+    lastProgress = token
+    emitRaw("{kind:'progress',percent:${percent?.toString() ?: "null"}}")
   }
 
   private fun succeeded(manager: DownloadManager, id: Long): Boolean =
@@ -78,15 +139,28 @@ class ApkInstaller(private val activity: Activity, private val webView: WebView)
   }
 
   private fun emit(state: String) {
+    lastProgress = null
+    emitRaw("{kind:'$state'}")
+  }
+
+  private fun emitRaw(detailJs: String) {
     activity.runOnUiThread {
       webView.evaluateJavascript(
-        "window.dispatchEvent(new CustomEvent('sm-apk',{detail:'$state'}))",
+        "window.dispatchEvent(new CustomEvent('sm-apk',{detail:$detailJs}))",
         null,
       )
     }
   }
 
+  private sealed class ProgressSample {
+    data class Running(val percent: Int?) : ProgressSample()
+    data object Pending : ProgressSample()
+    data object Complete : ProgressSample()
+    data object Stop : ProgressSample()
+  }
+
   companion object {
     const val APK_MIME = "application/vnd.android.package-archive"
+    private const val POLL_MS = 400L
   }
 }
