@@ -27,20 +27,18 @@
 2. 设备 B：粘贴 →「在此设备接入」  
 3. 共享同一 `memberId`，合并本人日程（不翻转归属）  
 
-### 中继（默认已连 Railway）
+### 中继（默认已连）
 
-`https://schedulemini-production.up.railway.app`  
+`https://ejdibhezdfvv.sealosgzg.site`  
 最多 2 个 personId；同 id 多设备 LWW 覆盖。房间切片为 **shared-v2** 全量共享文档（`owner: shared` 在翻转时保留）。见 `sync-relay/README.md`。
 
-**每次合并含 `sync-relay/server.mjs` 的改动后，请在 Railway 用仓库根 `Dockerfile` 重新部署**，再做双机邀请码联调。
-
 ```bash
-curl -sS https://schedulemini-production.up.railway.app/health
+curl -sS https://ejdibhezdfvv.sealosgzg.site/health
 npm run sync-relay
 # 设置里改为 http://127.0.0.1:8787
 ```
 
-设置 → **我们** →「同步中继」可改；优先级：**设置页 > `VITE_SYNC_RELAY_URL` > 内置 Railway**。
+设置 → **我们** →「同步中继」可改；优先级：**设置页 > `VITE_SYNC_RELAY_URL` > 内置默认**。以前存成 `https://schedulemini-production.up.railway.app` 的，更新后跟内置默认走；自己填的其它地址不动。
 
 Windows 托盘 / 自启 / 通知 / 拖拽记忆：见 [docs/acceptance.md](docs/acceptance.md) 勾选表（须本机点验）。
 

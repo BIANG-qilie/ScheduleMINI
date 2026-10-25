@@ -50,21 +50,46 @@ export function decideAfterRoomWait(
   return { sync: false, delayMs: 0 };
 }
 
-/** 内置默认中继（Railway） */
-export const BUILTIN_SYNC_RELAY_URL =
+/** 0.2.5 及更早写进配置的内置默认。保存成这个地址视为未自定义。 */
+export const LEGACY_BUILTIN_SYNC_RELAY_URL =
   "https://schedulemini-production.up.railway.app";
+
+/** 内置默认中继 */
+export const BUILTIN_SYNC_RELAY_URL =
+  "https://ejdibhezdfvv.sealosgzg.site";
+
+export function normalizeRelayBaseUrl(url: string) {
+  return url.trim().replace(/\/+$/, "");
+}
+
+/** 正好是旧的 Railway 内置地址（末尾斜杠不算另一条地址） */
+export function isLegacyBuiltinRelayUrl(url?: string | null) {
+  if (!url?.trim()) return false;
+  return normalizeRelayBaseUrl(url) === LEGACY_BUILTIN_SYNC_RELAY_URL;
+}
+
+/**
+ * 读配置时用。旧 Railway 默认清成空，表示走当前内置默认。
+ * 空字符串和用户自己填的其它地址原样保留。
+ */
+export function migrateSyncRelayUrl(url: string) {
+  if (isLegacyBuiltinRelayUrl(url)) return "";
+  return url;
+}
 
 /**
  * 解析中继基址。优先级：设置页保存值 > VITE_SYNC_RELAY_URL > 内置默认。
- * settingsUrl 为空字符串 / null / undefined 时跳过，继续往下找。
+ * 空字符串、null、undefined，以及旧 Railway 默认，都跳过设置值。
  */
 export function resolveRelayBaseUrl(settingsUrl?: string | null) {
   const fromSettings = settingsUrl?.trim();
-  if (fromSettings) return fromSettings.replace(/\/$/, "");
+  if (fromSettings && !isLegacyBuiltinRelayUrl(fromSettings)) {
+    return normalizeRelayBaseUrl(fromSettings);
+  }
   const fromEnv = (
     import.meta.env.VITE_SYNC_RELAY_URL as string | undefined
   )?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (fromEnv) return normalizeRelayBaseUrl(fromEnv);
   return BUILTIN_SYNC_RELAY_URL;
 }
 

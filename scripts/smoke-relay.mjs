@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Smoke the default Railway relay health endpoint.
+ * Smoke the built-in relay health endpoint.
  * Usage: node scripts/smoke-relay.mjs [baseUrl]
  */
-const base = (process.argv[2] || "https://schedulemini-production.up.railway.app").replace(
+const base = (process.argv[2] || "https://ejdibhezdfvv.sealosgzg.site").replace(
   /\/$/,
   "",
 );

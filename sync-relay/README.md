@@ -23,14 +23,12 @@ docker build -t schedulemini-sync .
 docker run --rm -p 8787:8787 -e PORT=8787 schedulemini-sync
 ```
 
-Railway：Builder 选 Dockerfile；部署后客户端默认已指向  
-`https://schedulemini-production.up.railway.app`。
+客户端内置默认：
 
-**`sync-relay/server.mjs` 增加 `GET /v1/rooms/:code/wait` 后必须在 Railway Redeploy。**
-当前生产中继还没有这条路径。未 Redeploy 时，新客户端长轮询会 404，并改为约 2 秒拉取；0.2.2 客户端仍按约 20 秒轮询。Redeploy 之后 `/health` 含 `"wait": true`。
+`https://ejdibhezdfvv.sealosgzg.site`
 
 ```bash
-curl -sS https://schedulemini-production.up.railway.app/health
+curl -sS https://ejdibhezdfvv.sealosgzg.site/health
 ```
 
 ## API

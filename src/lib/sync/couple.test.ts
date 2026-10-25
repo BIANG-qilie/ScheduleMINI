@@ -18,6 +18,7 @@ import {
 } from "@/lib/sync/crypto";
 import {
   BUILTIN_SYNC_RELAY_URL,
+  LEGACY_BUILTIN_SYNC_RELAY_URL,
   resolveRelayBaseUrl,
 } from "@/lib/sync/relay";
 import { parseAppConfig, type ScheduleItem } from "@/lib/config";
@@ -149,6 +150,39 @@ describe("resolveRelayBaseUrl", () => {
 
   it("empty uses builtin when vite unset", () => {
     expect(resolveRelayBaseUrl("")).toBe(BUILTIN_SYNC_RELAY_URL);
+    expect(BUILTIN_SYNC_RELAY_URL).toBe(
+      "https://ejdibhezdfvv.sealosgzg.site",
+    );
+  });
+
+  it("saved railway default follows the new builtin", () => {
+    expect(resolveRelayBaseUrl(LEGACY_BUILTIN_SYNC_RELAY_URL)).toBe(
+      BUILTIN_SYNC_RELAY_URL,
+    );
+    expect(resolveRelayBaseUrl(`${LEGACY_BUILTIN_SYNC_RELAY_URL}/`)).toBe(
+      BUILTIN_SYNC_RELAY_URL,
+    );
+  });
+
+  it("drops a saved railway default and keeps a typed url", () => {
+    const base = {
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [],
+    };
+    const legacy = parseAppConfig({
+      ...base,
+      syncRelayUrl: LEGACY_BUILTIN_SYNC_RELAY_URL,
+    });
+    expect(legacy.syncRelayUrl).toBe("");
+    const custom = parseAppConfig({
+      ...base,
+      syncRelayUrl: "https://relay.example/mine",
+    });
+    expect(custom.syncRelayUrl).toBe("https://relay.example/mine");
+    const blank = parseAppConfig(base);
+    expect(blank.syncRelayUrl).toBe("");
   });
 });
 

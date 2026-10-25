@@ -50,10 +50,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 小日程 ${{ github.ref_name }}
           releaseBody: |
-            从 0.2.4 更新到 0.2.5。
+            从 0.2.5 更新到 0.2.6。
 
-            - 手机更新时，按钮好按了，能看到下载进度
-            - 跨很多天可以记成一条，整天的也会显示
+            - 默认同步地址换了，更新后会连上新的
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

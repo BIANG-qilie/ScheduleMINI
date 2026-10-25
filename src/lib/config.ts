@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isDayOff } from "@/lib/holidays";
+import { migrateSyncRelayUrl } from "@/lib/sync/relay";
 import { createId } from "@/lib/utils";
 
 const TimeSchema = z
@@ -577,7 +578,8 @@ export const AppConfigSchema = z
     soloMode: z.boolean().default(false),
     /**
      * 同步中继基址。空字符串表示未自定义：
-     * 解析顺序为 设置值 > VITE_SYNC_RELAY_URL > 内置 Railway 默认。
+     * 解析顺序为 设置值 > VITE_SYNC_RELAY_URL > 内置默认。
+     * 保存过的旧 Railway 默认地址在解析时清成空。
      */
     syncRelayUrl: z.string().default(""),
     /** 同步删除墓碑：条目 id → 删除时间（ISO） */
@@ -1008,6 +1010,7 @@ export function parseAppConfig(raw: unknown): AppConfig {
     ...parsed,
     couple,
     soloMode: parsed.soloMode ?? false,
+    syncRelayUrl: migrateSyncRelayUrl(parsed.syncRelayUrl),
     coexistence: parsed.coexistence ?? {
       current: null,
       updatedAt: "",

@@ -62,15 +62,15 @@ npm run tauri build
 | W6 | 拖拽位置记忆 | 拖移并缩放悬浮窗，完全退出再开 | 位置与大小恢复 | ☐ |
 | W7 | 关设置不退进程 | 关闭设置窗 | 托盘与悬浮窗仍在 | ☐ |
 
-## 同步中继（Railway）
+## 同步中继
 
-默认：`https://schedulemini-production.up.railway.app`
+默认：`https://ejdibhezdfvv.sealosgzg.site`
 
-含 `shared-v2` 全量共享文档的 `sync-relay/server.mjs` 变更后，须在 Railway **用仓库根 Dockerfile 重新部署**，再做双机邀请码联调。步骤见仓库 `sync-relay/README.md` 与项目文档「中继部署」。
+步骤见仓库 `sync-relay/README.md`。
 
 烟测：
 
 ```bash
-curl -sS https://schedulemini-production.up.railway.app/health
-# → {"ok":true,"rooms":…,"maxPersons":2}
+curl -sS https://ejdibhezdfvv.sealosgzg.site/health
+# → {"ok":true,"rooms":…,"maxPersons":2,"wait":true}
 ```
