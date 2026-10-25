@@ -75,6 +75,14 @@ export class ConfigLoadError extends Error {
   }
 }
 
+/** 次数用尽。和文件损坏分开，调用方可以重载 WebView，而不是当成空日程。 */
+export class ConfigLoadTimeoutError extends ConfigLoadError {
+  constructor(cause?: unknown) {
+    super("读取配置超时", { cause });
+    this.name = "ConfigLoadTimeoutError";
+  }
+}
+
 async function ensureConfigDir() {
   try {
     await mkdir("", { baseDir: BaseDirectory.AppConfig, recursive: true });
@@ -180,7 +188,7 @@ async function readConfigOnce(
 /**
  * 从注入的读写读配置。目录或文件 IPC 超时则整段重读，次数有上限。
  * 超时不当成「文件不存在」，避免把已有配置写成默认样例。
- * 次数用尽抛出 ConfigLoadError，交给现有的空日程错误页。
+ * 次数用尽抛出 ConfigLoadTimeoutError。超时只说明这次回包没到，通道可能已经死了。
  */
 export async function loadConfigWithIo(
   io: ConfigIo,
@@ -201,7 +209,7 @@ export async function loadConfigWithIo(
       lastTimeout = error;
     }
   }
-  throw new ConfigLoadError("读取配置超时", { cause: lastTimeout ?? undefined });
+  throw new ConfigLoadTimeoutError(lastTimeout ?? undefined);
 }
 
 /**

@@ -31,6 +31,7 @@ import {
   reconstructCallBackfill,
   toDatetimeLocalValue,
 } from "@/lib/call-backfill";
+import { markBootReady } from "@/lib/boot-native";
 
 const ScheduleEditor = lazy(() =>
   import("@/components/ScheduleEditor").then((m) => ({ default: m.ScheduleEditor })),
@@ -171,7 +172,9 @@ export function SettingsPage() {
     config,
     loading,
     error,
+    bootWarning,
     hydrated,
+    diskSettled,
     init,
     upsertItem,
     deleteItem,
@@ -260,14 +263,31 @@ export function SettingsPage() {
   const [holidayTick, setHolidayTick] = useState(0);
   useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
-  // 首屏先画出来，再拉节假日、提醒和同步
+  // 首屏先画出来再拉节假日。提醒和同步要等磁盘读完，避免拿缓存去改房间。
   useEffect(() => {
     if (!hydrated) return;
+    let cancelled = false;
+    const start = () => {
+      if (!cancelled) void ensureHolidayData();
+    };
+    const ric =
+      "requestIdleCallback" in window ? window.requestIdleCallback : null;
+    const handle = ric
+      ? ric(start, { timeout: 700 })
+      : window.setTimeout(start, 350);
+    return () => {
+      cancelled = true;
+      if (ric) window.cancelIdleCallback(handle);
+      else window.clearTimeout(handle);
+    };
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!diskSettled) return;
     const stops: Array<() => void> = [];
     let cancelled = false;
     const start = () => {
       if (cancelled) return;
-      void ensureHolidayData();
       stops.push(startReminderLoop(() => useConfigStore.getState().config));
       stops.push(startCoupleSyncLoop(() => useConfigStore.getState().config));
     };
@@ -282,12 +302,17 @@ export function SettingsPage() {
       else window.clearTimeout(handle);
       for (const stop of stops) stop();
     };
-  }, [hydrated]);
+  }, [diskSettled]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!diskSettled) return;
     void syncAutostart(config.autostart);
-  }, [hydrated, config.autostart]);
+  }, [diskSettled, config.autostart]);
+
+  useEffect(() => {
+    if (!hydrated || loading) return;
+    markBootReady();
+  }, [hydrated, loading]);
 
   useEffect(() => {
     let active = true;
@@ -691,6 +716,15 @@ export function SettingsPage() {
           </Button>
         </div>
       </header>
+      ) : null}
+
+      {bootWarning ? (
+        <div
+          role="status"
+          className="mx-4 mt-3 rounded-2xl border border-[color-mix(in_oklab,var(--color-warn)_35%,white)] bg-[color-mix(in_oklab,var(--color-warn)_8%,white)] px-4 py-3 text-sm text-[var(--color-warn)] sm:mx-6"
+        >
+          {bootWarning}
+        </div>
       ) : null}
 
       {error ? (

@@ -25,7 +25,18 @@ import {
   partnerFacingName,
 } from "@/lib/config";
 import {
+  applyDiskFailure,
+  BOOT_CACHE_KEY,
+  BOOT_RECOVERY_KEY,
+  readCachedConfig,
+  readRecoveryCount,
+  serializeBootCache,
+  shouldApplyDiskConfig,
+} from "@/lib/boot-policy";
+import { requestBootReload, requestBootRestart } from "@/lib/boot-native";
+import {
   ConfigLoadError,
+  ConfigLoadTimeoutError,
   exportConfigToFile,
   importConfigFromFile,
   loadConfig,
@@ -60,7 +71,11 @@ type ConfigState = {
   config: AppConfig;
   loading: boolean;
   error: string | null;
+  /** 磁盘还没回来时，若手里有上次的副本，用这句话说明，而不是说成空日程。 */
+  bootWarning: string | null;
   hydrated: boolean;
+  /** 磁盘读取已经结束（成功、超时或损坏）。同步要等它，避免用半份缓存去覆盖房间。 */
+  diskSettled: boolean;
   syncStatus: string | null;
   init: () => Promise<void>;
   setConfig: (config: AppConfig, persist?: boolean) => Promise<void>;
@@ -285,40 +300,137 @@ async function runSyncOnce(): Promise<boolean> {
   return true;
 }
 
+function storageGet(storage: "localStorage" | "sessionStorage", key: string) {
+  try {
+    return globalThis[storage]?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(
+  storage: "localStorage" | "sessionStorage",
+  key: string,
+  value: string,
+) {
+  try {
+    globalThis[storage]?.setItem(key, value);
+  } catch {
+    // 无痕模式写不进去时，这次启动只是没有镜像
+  }
+}
+
+function rememberBootCache(config: AppConfig) {
+  storageSet("localStorage", BOOT_CACHE_KEY, serializeBootCache(config));
+}
+
+const cachedAtLaunch = readCachedConfig(
+  storageGet("localStorage", BOOT_CACHE_KEY),
+);
+
+let bootEpoch = 0;
+let initFlight: Promise<void> | null = null;
+
 export const useConfigStore = create<ConfigState>((set, get) => ({
-  config: defaultConfig(),
-  loading: true,
+  config: cachedAtLaunch ?? defaultConfig(),
+  loading: cachedAtLaunch == null,
   error: null,
-  hydrated: false,
+  bootWarning: null,
+  hydrated: cachedAtLaunch != null,
+  diskSettled: false,
   syncStatus: null,
 
-  init: async () => {
-    set({ loading: true, error: null });
-    try {
-      const config = await loadConfig();
-      set({ config, loading: false, hydrated: true, error: null });
-      if (config.couple.inviteCode) {
-        void get().syncNow();
+  init: () => {
+    if (initFlight) return initFlight;
+    const startedEpoch = bootEpoch;
+    const startedAt = Date.now();
+    initFlight = (async () => {
+      const hadCache = readCachedConfig(storageGet("localStorage", BOOT_CACHE_KEY)) != null;
+      console.info(`[boot] start cache=${hadCache}`);
+      if (!hadCache) {
+        set({ loading: true, error: null, bootWarning: null });
       }
-    } catch (error) {
-      const message =
-        error instanceof ConfigLoadError
-          ? error.message
-          : error instanceof Error
+      try {
+        const config = await loadConfig();
+        rememberBootCache(config);
+        console.info(`[boot] disk ok ${Date.now() - startedAt}ms`);
+        if (!shouldApplyDiskConfig(startedEpoch, bootEpoch)) {
+          set({ diskSettled: true, loading: false, hydrated: true });
+          return;
+        }
+        set({
+          config,
+          loading: false,
+          hydrated: true,
+          error: null,
+          bootWarning: null,
+          diskSettled: true,
+        });
+        if (config.couple.inviteCode) {
+          void get().syncNow();
+        }
+      } catch (error) {
+        const timedOut = error instanceof ConfigLoadTimeoutError;
+        const message =
+          error instanceof ConfigLoadError
             ? error.message
-            : String(error);
-      set({
-        loading: false,
-        hydrated: true,
-        error: message,
-        config: emptyConfig(),
-      });
-    }
+            : error instanceof Error
+              ? error.message
+              : String(error);
+        const decision = applyDiskFailure({
+          hadCache,
+          timedOut,
+          recoveries: readRecoveryCount(
+            storageGet("sessionStorage", BOOT_RECOVERY_KEY),
+          ),
+        });
+        console.info(
+          `[boot] disk fail ${Date.now() - startedAt}ms timeout=${timedOut} recover=${decision.recover} restart=${decision.restart}`,
+        );
+        const edited = !shouldApplyDiskConfig(startedEpoch, bootEpoch);
+        if (!edited && (decision.recover || decision.restart)) {
+          storageSet(
+            "sessionStorage",
+            BOOT_RECOVERY_KEY,
+            String(decision.recoveries),
+          );
+        }
+        if (!edited && decision.keepCache) {
+          set({
+            diskSettled: true,
+            loading: false,
+            hydrated: true,
+            error: null,
+            bootWarning: timedOut
+              ? "没能重新读取日程，先显示上次打开时的内容。"
+              : `配置没能读出来：${message}。先显示上次打开时的内容。`,
+          });
+        } else if (!edited) {
+          set({
+            loading: false,
+            hydrated: true,
+            diskSettled: true,
+            error: message,
+            bootWarning: null,
+            config: emptyConfig(),
+          });
+        } else {
+          set({ diskSettled: true, loading: false, hydrated: true });
+        }
+        if (!edited && decision.recover) requestBootReload();
+        else if (!edited && decision.restart) requestBootRestart();
+      }
+    })().finally(() => {
+      initFlight = null;
+    });
+    return initFlight;
   },
 
   setConfig: async (config, persist = true) => {
     const validated = parseAppConfig(config);
-    set({ config: validated, error: null });
+    set({ config: validated, error: null, bootWarning: null });
+    bootEpoch += 1;
+    rememberBootCache(validated);
     if (persist) {
       await saveConfig(validated);
       await broadcastConfig(validated);

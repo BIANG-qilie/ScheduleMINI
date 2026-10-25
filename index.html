@@ -29,6 +29,11 @@
   </head>
   <body>
     <div id="root"><div id="boot"><p>双人日程</p><h1>小日程</h1><i></i></div></div>
+    <script>
+      try {
+        if (window.SmBoot && window.SmBoot.html) window.SmBoot.html();
+      } catch (e) {}
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

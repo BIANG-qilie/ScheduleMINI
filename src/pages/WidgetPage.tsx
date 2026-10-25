@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { markBootReady } from "@/lib/boot-native";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { GripHorizontal } from "lucide-react";
@@ -322,7 +323,8 @@ function DualFocusWidget({
 }
 
 export function WidgetPage() {
-  const { config, loading, hydrated, init, setConfig } = useConfigStore();
+  const { config, loading, hydrated, diskSettled, init, setConfig } =
+    useConfigStore();
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -330,14 +332,19 @@ export function WidgetPage() {
   }, [init]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    return startReminderLoop(() => useConfigStore.getState().config);
-  }, [hydrated]);
+    if (!hydrated || loading) return;
+    markBootReady();
+  }, [hydrated, loading]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!diskSettled) return;
+    return startReminderLoop(() => useConfigStore.getState().config);
+  }, [diskSettled]);
+
+  useEffect(() => {
+    if (!diskSettled) return;
     return startCoupleSyncLoop(() => useConfigStore.getState().config);
-  }, [hydrated]);
+  }, [diskSettled]);
 
   useEffect(() => {
     if (!hydrated) return;
