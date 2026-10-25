@@ -102,6 +102,27 @@ describe("home widget text", () => {
     expect(view.lanes[0].next).toBe("下一程 晨读 09:00–10:00");
   });
 
+  it("进行中也写出今日下一程", async () => {
+    const now = new Date(2026, 8, 21, 9, 30, 0);
+    const snapshot = await buildWidgetSnapshot(
+      config([
+        item({ title: "晨读", tag: "study", weekdays: [1] }),
+        item({
+          id: "b",
+          title: "例会",
+          tag: "work",
+          start: "11:00",
+          end: "12:00",
+          weekdays: [1],
+        }),
+      ]),
+      now,
+    );
+    const view = renderHomeWidget(snapshot, "self", now);
+    expect(view.lanes[0].headline).toBe("晨读");
+    expect(view.lanes[0].next).toBe("下一程 例会 11:00–12:00");
+  });
+
   it("今天没有下一程时只写空闲", async () => {
     const now = new Date(2026, 8, 21, 11, 0, 0);
     const snapshot = await buildWidgetSnapshot(

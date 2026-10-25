@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_paper">#FBF6EE</color>
+    <color name="widget_edge">#E3D8C6</color>
+    <color name="widget_rule">#E6DCCB</color>
+    <color name="widget_ink">#1C1612</color>
+    <color name="widget_muted">#6F6458</color>
+    <color name="widget_faint">#9C8F80</color>
+    <color name="widget_seal">#8F3D2E</color>
+</resources>

@@ -195,6 +195,10 @@ function laneText(
   now: Date,
 ): WidgetLaneText {
   const current = currentOf(items, now.getTime());
+  const upcoming = nextToday(
+    items.filter((item) => item !== current),
+    now,
+  );
   if (current) {
     return {
       name,
@@ -203,10 +207,9 @@ function laneText(
       time: current.time,
       tag: current.tag,
       tagColor: current.tagColor,
-      next: "",
+      next: upcoming ? `下一程 ${upcoming.title} ${upcoming.time}` : "",
     };
   }
-  const upcoming = nextToday(items, now);
   return {
     name,
     ownerColor: color,

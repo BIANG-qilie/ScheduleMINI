@@ -3,7 +3,6 @@ package com.desktop.schedule.widget
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.RemoteViews
@@ -79,17 +78,18 @@ class ScheduleWidgetRemoteViewsTest {
         assertEquals("我", parent.findViewById<TextView>(R.id.self_name).text.toString())
         assertEquals(
             Color.parseColor("#0f766e"),
-            (parent.findViewById<View>(R.id.self_edge).background as ColorDrawable).color,
+            parent.findViewById<TextView>(R.id.self_name).currentTextColor,
         )
+        assertEquals(View.VISIBLE, parent.findViewById<View>(R.id.lane_divider).visibility)
         assertEquals("空闲", parent.findViewById<TextView>(R.id.partner_title).text.toString())
         assertEquals(View.GONE, parent.findViewById<View>(R.id.partner_time).visibility)
         assertEquals(
-            "下一程 散步 18:00–19:00",
+            "接着 · 18:00  散步",
             parent.findViewById<TextView>(R.id.partner_next).text.toString(),
         )
         assertEquals(
             Color.parseColor("#a21caf"),
-            (parent.findViewById<View>(R.id.partner_edge).background as ColorDrawable).color,
+            parent.findViewById<TextView>(R.id.partner_name).currentTextColor,
         )
 
         val shot = System.getenv("WIDGET_SHOT")
@@ -137,7 +137,40 @@ class ScheduleWidgetRemoteViewsTest {
         assertEquals(View.GONE, parent.findViewById<View>(R.id.lane_partner).visibility)
         assertEquals("自己", parent.findViewById<TextView>(R.id.widget_kicker).text.toString())
         assertEquals("空闲", parent.findViewById<TextView>(R.id.self_title).text.toString())
-        assertEquals("下一程 晨读 09:00–10:00", parent.findViewById<TextView>(R.id.self_next).text.toString())
+        assertEquals("接着 · 09:00  晨读", parent.findViewById<TextView>(R.id.self_next).text.toString())
+    }
+
+    @Test
+    fun busyLaneAlsoShowsNextAndNarrowShortHidesIt() {
+        val now = 1_700_000_000_000L
+        val today = today(now)
+        val text = WidgetRender.render(
+            WidgetRender.parse(
+                """
+                {"version":1,"untilMs":${now + 86_400_000L},"selfName":"我","partnerName":"宝宝",
+                "selfColor":"#0f766e","partnerColor":"#a21caf",
+                "self":[
+                  {"startMs":${now - 60_000},"endMs":${now + 60_000},"startDate":"$today","sortKey":"09:00","title":"晨读","time":"09:00–10:00","tag":"学习","tagColor":"#3d7ea6"},
+                  {"startMs":${now + 120_000},"endMs":${now + 180_000},"startDate":"$today","sortKey":"11:00","title":"例会","time":"11:00–12:00","tag":"工作","tagColor":"#1f8a78"}
+                ],
+                "partner":[]}
+                """.trimIndent(),
+            ),
+            "both",
+            now,
+        )
+        assertEquals("晨读", text.lanes[0].headline)
+        assertEquals("下一程 例会 11:00–12:00", text.lanes[0].next)
+
+        val context = RuntimeEnvironment.getApplication()
+        val views = RemoteViews(context.packageName, R.layout.widget_schedule_narrow)
+        WidgetRender.bind(views, text, narrow = true, short = true)
+        val parent = FrameLayout(context)
+        parent.addView(views.apply(context, parent))
+        assertEquals(View.GONE, parent.findViewById<View>(R.id.self_next).visibility)
+        assertEquals(View.GONE, parent.findViewById<View>(R.id.self_meta).visibility)
+        assertEquals(View.VISIBLE, parent.findViewById<View>(R.id.lane_rule).visibility)
+        assertEquals(1, parent.findViewById<TextView>(R.id.self_title).maxLines)
     }
 
     @Test

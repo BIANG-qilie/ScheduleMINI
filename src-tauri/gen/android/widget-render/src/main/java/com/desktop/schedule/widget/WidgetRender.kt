@@ -1,6 +1,7 @@
 package com.desktop.schedule.widget
 
 import android.graphics.Color
+import android.os.Build
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
@@ -52,9 +53,11 @@ data class WidgetText(
 /** 与 src/lib/widget-snapshot.ts 的 renderHomeWidget 同一规则。 */
 object WidgetRender {
     private const val INK = "#1C1612"
-    private const val MUTED = "#8A7D72"
+    private const val FAINT = "#9C8F80"
+    private const val FAINT_NIGHT = "#857868"
     private const val EMPTY_NONE = "打开小日程，日程会出现在这里"
     private const val EMPTY_STALE = "打开小日程更新"
+    const val IDLE = "空闲"
 
     fun parse(json: String): WidgetSnapshot? {
         return try {
@@ -98,8 +101,20 @@ object WidgetRender {
         return WidgetText(resolved, kicker, false, "", lanes)
     }
 
-    fun bind(views: RemoteViews, text: WidgetText, narrow: Boolean = false) {
+    /**
+     * narrow：不到约四格宽，两条上下排。short：很矮（约两格高以下），收起次要行，保证中文标题不被裁。
+     * night 只给 Android 12 以下用；12 起颜色两套都交给桌面，跟随系统深浅色。
+     */
+    fun bind(
+        views: RemoteViews,
+        text: WidgetText,
+        narrow: Boolean = false,
+        short: Boolean = false,
+        night: Boolean = false,
+    ) {
         views.setTextViewText(R.id.widget_kicker, text.kicker)
+        val crowded = narrow && short && text.lanes.size >= 2
+        views.setViewVisibility(R.id.widget_header, if (crowded) View.GONE else View.VISIBLE)
         if (text.empty) {
             views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
             views.setViewVisibility(R.id.widget_body, View.GONE)
@@ -109,79 +124,115 @@ object WidgetRender {
         views.setViewVisibility(R.id.widget_empty, View.GONE)
         views.setViewVisibility(R.id.widget_body, View.VISIBLE)
         val two = text.lanes.size >= 2
-        views.setViewVisibility(R.id.lane_divider, View.GONE)
+        views.setViewVisibility(R.id.lane_divider, if (!narrow && two) View.VISIBLE else View.GONE)
         views.setViewVisibility(R.id.lane_rule, if (narrow && two) View.VISIBLE else View.GONE)
-        val titleSp = when {
-            narrow -> 20f
-            two -> 22f
-            else -> 32f
+        val style = when {
+            !two && !narrow -> LaneStyle(if (short) 22f else 26f, if (short) 1 else 2, 12f, meta = true, next = true)
+            !two -> LaneStyle(if (short) 18f else 21f, 2, 12f, meta = true, next = false)
+            !narrow -> LaneStyle(if (short) 17f else 20f, if (short) 1 else 2, 12f, meta = true, next = !short)
+            else -> LaneStyle(if (short) 14f else 16f, 1, if (short) 10f else 11f, meta = !short, next = false)
         }
-        bindLane(
-            views,
-            text.lanes[0],
-            R.id.self_edge,
-            R.id.self_name,
-            R.id.self_title,
-            R.id.self_time,
-            R.id.self_mark,
-            R.id.self_tag,
-            R.id.self_next,
-            titleSp,
-        )
+        bindLane(views, text.lanes[0], SELF_IDS, style, night)
         if (!two) {
             views.setViewVisibility(R.id.lane_partner, View.GONE)
         } else {
             views.setViewVisibility(R.id.lane_partner, View.VISIBLE)
-            bindLane(
-                views,
-                text.lanes[1],
-                R.id.partner_edge,
-                R.id.partner_name,
-                R.id.partner_title,
-                R.id.partner_time,
-                R.id.partner_mark,
-                R.id.partner_tag,
-                R.id.partner_next,
-                titleSp,
-            )
+            bindLane(views, text.lanes[1], PARTNER_IDS, style, night)
         }
     }
 
-    private fun bindLane(
-        views: RemoteViews,
-        lane: WidgetLaneText,
-        edge: Int,
-        name: Int,
-        title: Int,
-        time: Int,
-        mark: Int,
-        tag: Int,
-        next: Int,
-        titleSp: Float,
-    ) {
+    private data class LaneStyle(
+        val titleSp: Float,
+        val titleLines: Int,
+        val nameSp: Float,
+        val meta: Boolean,
+        val next: Boolean,
+    )
+
+    private class LaneIds(
+        val edge: Int,
+        val name: Int,
+        val title: Int,
+        val meta: Int,
+        val time: Int,
+        val mark: Int,
+        val tag: Int,
+        val next: Int,
+    )
+
+    private val SELF_IDS = LaneIds(
+        R.id.self_edge, R.id.self_name, R.id.self_title, R.id.self_meta,
+        R.id.self_time, R.id.self_mark, R.id.self_tag, R.id.self_next,
+    )
+    private val PARTNER_IDS = LaneIds(
+        R.id.partner_edge, R.id.partner_name, R.id.partner_title, R.id.partner_meta,
+        R.id.partner_time, R.id.partner_mark, R.id.partner_tag, R.id.partner_next,
+    )
+
+    private fun bindLane(views: RemoteViews, lane: WidgetLaneText, ids: LaneIds, style: LaneStyle, night: Boolean) {
         val owner = color(lane.ownerColor, Color.parseColor("#0f766e"))
-        val idle = lane.headline == "空闲"
-        views.setInt(edge, "setBackgroundColor", owner)
-        views.setTextViewText(name, lane.name)
-        views.setTextColor(name, owner)
-        views.setTextViewText(title, lane.headline)
-        views.setTextColor(title, Color.parseColor(if (idle) MUTED else INK))
-        views.setTextViewTextSize(title, TypedValue.COMPLEX_UNIT_SP, titleSp)
-        views.setTextViewText(time, lane.time)
-        views.setViewVisibility(time, if (lane.time.isEmpty()) View.GONE else View.VISIBLE)
-        views.setTextViewText(tag, lane.tag)
-        if (lane.tag.isEmpty()) {
-            views.setViewVisibility(tag, View.GONE)
-            views.setViewVisibility(mark, View.GONE)
-        } else {
-            views.setViewVisibility(tag, View.VISIBLE)
-            views.setViewVisibility(mark, View.VISIBLE)
-            val tagColor = color(lane.tagColor, Color.parseColor(INK))
-            views.setTextColor(tag, tagColor)
-            views.setInt(mark, "setColorFilter", tagColor)
+        val idle = lane.headline == IDLE
+        tint(views, ids.edge, "setColorFilter", owner, night)
+        views.setTextViewText(ids.name, lane.name)
+        views.setTextViewTextSize(ids.name, TypedValue.COMPLEX_UNIT_SP, style.nameSp)
+        tint(views, ids.name, "setTextColor", owner, night)
+        views.setTextViewText(ids.title, lane.headline)
+        if (idle) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                views.setColor(ids.title, "setTextColor", R.color.widget_faint)
+            } else {
+                views.setTextColor(ids.title, Color.parseColor(if (night) FAINT_NIGHT else FAINT))
+            }
         }
-        views.setTextViewText(next, lane.next)
-        views.setViewVisibility(next, if (lane.next.isEmpty()) View.GONE else View.VISIBLE)
+        views.setTextViewTextSize(ids.title, TypedValue.COMPLEX_UNIT_SP, if (idle) style.titleSp * 0.82f else style.titleSp)
+        views.setInt(ids.title, "setMaxLines", style.titleLines)
+
+        val hasMeta = lane.time.isNotEmpty() || lane.tag.isNotEmpty()
+        views.setViewVisibility(ids.meta, if (style.meta && hasMeta) View.VISIBLE else View.GONE)
+        views.setTextViewText(ids.time, lane.time)
+        views.setViewVisibility(ids.time, if (lane.time.isEmpty()) View.GONE else View.VISIBLE)
+        views.setTextViewText(ids.tag, lane.tag)
+        if (lane.tag.isEmpty()) {
+            views.setViewVisibility(ids.tag, View.GONE)
+            views.setViewVisibility(ids.mark, View.GONE)
+        } else {
+            views.setViewVisibility(ids.tag, View.VISIBLE)
+            views.setViewVisibility(ids.mark, View.VISIBLE)
+            val tagColor = color(lane.tagColor, Color.parseColor(INK))
+            tint(views, ids.tag, "setTextColor", tagColor, night)
+            tint(views, ids.mark, "setColorFilter", tagColor, night)
+        }
+        val next = nextLine(lane.next)
+        views.setTextViewText(ids.next, next)
+        views.setViewVisibility(ids.next, if (style.next && next.isNotEmpty()) View.VISIBLE else View.GONE)
+    }
+
+    /** 「下一程 散步 18:00–19:00」→「接着 · 18:00 散步」：钟点在前，扫一眼就够。 */
+    fun nextLine(next: String): String {
+        if (!next.startsWith("下一程 ")) return next
+        val rest = next.removePrefix("下一程 ")
+        val cut = rest.lastIndexOf(' ')
+        if (cut <= 0) return "接着 · $rest"
+        val title = rest.substring(0, cut)
+        val start = rest.substring(cut + 1).substringBefore('–')
+        return "接着 · $start  $title"
+    }
+
+    private fun tint(views: RemoteViews, id: Int, method: String, color: Int, night: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColorInt(id, method, color, onDark(color))
+        } else {
+            views.setInt(id, method, if (night) onDark(color) else color)
+        }
+    }
+
+    /** 深色纸面上把主人色往亮处提一些，保持可读又不刺眼。 */
+    fun onDark(color: Int): Int {
+        val mix = 0.38f
+        val r = Color.red(color) + ((255 - Color.red(color)) * mix)
+        val g = Color.green(color) + ((255 - Color.green(color)) * mix)
+        val b = Color.blue(color) + ((255 - Color.blue(color)) * mix)
+        return Color.rgb(r.toInt(), g.toInt(), b.toInt())
     }
 
     private fun lane(
@@ -193,15 +244,47 @@ object WidgetRender {
         val current = items
             .filter { it.startMs <= nowMs && nowMs < it.endMs }
             .minWithOrNull(compareBy({ it.sortKey }, { it.startMs }))
-        if (current != null) {
-            return WidgetLaneText(name, color, current.title, current.time, current.tag, current.tagColor, "")
-        }
         val today = formatDate(nowMs)
         val upcoming = items
-            .filter { it.startDate == today && it.startMs > nowMs }
+            .filter { it.startDate == today && it.startMs > nowMs && it != current }
             .minByOrNull { it.startMs }
         val next = if (upcoming == null) "" else "下一程 ${upcoming.title} ${upcoming.time}"
-        return WidgetLaneText(name, color, "空闲", "", "", "", next)
+        if (current != null) {
+            return WidgetLaneText(name, color, current.title, current.time, current.tag, current.tagColor, next)
+        }
+        return WidgetLaneText(name, color, IDLE, "", "", "", next)
+    }
+
+    /**
+     * 下一次画面会变的时刻：任一段开始或结束、本地零点（「今日下一程」换日）、快照过期。
+     * 小组件不靠应用进程，按这个时刻排闹钟重算。
+     */
+    fun nextBoundary(snapshot: WidgetSnapshot?, nowMs: Long): Long? {
+        if (snapshot == null) return null
+        var best = Long.MAX_VALUE
+        fun consider(t: Long) {
+            if (t > nowMs && t < best) best = t
+        }
+        for (lane in listOf(snapshot.self, snapshot.partner)) {
+            for (item in lane) {
+                consider(item.startMs)
+                consider(item.endMs)
+            }
+        }
+        consider(nextMidnight(nowMs))
+        consider(snapshot.untilMs + 1)
+        return if (best == Long.MAX_VALUE) null else best
+    }
+
+    private fun nextMidnight(ms: Long): Long {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = ms
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        cal.add(Calendar.DAY_OF_MONTH, 1)
+        return cal.timeInMillis
     }
 
     private fun occurrences(array: JSONArray?): List<WidgetOccurrence> {
