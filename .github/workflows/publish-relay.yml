@@ -1,13 +1,14 @@
 name: Publish sync relay
 
 # 只在 main 上发布 ghcr.io/biang-qilie/schedulemini-relay。
-# 改 Dockerfile 或 sync-relay/** 时自动构建；也可手动触发。
+# 改 Dockerfile、sync-relay/** 或本工作流时自动构建；也可手动触发。
 on:
   push:
     branches: [main]
     paths:
       - "Dockerfile"
       - "sync-relay/**"
+      - ".github/workflows/publish-relay.yml"
   workflow_dispatch:
 
 permissions:
