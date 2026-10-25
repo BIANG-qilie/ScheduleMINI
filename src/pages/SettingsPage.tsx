@@ -52,6 +52,8 @@ import {
   itemGamePlatform,
   itemIsCourseSwap,
   itemSkippedDates,
+  onceEndDate,
+  resolveOnceSpan,
   itemWorkKind,
   ownerColor,
   ownerLabel,
@@ -93,6 +95,7 @@ const emptyDraft = (): Draft => {
     enabled: true,
     recurrence: "weekly",
     date: today,
+    endDate: today,
     activeFrom: "",
     activeUntil: "",
     tag: "work",
@@ -140,6 +143,7 @@ function itemToDraft(item: ScheduleItem): Draft {
     enabled: item.enabled,
     recurrence: item.recurrence ?? "weekly",
     date: item.date ?? today,
+    endDate: onceEndDate(item) || today,
     activeFrom: item.activeFrom ?? "",
     activeUntil: item.activeUntil ?? "",
     tag: item.tag ?? "work",
@@ -337,6 +341,7 @@ export function SettingsPage() {
       end,
       weekdays: [weekday],
       date: dateKey,
+      endDate: dateKey,
       recurrence: "weekly",
       tag: "work",
     });
@@ -385,9 +390,36 @@ export function SettingsPage() {
       return;
     }
     const recurrence = courseSwap || backfill ? "once" : draft.recurrence;
-    const start = described?.state === "ready" ? described.resolved.start : draft.start;
-    const end = described?.state === "ready" ? described.resolved.end : draft.end;
-    const date = described?.state === "ready" ? described.resolved.date : draft.date;
+    let start = draft.start;
+    let end = draft.end;
+    let date = draft.date;
+    let endDate: string | undefined;
+    let durationMinutes: number | undefined;
+    if (described?.state === "ready") {
+      start = described.resolved.start;
+      end = described.resolved.end;
+      date = described.resolved.date;
+      durationMinutes = described.resolved.durationMinutes;
+    } else if (recurrence === "once") {
+      const span = resolveOnceSpan({
+        date: draft.date,
+        start: draft.start,
+        endDate: draft.endDate || draft.date,
+        end: draft.end,
+      });
+      if (!span.ok) {
+        setFormError(span.message);
+        return;
+      }
+      start = span.start;
+      end = span.end;
+      date = span.date;
+      endDate = span.endDate;
+      durationMinutes = span.durationMinutes;
+    } else if (start === end) {
+      setFormError("结束时间不能与开始时间相同");
+      return;
+    }
     const title =
       described?.state === "ready"
         ? callBackfillTitle(draft.callChannel || DEFAULT_CALL_CHANNEL)
@@ -412,10 +444,6 @@ export function SettingsPage() {
     }
     if (recurrence === "once" && !date) {
       setFormError("请选择日期");
-      return;
-    }
-    if (start === end) {
-      setFormError("结束时间不能与开始时间相同");
       return;
     }
     if (
@@ -447,6 +475,7 @@ export function SettingsPage() {
         enabled: draft.enabled,
         recurrence,
         date: recurrence === "once" ? date : undefined,
+        endDate: recurrence === "once" ? endDate : undefined,
         tag: draft.tag,
         owner: config.soloMode ? "self" : draft.owner,
         activeFrom:
@@ -481,10 +510,7 @@ export function SettingsPage() {
             ? draft.workSecondary
             : undefined,
         isCourseSwap: courseSwap || undefined,
-        durationMinutes:
-          described?.state === "ready"
-            ? described.resolved.durationMinutes
-            : undefined,
+        durationMinutes,
       });
       setEditorOpen(false);
       setOccurrenceDate(null);

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   ScheduleItemSchema,
   clockToCycleMinutes,
+  columnCycleRanges,
   columnSegmentsOnDate,
   emptyConfig,
   formatCallChannelLabel,
@@ -20,6 +21,7 @@ import {
   itemSegmentOnDate,
   parseAppConfig,
   progressThroughItem,
+  resolveOnceSpan,
   safeParseAppConfig,
 } from "@/lib/config";
 import { formatItemSubline } from "@/lib/schedule-style";
@@ -423,6 +425,11 @@ describe("周循环跨日 22:00–06:00", () => {
       { start: "00:00", end: "06:00" },
     ]);
     expect(columnSegmentsOnDate(overnightWeekly, "2026-09-22", 2)).toEqual([]);
+    expect(columnCycleRanges(overnightWeekly, "2026-09-21", 1)).toEqual([
+      { startMin: 15 * 60, endMin: 17 * 60, overnight: true },
+      { startMin: 17 * 60, endMin: 23 * 60, overnight: true },
+    ]);
+    expect(columnCycleRanges(overnightWeekly, "2026-09-22", 2)).toEqual([]);
     expect(itemSegmentOnDate(overnightWeekly, "2026-09-21", 1)).toEqual({
       start: "22:00",
       end: "24:00",
@@ -488,6 +495,153 @@ describe("周循环跨日 22:00–06:00", () => {
     const p = progressThroughItem(overnightWeekly, now);
     expect(p).toBeGreaterThan(0);
     expect(p).toBeLessThan(1);
+  });
+});
+
+describe("全天切片与跨多日", () => {
+  const fullDay = {
+    id: "full",
+    start: "00:00",
+    end: "23:59",
+    title: "整天",
+    weekdays: [] as number[],
+    enabled: true,
+    recurrence: "once" as const,
+    date: "2026-10-17",
+    tag: "life" as const,
+    skippedDates: [] as string[],
+  };
+
+  it("00:00–23:59 在周列上有可见高度", () => {
+    const saved = resolveOnceSpan({
+      date: "2026-10-17",
+      start: "00:00",
+      endDate: "2026-10-17",
+      end: "23:59",
+    });
+    expect(saved).toEqual({
+      ok: true,
+      date: "2026-10-17",
+      start: "00:00",
+      end: "23:59",
+    });
+    const on17 = columnCycleRanges(fullDay, "2026-10-17");
+    const on16 = columnCycleRanges(fullDay, "2026-10-16");
+    expect(on17).toEqual([
+      { startMin: 0, endMin: 16 * 60 + 59, overnight: false },
+    ]);
+    expect(on16).toEqual([
+      { startMin: 17 * 60, endMin: 24 * 60, overnight: false },
+    ]);
+    expect(on17[0].endMin).toBeGreaterThan(on17[0].startMin);
+    expect(on16[0].endMin).toBeGreaterThan(on16[0].startMin);
+    expect(columnCycleRanges(fullDay, "2026-10-18")).toEqual([]);
+    const covered =
+      on16[0].endMin - on16[0].startMin + (on17[0].endMin - on17[0].startMin);
+    expect(covered).toBe(23 * 60 + 59);
+    const noon = new Date(2026, 9, 17, 12, 0, 0);
+    expect(isItemNow(fullDay, noon)).toBe(true);
+    expect(getCurrentItem([fullDay], noon)?.id).toBe("full");
+  });
+
+  it("16日 13:40 到 18日 20:00 是一条，三天各画对应时段", () => {
+    const span = resolveOnceSpan({
+      date: "2026-10-16",
+      start: "13:40",
+      endDate: "2026-10-18",
+      end: "20:00",
+    });
+    expect(span.ok).toBe(true);
+    if (!span.ok) return;
+    expect(span.endDate).toBe("2026-10-18");
+    expect(span.durationMinutes).toBe(3260);
+    const item = {
+      id: "meet",
+      start: span.start,
+      end: span.end,
+      title: "相处",
+      weekdays: [] as number[],
+      enabled: true,
+      recurrence: "once" as const,
+      date: span.date,
+      endDate: span.endDate,
+      durationMinutes: span.durationMinutes,
+      tag: "life" as const,
+      skippedDates: [] as string[],
+    };
+    expect(ScheduleItemSchema.safeParse(item).success).toBe(true);
+    const parsed = parseAppConfig({
+      version: 1,
+      showHolidays: true,
+      widgetVisible: true,
+      items: [item],
+    });
+    expect(parsed.items[0].endDate).toBe("2026-10-18");
+    expect(parsed.items[0].durationMinutes).toBe(3260);
+    expect(itemSegmentOnDate(item, "2026-10-16")).toEqual({
+      start: "13:40",
+      end: "24:00",
+    });
+    expect(itemSegmentOnDate(item, "2026-10-17")).toEqual({
+      start: "00:00",
+      end: "24:00",
+    });
+    expect(itemSegmentOnDate(item, "2026-10-18")).toEqual({
+      start: "00:00",
+      end: "20:00",
+    });
+    expect(itemSegmentOnDate(item, "2026-10-15")).toBeNull();
+    expect(itemSegmentOnDate(item, "2026-10-19")).toBeNull();
+
+    expect(columnCycleRanges(item, "2026-10-16")).toEqual([
+      { startMin: 6 * 60 + 40, endMin: 24 * 60, overnight: true },
+    ]);
+    expect(columnCycleRanges(item, "2026-10-17")).toEqual([
+      { startMin: 0, endMin: 24 * 60, overnight: true },
+    ]);
+    expect(columnCycleRanges(item, "2026-10-18")).toEqual([
+      { startMin: 0, endMin: 13 * 60, overnight: false },
+    ]);
+    expect(columnCycleRanges(item, "2026-10-15")).toEqual([]);
+    expect(columnCycleRanges(item, "2026-10-19")).toEqual([]);
+    const day16 = columnCycleRanges(item, "2026-10-16")[0];
+    const day17 = columnCycleRanges(item, "2026-10-17")[0];
+    const midnight = clockToCycleMinutes("00:00", 7);
+    expect(day16.startMin).toBeLessThan(midnight);
+    expect(day16.endMin).toBeGreaterThan(midnight);
+    expect(day17.endMin).toBeGreaterThan(clockToCycleMinutes("23:59", 7));
+
+    const duringMiddle = new Date(2026, 9, 17, 15, 0, 0);
+    const duringLast = new Date(2026, 9, 18, 19, 0, 0);
+    const ended = new Date(2026, 9, 18, 20, 0, 0);
+    expect(isItemNow(item, duringMiddle)).toBe(true);
+    expect(getCurrentItem([item], duringMiddle)?.id).toBe("meet");
+    expect(isItemNow(item, duringLast)).toBe(true);
+    expect(getCurrentItem([item], duringLast)?.id).toBe("meet");
+    expect(isItemNow(item, ended)).toBe(false);
+    expect(formatItemSpan(item)).toBe("10月16日 13:40–10月18日 20:00");
+  });
+
+  it("22:00–次日 06:00 不写成跨多日，仍留在起始日列", () => {
+    expect(
+      resolveOnceSpan({
+        date: "2026-10-20",
+        start: "22:00",
+        endDate: "2026-10-21",
+        end: "06:00",
+      }),
+    ).toEqual({
+      ok: true,
+      date: "2026-10-20",
+      start: "22:00",
+      end: "06:00",
+    });
+    expect(columnCycleRanges(overnightWeekly, "2026-09-21")).toEqual([
+      { startMin: 15 * 60, endMin: 17 * 60, overnight: true },
+      { startMin: 17 * 60, endMin: 23 * 60, overnight: true },
+    ]);
+    expect(columnCycleRanges(overnightWeekly, "2026-09-22")).toEqual([]);
+    expect(columnSegmentsOnDate(overnightWeekly, "2026-09-22")).toEqual([]);
   });
 });
 

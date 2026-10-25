@@ -202,6 +202,58 @@ describe("home widget text", () => {
     });
   });
 
+  it("跨多日相处在中间日和最后一天下午仍是当前", async () => {
+    const partial = {
+      id: "meet",
+      title: "相处",
+      tag: "life",
+      recurrence: "once",
+      date: "2026-10-16",
+      endDate: "2026-10-18",
+      weekdays: [],
+      start: "13:40",
+      end: "20:00",
+      durationMinutes: 3260,
+    };
+    const middle = new Date(2026, 9, 17, 15, 0, 0);
+    const last = new Date(2026, 9, 18, 19, 0, 0);
+    const ended = new Date(2026, 9, 18, 20, 0, 0);
+    const snapshot = await buildWidgetSnapshot(config([item(partial)]), middle);
+    expect(snapshot.self).toHaveLength(1);
+    expect(snapshot.self[0].time).toBe("10月16日 13:40–10月18日 20:00");
+    expect(renderHomeWidget(snapshot, "self", middle).lanes[0]).toMatchObject({
+      headline: "相处",
+      time: "10月16日 13:40–10月18日 20:00",
+    });
+    const onLastDay = await buildWidgetSnapshot(config([item(partial)]), last);
+    expect(onLastDay.self).toHaveLength(1);
+    expect(renderHomeWidget(onLastDay, "self", last).lanes[0].headline).toBe("相处");
+    expect(renderHomeWidget(onLastDay, "self", ended).lanes[0].headline).toBe("空闲");
+  });
+
+  it("00:00–23:59 在当天中午是当前", async () => {
+    const now = new Date(2026, 9, 17, 12, 0, 0);
+    const snapshot = await buildWidgetSnapshot(
+      config([
+        item({
+          id: "full",
+          title: "整天",
+          tag: "life",
+          recurrence: "once",
+          date: "2026-10-17",
+          weekdays: [],
+          start: "00:00",
+          end: "23:59",
+        }),
+      ]),
+      now,
+    );
+    expect(renderHomeWidget(snapshot, "self", now).lanes[0]).toMatchObject({
+      headline: "整天",
+      time: "00:00–23:59",
+    });
+  });
+
   it("过夜日程在次日凌晨仍是当前", async () => {
     const now = new Date(2026, 8, 22, 3, 0, 0);
     const snapshot = await buildWidgetSnapshot(
