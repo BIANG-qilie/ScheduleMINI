@@ -5,10 +5,6 @@ name: Mirror probe
 # 这个文件合进 main 之后才能从 Actions 里点运行；合入前用 Release workflow 的 probe_only。
 on:
   workflow_dispatch:
-  # 合进 main 之前，GitHub 不允许对「只存在于功能分支」的 workflow 做 workflow_dispatch。
-  # 这一次推送到本分支会跑同一套探测；合入前会去掉这条，main 上只保留手动触发。
-  push:
-    branches: [cursor/sealos-download-mirror-53db]
 
 permissions:
   contents: read
