@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyConfig } from "@/lib/config";
 import {
   ConfigLoadError,
+  ConfigLoadTimeoutError,
   loadConfigWithIo,
   type ConfigIo,
 } from "@/lib/persistence";
@@ -73,6 +74,7 @@ describe("loadConfigWithIo", () => {
     );
     await vi.advanceTimersByTimeAsync(3_000);
     const error = await settled;
+    expect(error).toBeInstanceOf(ConfigLoadTimeoutError);
     expect(error).toBeInstanceOf(ConfigLoadError);
     expect((error as ConfigLoadError).message).toBe("读取配置超时");
     expect(mkdirCalls).toBe(3);

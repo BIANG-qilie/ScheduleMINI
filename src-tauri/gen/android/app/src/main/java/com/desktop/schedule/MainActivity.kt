@@ -10,10 +10,16 @@ import com.desktop.schedule.widget.WidgetUpdater
 class MainActivity : TauriActivity() {
   private var webView: WebView? = null
   private var openNow = false
+  private val bootWatch = BootWatch(this)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+  }
+
+  override fun onDestroy() {
+    bootWatch.stop()
+    super.onDestroy()
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -31,6 +37,8 @@ class MainActivity : TauriActivity() {
     this.webView = webView
     webView.addJavascriptInterface(ApkInstaller(this, webView), "SmInstaller")
     webView.addJavascriptInterface(WidgetBridge(this), "SmWidget")
+    webView.addJavascriptInterface(BootBridge(bootWatch), "SmBoot")
+    bootWatch.attach(webView)
     dispatchOpenNow()
   }
 

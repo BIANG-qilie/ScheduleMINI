@@ -11,6 +11,10 @@
 -keepclassmembers class com.desktop.schedule.ApkInstaller {
     @android.webkit.JavascriptInterface <methods>;
 }
+-keep class com.desktop.schedule.BootBridge { *; }
+-keepclassmembers class com.desktop.schedule.BootBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}
 -keep class com.desktop.schedule.widget.ScheduleWidgetProvider { *; }
 -keep class com.desktop.schedule.widget.ScheduleWidgetConfigureActivity { *; }
 
