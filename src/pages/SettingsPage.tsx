@@ -76,7 +76,10 @@ import {
 } from "@/lib/schedule-style";
 import { resolveRelayBaseUrl } from "@/lib/sync/relay";
 import { syncAutostart } from "@/lib/widget-chrome";
-import { setWidgetVisible } from "@/lib/windows";
+import {
+  setWidgetVisible,
+  subscribeWidgetVisibility,
+} from "@/lib/windows";
 import {
   startCoupleSyncLoop,
   subscribeConfigChanges,
@@ -332,6 +335,26 @@ export function SettingsPage() {
     };
   }, [setConfig]);
 
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void subscribeWidgetVisibility((visible) => {
+      const current = useConfigStore.getState().config.widgetVisible;
+      if (current === visible) return;
+      void setWidgetVisibleFlag(visible);
+    }).then((fn) => {
+      if (!active) {
+        fn();
+        return;
+      }
+      unlisten = fn;
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [setWidgetVisibleFlag]);
+
   const todayLabel = useMemo(
     () => getTodayLabel(new Date(), config.dayOverrides),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -584,8 +607,9 @@ export function SettingsPage() {
   const handleToggleWidget = async (visible: boolean) => {
     setBusy(true);
     try {
-      await setWidgetVisibleFlag(visible);
+      // 先改原生窗；成功后再写配置。托盘路径靠 widget-visibility-changed 回写按钮。
       await setWidgetVisible(visible);
+      await setWidgetVisibleFlag(visible);
       setStatus(visible ? "已打开悬浮窗" : "已关闭悬浮窗");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
