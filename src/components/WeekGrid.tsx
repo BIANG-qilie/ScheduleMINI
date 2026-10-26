@@ -588,7 +588,7 @@ export function WeekGrid({
                       );
                     const share =
                       (slot.span / Math.max(1, slot.columnCount)) * laneWidth;
-                    const reserve = underPill && share - 42 >= 96 ? 42 : 0;
+                    const reserve = underPill && share - 22 >= 96 ? 22 : 0;
                     const timeLabel = spanned
                       ? formatItemSpan(item)
                       : `${item.start}–${item.end}`;
@@ -612,7 +612,7 @@ export function WeekGrid({
                           height,
                           ...slotFrame(slot, reserve),
                           zIndex: 10 + slot.column,
-                          paddingRight: underPill && reserve === 0 ? 44 : undefined,
+                          paddingRight: underPill && reserve === 0 ? 22 : undefined,
                           borderColor: "var(--color-line)",
                           boxShadow: `inset 2px 0 0 ${rail}, inset 0 1px 0 rgba(255,252,246,0.9), 0 10px 18px -16px rgba(28,22,18,0.55)`,
                         }}
@@ -704,10 +704,10 @@ export function WeekGrid({
                         type="button"
                         data-block="pill"
                         aria-label={`还有 ${hidden.length} 项`}
-                        className="grid-pill absolute z-[24] inline-flex h-[22px] min-w-[28px] items-center justify-center rounded-full bg-[var(--color-accent-soft)] px-1.5 font-mono text-[11px] font-medium tabular-nums tracking-tight text-[var(--color-accent)] shadow-[0_8px_14px_-12px_rgba(143,61,46,0.9)]"
+                        className="grid-pill absolute z-[24] inline-flex h-4 items-center justify-center px-0.5 font-mono text-[10px] font-medium leading-none tabular-nums text-[var(--color-ink-muted)]"
                         style={{
                           top,
-                          right: 8,
+                          right: 6,
                           left: "auto",
                         }}
                         onClick={(e) => {

@@ -280,7 +280,7 @@ body.widget-body #root {
 }
 
 .grid-pill:hover {
-  background: color-mix(in oklab, var(--color-accent) 14%, var(--color-accent-soft));
+  color: var(--color-ink);
 }
 
 .grid-chip:hover {
