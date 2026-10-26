@@ -10,9 +10,24 @@ afterEach(() => {
   cleanup();
 });
 
+const ENTRY_LABEL = "根据手机记录补今天";
+
 describe("DayReplayEntry", () => {
   it("shows no button when the Android bridge is missing", () => {
     render(<DayReplayEntry onCommit={() => undefined} bridge={null} />);
+    expect(screen.queryByRole("button", { name: ENTRY_LABEL })).toBeNull();
+    expect(screen.queryByRole("button", { name: "补今天" })).toBeNull();
+  });
+
+  it("uses a text line trigger, not an outline 补今天 button", () => {
+    render(
+      <DayReplayEntry
+        onCommit={() => undefined}
+        bridge={{ readToday: () => JSON.stringify({ ok: true, queryTime: on26(12, 0), events: [], calls: [] }) }}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: ENTRY_LABEL });
+    expect(trigger.className).toContain("now-replay-link");
     expect(screen.queryByRole("button", { name: "补今天" })).toBeNull();
   });
 
@@ -63,11 +78,12 @@ describe("DayReplayEntry", () => {
         storage={storage}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "补今天" }));
+    await user.click(screen.getByRole("button", { name: ENTRY_LABEL }));
     expect(screen.getByRole("heading", { name: "补今天" })).toBeTruthy();
     expect(screen.getByText("线索 · 微信")).toBeTruthy();
     expect(screen.getByText("手机通话")).toBeTruthy();
     expect(screen.queryByText("com.tencent.mm")).toBeNull();
+    expect(screen.getByText("本机号码名单").closest("details")).toBeTruthy();
 
     await user.type(screen.getByLabelText("微信的标题"), "微信");
     await user.selectOptions(screen.getByLabelText("微信的标签"), "life");

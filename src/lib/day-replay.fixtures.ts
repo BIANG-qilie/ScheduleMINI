@@ -285,3 +285,158 @@ export const callCases = {
     },
   ] satisfies ExpectedCue[],
 };
+
+const launcher = "com.android.launcher3";
+const systemUi = "com.android.systemui";
+const selfPkg = "com.desktop.schedule";
+
+/** 原始前台时段 → 短清单。筛选实现不能从这份期望里读答案。 */
+export const shortlistCases: {
+  name: string;
+  spans: ExpectedSpan[];
+  matchedCalls: { title: typeof PHONE_CALL_TITLE; start: number; end: number }[];
+  existingOnce: { start: number; end: number }[];
+  cues: ExpectedCue[];
+}[] = [
+  {
+    name: "drops shell apps and this app",
+    spans: [
+      {
+        packageName: launcher,
+        label: "Launcher",
+        start: on26(8, 0),
+        end: on26(8, 40),
+      },
+      {
+        packageName: systemUi,
+        label: "System UI",
+        start: on26(8, 10),
+        end: on26(8, 25),
+      },
+      {
+        packageName: selfPkg,
+        label: "小日程",
+        start: on26(8, 30),
+        end: on26(9, 0),
+      },
+      {
+        packageName: wechat,
+        label: "微信",
+        start: on26(9, 0),
+        end: on26(9, 40),
+      },
+    ],
+    matchedCalls: [],
+    existingOnce: [],
+    cues: [
+      {
+        kind: "app",
+        label: "微信",
+        start: on26(9, 0),
+        end: on26(9, 40),
+      },
+    ],
+  },
+  {
+    name: "drops a 10s flicker",
+    spans: [
+      {
+        packageName: "com.android.chrome",
+        label: "Chrome",
+        start: on26(10, 0),
+        end: on26(10, 0, 10),
+      },
+      {
+        packageName: wechat,
+        label: "微信",
+        start: on26(10, 5),
+        end: on26(10, 35),
+      },
+    ],
+    matchedCalls: [],
+    existingOnce: [],
+    cues: [
+      {
+        kind: "app",
+        label: "微信",
+        start: on26(10, 5),
+        end: on26(10, 35),
+      },
+    ],
+  },
+  {
+    name: "merges same-app spans across a 2-minute gap",
+    spans: [
+      {
+        packageName: wechat,
+        label: "微信",
+        start: on26(11, 0),
+        end: on26(11, 10),
+      },
+      {
+        packageName: wechat,
+        label: "微信",
+        start: on26(11, 12),
+        end: on26(11, 25),
+      },
+    ],
+    matchedCalls: [],
+    existingOnce: [],
+    cues: [
+      {
+        kind: "app",
+        label: "微信",
+        start: on26(11, 0),
+        end: on26(11, 25),
+      },
+    ],
+  },
+  {
+    name: "keeps a long WeChat span",
+    spans: [
+      {
+        packageName: wechat,
+        label: "微信",
+        start: on26(14, 0),
+        end: on26(15, 20),
+      },
+    ],
+    matchedCalls: [],
+    existingOnce: [],
+    cues: [
+      {
+        kind: "app",
+        label: "微信",
+        start: on26(14, 0),
+        end: on26(15, 20),
+      },
+    ],
+  },
+  {
+    name: "drops a span that fully overlaps an existing once item",
+    spans: [
+      {
+        packageName: wechat,
+        label: "微信",
+        start: on26(16, 0),
+        end: on26(16, 30),
+      },
+      {
+        packageName: "com.android.chrome",
+        label: "Chrome",
+        start: on26(17, 0),
+        end: on26(17, 25),
+      },
+    ],
+    matchedCalls: [],
+    existingOnce: [{ start: on26(16, 0), end: on26(16, 30) }],
+    cues: [
+      {
+        kind: "app",
+        label: "Chrome",
+        start: on26(17, 0),
+        end: on26(17, 25),
+      },
+    ],
+  },
+];
