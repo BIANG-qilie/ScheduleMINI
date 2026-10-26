@@ -1,6 +1,6 @@
 [package]
 name = "desktop-schedule-widget"
-version = "0.3.0-6"
+version = "0.3.0-7"
 description = "小日程 — 桌面周循环日程与悬浮窗"
 authors = ["desktop-schedule"]
 edition = "2021"
