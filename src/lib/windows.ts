@@ -1,8 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauriRuntime } from "@/lib/utils";
 
 export type AppView = "settings" | "widget";
+
+/** 与 Rust `WIDGET_VISIBILITY_EVENT` 一致：托盘切换后设置页按钮要跟着变。 */
+export const WIDGET_VISIBILITY_EVENT = "widget-visibility-changed";
 
 export function resolveView(): AppView {
   if (typeof window === "undefined") return "settings";
@@ -52,4 +56,16 @@ export async function quitApp() {
     return;
   }
   await invoke("quit_app");
+}
+
+/** 订阅原生侧（含托盘）发出的悬浮窗显隐，用来同步设置页按钮。 */
+export async function subscribeWidgetVisibility(
+  onChange: (visible: boolean) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<boolean>(WIDGET_VISIBILITY_EVENT, (event) => {
+    onChange(event.payload);
+  });
 }
