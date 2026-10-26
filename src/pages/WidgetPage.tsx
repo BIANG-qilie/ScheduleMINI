@@ -256,6 +256,7 @@ function DualFocusWidget({
   partnerProgress,
   todayKey,
   holidayName,
+  onMinimize,
 }: {
   couple: CoupleIdentity;
   soloMode: boolean;
@@ -271,6 +272,7 @@ function DualFocusWidget({
   partnerProgress: number;
   todayKey: string;
   holidayName?: string;
+  onMinimize: () => void;
 }) {
   const showPartner = !soloMode;
 
@@ -280,7 +282,7 @@ function DualFocusWidget({
         <DesktopMiniChrome
           view="widget"
           platform={updatePlatform()}
-          onMinimize={() => void minimizeDesktopMiniWindow()}
+          onMinimize={onMinimize}
           className="absolute right-2 top-1 z-20"
         />
         <div
@@ -336,9 +338,24 @@ function DualFocusWidget({
 }
 
 export function WidgetPage() {
-  const { config, loading, hydrated, diskSettled, init, setConfig } =
-    useConfigStore();
+  const {
+    config,
+    loading,
+    hydrated,
+    diskSettled,
+    init,
+    setConfig,
+    setWidgetVisible: setWidgetVisibleFlag,
+  } = useConfigStore();
   const [now, setNow] = useState(() => new Date());
+
+  const minimizeWidget = async () => {
+    await minimizeDesktopMiniWindow();
+    // 最小化后设置页应显示「打开悬浮窗」，与托盘显隐事件对齐。
+    if (useConfigStore.getState().config.widgetVisible) {
+      await setWidgetVisibleFlag(false);
+    }
+  };
 
   useEffect(() => {
     void init();
@@ -402,7 +419,14 @@ export function WidgetPage() {
           liftIfShown();
         });
         unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
-          if (focused) liftIfShown();
+          if (!focused) return;
+          liftIfShown();
+          void (async () => {
+            if (await win.isMinimized()) return;
+            if (!useConfigStore.getState().config.widgetVisible) {
+              await useConfigStore.getState().setWidgetVisible(true);
+            }
+          })();
         });
       } catch {
         // browser preview
@@ -531,6 +555,7 @@ export function WidgetPage() {
             ? holiday.name
             : undefined
         }
+        onMinimize={() => void minimizeWidget()}
       />
     );
   }
@@ -559,7 +584,7 @@ export function WidgetPage() {
           <DesktopMiniChrome
             view="widget"
             platform={updatePlatform()}
-            onMinimize={() => void minimizeDesktopMiniWindow()}
+            onMinimize={() => void minimizeWidget()}
           />
         </div>
 
