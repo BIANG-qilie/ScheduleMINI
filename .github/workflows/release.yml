@@ -16,60 +16,9 @@ permissions:
   contents: write
 
 jobs:
-  desktop:
-    if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-latest
-            args: ""
-          - platform: macos-15-intel
-            args: "--target universal-apple-darwin"
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-      - name: Bundle semver
-        run: node scripts/prepare-bundle-version.mjs
-      - name: Asset name pattern
-        id: names
-        shell: bash
-        run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      - run: npm ci
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-6；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.6
-          releaseBody: |
-            0.3.0-beta.6 试用稿（未进 main；安装包版本 0.3.0-6）。
-
-            - 补今天弹窗不再被顶栏挡住
-            - 补今天线索显示真实应用名，不再整页「这个应用」
-            - 「补今天」只出短清单；入口在「此刻」问候下
-          releaseDraft: true
-          prerelease: true
-          includeUpdaterJson: true
-          updaterJsonPreferNsis: true
-          assetNamePattern: ${{ steps.names.outputs.pattern }}
-          args: --config src-tauri/ci-version.json ${{ matrix.args }}
-
+  # 顺序：Android → Windows → macOS。手机包先上草稿，桌面再往同一份草稿里补。
   android:
-    needs: desktop
+    if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +63,115 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk \
             "ScheduleMINI-${VERSION}-universal.apk"
-          gh release upload "v${VERSION}" "ScheduleMINI-${VERSION}-universal.apk" --clobber
+          TAG="v${VERSION}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            printf '%s\n' \
+              '0.3.0-beta.6 试用稿（未进 main；安装包版本 0.3.0-6）。' \
+              '' \
+              '- 补今天弹窗不再被顶栏挡住' \
+              '- 补今天线索显示真实应用名，不再整页「这个应用」' \
+              '- 「补今天」只出短清单；入口在「此刻」问候下' \
+              > /tmp/release-notes.md
+            gh release create "$TAG" \
+              --draft \
+              --prerelease \
+              --title "小日程 v0.3.0-beta.6" \
+              --target "$GITHUB_SHA" \
+              --notes-file /tmp/release-notes.md
+          fi
+          gh release upload "$TAG" "ScheduleMINI-${VERSION}-universal.apk" --clobber
+
+  windows:
+    needs: android
+    if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
+      - name: Asset name pattern
+        id: names
+        shell: bash
+        run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          # 包版本用 MSI 可接受的 0.3.0-6；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.6
+          releaseBody: |
+            0.3.0-beta.6 试用稿（未进 main；安装包版本 0.3.0-6）。
+
+            - 补今天弹窗不再被顶栏挡住
+            - 补今天线索显示真实应用名，不再整页「这个应用」
+            - 「补今天」只出短清单；入口在「此刻」问候下
+          releaseDraft: true
+          prerelease: true
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          assetNamePattern: ${{ steps.names.outputs.pattern }}
+          args: --config src-tauri/ci-version.json
+
+  macos:
+    needs: windows
+    if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
+      - name: Asset name pattern
+        id: names
+        shell: bash
+        run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 小日程 v0.3.0-beta.6
+          releaseBody: |
+            0.3.0-beta.6 试用稿（未进 main；安装包版本 0.3.0-6）。
+
+            - 补今天弹窗不再被顶栏挡住
+            - 补今天线索显示真实应用名，不再整页「这个应用」
+            - 「补今天」只出短清单；入口在「此刻」问候下
+          releaseDraft: true
+          prerelease: true
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          assetNamePattern: ${{ steps.names.outputs.pattern }}
+          args: --config src-tauri/ci-version.json --target universal-apple-darwin
+      - name: Updater manifest is on the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
           gh release view "v${VERSION}" --json assets --jq '.assets[].name' | grep -qx latest.json
 
   # GitHub Release 已经发布之后才上传镜像。密钥没配齐就跳过；
@@ -122,7 +179,7 @@ jobs:
   # 预发布/含连字符标签（如 v0.3.0-beta.1）不写 Sealos latest，避免盖掉正式版。
   mirror:
     if: ${{ !contains(github.ref_name, '-') }}
-    needs: [desktop, android]
+    needs: [android, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
