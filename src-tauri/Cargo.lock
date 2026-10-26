@@ -762,7 +762,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-schedule-widget"
-version = "0.2.7"
+version = "0.3.0-beta.1"
 dependencies = [
  "serde",
  "serde_json",
