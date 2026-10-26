@@ -579,20 +579,12 @@ export function WeekGrid({
                     const showOvernight = overnight && height >= 64 && !showNote;
                     const color = ownerColor(item, couple);
                     const rail = quietRail(TAG_BAR[itemTag(item)]);
-                    const reachesEdge = slot.column + slot.span >= slot.columnCount;
-                    const underPill =
-                      reachesEdge &&
-                      layout.pills.some(
-                        (pill) =>
-                          startMin < pill.end && pill.start < entry.endMin,
-                      );
                     const share =
                       (slot.span / Math.max(1, slot.columnCount)) * laneWidth;
-                    const reserve = underPill && share - 22 >= 96 ? 22 : 0;
                     const timeLabel = spanned
                       ? formatItemSpan(item)
                       : `${item.start}–${item.end}`;
-                    const inlineTime = !roomy && !underPill && share >= 140;
+                    const inlineTime = !roomy && share >= 140;
                     nodes.push(
                       <button
                         key={`${item.id}-${col.dateKey}-${startMin}`}
@@ -610,9 +602,8 @@ export function WeekGrid({
                         style={{
                           top,
                           height,
-                          ...slotFrame(slot, reserve),
+                          ...slotFrame(slot),
                           zIndex: 10 + slot.column,
-                          paddingRight: underPill && reserve === 0 ? 22 : undefined,
                           borderColor: "var(--color-line)",
                           boxShadow: `inset 2px 0 0 ${rail}, inset 0 1px 0 rgba(255,252,246,0.9), 0 10px 18px -16px rgba(28,22,18,0.55)`,
                         }}
@@ -704,11 +695,13 @@ export function WeekGrid({
                         type="button"
                         data-block="pill"
                         aria-label={`还有 ${hidden.length} 项`}
-                        className="grid-pill absolute z-[24] inline-flex h-4 items-center justify-center px-0.5 font-mono text-[10px] font-medium leading-none tabular-nums text-[var(--color-ink-muted)]"
+                        className="grid-pill absolute z-[24] flex h-[18px] w-[18px] items-center justify-center rounded-full border border-solid border-[var(--color-line)] bg-[var(--color-surface)] p-0 font-mono text-[9px] font-medium leading-none tabular-nums text-[var(--color-ink-muted)]"
                         style={{
                           top,
-                          right: 6,
+                          right: 4,
                           left: "auto",
+                          width: 18,
+                          height: 18,
                         }}
                         onClick={(e) => {
                           e.stopPropagation();

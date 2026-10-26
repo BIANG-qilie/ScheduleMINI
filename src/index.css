@@ -279,6 +279,13 @@ body.widget-body #root {
     -1px 0 0 var(--color-surface);
 }
 
+.grid-pill {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 999px;
+}
+
 .grid-pill:hover {
   color: var(--color-ink);
 }
