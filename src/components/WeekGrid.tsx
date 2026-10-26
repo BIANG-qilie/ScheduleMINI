@@ -111,14 +111,25 @@ type GridMenu =
       y: number;
     };
 
-function slotFrame(slot: { column: number; span: number; columnCount: number }) {
+function slotFrame(
+  slot: { column: number; span: number; columnCount: number },
+  reserveRight = 0,
+) {
   const count = Math.max(1, slot.columnCount);
   const left = (slot.column / count) * 100;
   const width = (slot.span / count) * 100;
   return {
-    left: `calc(${left}% + 2px)`,
-    width: `calc(${width}% - 4px)`,
+    left: `calc(${left}% + 4px)`,
+    width: `calc(${width}% - ${8 + reserveRight}px)`,
   };
+}
+
+function quietRail(hex: string) {
+  return `color-mix(in oklab, ${hex} 26%, var(--color-line))`;
+}
+
+function spineInk(hex: string) {
+  return `color-mix(in oklab, ${hex} 40%, var(--color-ink-muted))`;
 }
 
 export function WeekGrid({
@@ -477,51 +488,99 @@ export function WeekGrid({
                     },
                   });
                   const nodes: ReactNode[] = [];
+                  const spineOf = new Map<string, number>();
                   for (const id of layout.bands) {
                     const entry = byId.get(id);
                     if (!entry) continue;
                     const { item, startMin, top } = entry;
                     const height = Math.max(
-                      10,
+                      8,
                       ((entry.endMin - entry.startMin) / 60) * DAY_PX,
                     );
                     const once = itemRecurrence(item) === "once";
                     const courseSwap = !!item.isCourseSwap;
+                    const dashed = once || courseSwap;
                     const color = ownerColor(item, couple);
+                    const ink = spineInk(TAG_BAR[itemTag(item)]);
+                    if (!spineOf.has(item.id)) spineOf.set(item.id, spineOf.size);
+                    const spine = spineOf.get(item.id) ?? 0;
+                    const head =
+                      Math.abs(
+                        startMin - clockToCycleMinutes(item.start, gridStartHour),
+                      ) < 0.6;
+                    const title = itemDisplayTitle(item);
+                    const label = head ? title : `续 · ${title}`;
+                    const runsOff = top + height >= totalHeight - 2;
                     nodes.push(
-                      <button
+                      <div
                         key={`band-${item.id}-${col.dateKey}-${startMin}`}
-                        type="button"
                         data-block="band"
                         data-item-id={item.id}
-                        title={itemHoverText(item)}
-                        className={cn(
-                          "absolute z-[1] overflow-hidden rounded-md border border-[var(--color-line)]/80 text-left text-[var(--color-ink-muted)]",
-                          (once || courseSwap) && "border-dashed border-[#d7b15a]",
-                          selectedIds?.has(item.id) &&
-                            "ring-2 ring-[var(--color-ink)] ring-offset-1",
-                        )}
-                        style={{
-                          top,
-                          height,
-                          left: 2,
-                          right: 2,
-                          backgroundColor:
-                            "color-mix(in oklab, var(--color-ink) 4%, var(--color-surface))",
-                          boxShadow: `inset 3px 0 0 ${TAG_BAR[itemTag(item)]}`,
-                        }}
-                        {...bindItem(item)}
+                        className="pointer-events-none absolute inset-x-0"
+                        style={{ top, height }}
                       >
-                        <span className="flex items-center gap-1 truncate px-1.5 py-0.5 text-[11px] font-medium leading-tight">
+                        <button
+                          type="button"
+                          title={itemHoverText(item)}
+                          aria-label={label}
+                          className="pointer-events-auto absolute bottom-0 top-0 z-[1] w-3"
+                          style={{ left: spine * 8 }}
+                          {...bindItem(item)}
+                        >
+                          <span
+                            className="absolute bottom-1.5 top-1.5 w-0.5 rounded-full"
+                            style={{ left: 5, backgroundColor: ink }}
+                          />
+                          {head ? (
+                            <span
+                              className="absolute top-1.5 h-px w-1.5"
+                              style={{ left: 3, backgroundColor: ink }}
+                            />
+                          ) : null}
+                          {runsOff ? null : (
+                            <span
+                              className="absolute bottom-1.5 h-px w-1.5"
+                              style={{ left: 3, backgroundColor: ink }}
+                            />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          data-block="band-label"
+                          title={itemHoverText(item)}
+                          className={cn(
+                            "grid-chip pointer-events-auto absolute top-1 z-20 inline-flex h-[22px] max-w-[168px] items-center gap-1.5 rounded-md border bg-[var(--color-surface)] pl-1.5 pr-2 text-[11px] leading-none shadow-[inset_0_1px_0_rgba(255,252,246,0.9),0_8px_16px_-14px_rgba(28,22,18,0.45)]",
+                            dashed && "border-dashed",
+                            selectedIds?.has(item.id) &&
+                              "ring-2 ring-[var(--color-ink)] ring-offset-1",
+                          )}
+                          style={{
+                            left: 16 + spine * 8,
+                            borderColor: "var(--color-line)",
+                          }}
+                          {...bindItem(item)}
+                        >
                           <span
                             className="h-1.5 w-1.5 shrink-0 rounded-full"
                             style={{ backgroundColor: color }}
                             title={ownerLabel(item, couple)}
                             aria-label={ownerLabel(item, couple)}
                           />
-                          <span className="truncate">{itemDisplayTitle(item)}</span>
-                        </span>
-                      </button>,
+                          {head ? null : (
+                            <span className="shrink-0 text-[var(--color-ink-muted)]">
+                              续
+                            </span>
+                          )}
+                          <span className="truncate font-medium text-[var(--color-ink)]">
+                            {title}
+                          </span>
+                          {head ? (
+                            <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--color-ink-muted)]">
+                              {item.start}
+                            </span>
+                          ) : null}
+                        </button>
+                      </div>,
                     );
                   }
                   for (const [id, slot] of layout.cards) {
@@ -532,12 +591,26 @@ export function WeekGrid({
                     const courseSwap = !!item.isCourseSwap;
                     const subline = formatItemSubline(item);
                     const note = item.note?.trim() ?? "";
-                    const showNote =
-                      !!note && (dayLayout ? height >= 44 : height >= 52);
-                    const showSub =
-                      height >= 28 && !(dayLayout && showNote && height < 68);
-                    const showOvernight = overnight && height >= 40 && !showNote;
+                    const roomy = height >= 46;
+                    const showNote = !!note && height >= 78;
+                    const showSub = roomy && !(showNote && height < 96);
+                    const showOvernight = overnight && height >= 64 && !showNote;
                     const color = ownerColor(item, couple);
+                    const rail = quietRail(TAG_BAR[itemTag(item)]);
+                    const reachesEdge = slot.column + slot.span >= slot.columnCount;
+                    const underPill =
+                      reachesEdge &&
+                      layout.pills.some(
+                        (pill) =>
+                          startMin < pill.end && pill.start < entry.endMin,
+                      );
+                    const share =
+                      (slot.span / Math.max(1, slot.columnCount)) * laneWidth;
+                    const reserve = underPill && share - 42 >= 96 ? 42 : 0;
+                    const timeLabel = spanned
+                      ? formatItemSpan(item)
+                      : `${item.start}–${item.end}`;
+                    const inlineTime = !roomy && !underPill && share >= 140;
                     nodes.push(
                       <button
                         key={`${item.id}-${col.dateKey}-${startMin}`}
@@ -546,77 +619,94 @@ export function WeekGrid({
                         data-item-id={item.id}
                         title={itemHoverText(item)}
                         className={cn(
-                          "group absolute overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 py-0.5 text-left text-[var(--color-ink)] transition-[transform,filter] duration-150 hover:z-30 hover:brightness-[0.98]",
-                          (once || courseSwap) && "border-dashed border-[#d7b15a]",
+                          "grid-card absolute overflow-hidden rounded-lg border bg-[var(--color-surface)] text-left text-[var(--color-ink)] hover:z-30",
+                          roomy ? "px-2.5 py-1.5" : "flex items-center px-2 py-1",
+                          (once || courseSwap) && "border-dashed",
                           selectedIds?.has(item.id) &&
                             "ring-2 ring-[var(--color-ink)] ring-offset-1",
                         )}
                         style={{
                           top,
                           height,
-                          ...slotFrame(slot),
+                          ...slotFrame(slot, reserve),
                           zIndex: 10 + slot.column,
-                          boxShadow: `inset 3px 0 0 ${TAG_BAR[itemTag(item)]}`,
+                          paddingRight: underPill && reserve === 0 ? 44 : undefined,
+                          borderColor: "var(--color-line)",
+                          boxShadow: `inset 2px 0 0 ${rail}, inset 0 1px 0 rgba(255,252,246,0.9), 0 10px 18px -16px rgba(28,22,18,0.55)`,
                         }}
                         {...bindItem(item)}
                       >
-                        <div className="h-full overflow-hidden">
-                          <p
+                        <div
+                          className={cn(
+                            "flex min-w-0 gap-1.5 overflow-hidden",
+                            roomy ? "h-full items-start" : "w-full items-center",
+                          )}
+                        >
+                          <span
                             className={cn(
-                              "flex items-center gap-0.5 truncate font-semibold leading-tight",
-                              height < 18 ? "text-[10px]" : "text-xs",
+                              "h-1.5 w-1.5 shrink-0 rounded-full",
+                              roomy && "mt-[5px]",
+                            )}
+                            style={{ backgroundColor: color }}
+                            title={ownerLabel(item, couple)}
+                            aria-label={ownerLabel(item, couple)}
+                          />
+                          <div
+                            className={cn(
+                              "min-w-0",
+                              inlineTime && "flex flex-1 items-center gap-2",
                             )}
                           >
-                            {courseSwap || once ? (
-                              <span
-                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                                title={courseSwap ? "换课" : "仅一次"}
-                                aria-label={courseSwap ? "换课" : "仅一次"}
-                              />
-                            ) : null}
-                            <span
-                              className="h-1.5 w-1.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: color }}
-                              title={ownerLabel(item, couple)}
-                              aria-label={ownerLabel(item, couple)}
-                            />
-                            <span className="truncate">
-                              {itemDisplayTitle(item)}
-                            </span>
-                          </p>
-                          {showSub ? (
-                            subline ? (
-                              <p className="truncate text-[10px] leading-tight opacity-80">
-                                {subline}
-                              </p>
-                            ) : (
-                              <p className="truncate font-mono text-[10px] leading-tight opacity-70">
-                                {spanned ? formatItemSpan(item) : `${item.start}–${item.end}`}
-                              </p>
-                            )
-                          ) : null}
-                          {spanned && subline && height >= 36 ? (
-                            <p className="truncate font-mono text-[10px] leading-tight opacity-70">
-                              {formatItemSpan(item)}
-                            </p>
-                          ) : null}
-                          {showNote ? (
                             <p
                               className={cn(
-                                "text-[10px] leading-tight opacity-70",
-                                dayLayout
-                                  ? "line-clamp-2 whitespace-normal break-words"
-                                  : "truncate",
+                                "font-medium tracking-tight",
+                                inlineTime && "min-w-0 flex-1",
+                                height >= 72
+                                  ? "line-clamp-2 text-[13px] leading-snug"
+                                  : "truncate text-[12.5px] leading-none",
                               )}
                             >
-                              {note}
+                              {itemDisplayTitle(item)}
                             </p>
-                          ) : null}
-                          {showOvernight ? (
-                            <p className="truncate text-[9px] leading-tight opacity-55">
-                              跨日
-                            </p>
-                          ) : null}
+                            {inlineTime ? (
+                              <p className="ml-auto shrink-0 font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]">
+                                {timeLabel}
+                              </p>
+                            ) : null}
+                            {showSub ? (
+                              subline ? (
+                                <p className="mt-1 truncate text-[10.5px] leading-none text-[var(--color-ink-muted)]">
+                                  {subline}
+                                </p>
+                              ) : (
+                                <p className="mt-1 truncate font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]">
+                                  {timeLabel}
+                                </p>
+                              )
+                            ) : null}
+                            {spanned && subline && height >= 64 ? (
+                              <p className="mt-1 truncate font-mono text-[10px] leading-none tabular-nums text-[var(--color-ink-muted)]">
+                                {timeLabel}
+                              </p>
+                            ) : null}
+                            {showNote ? (
+                              <p
+                                className={cn(
+                                  "mt-1 text-[10.5px] leading-snug text-[var(--color-ink-muted)]",
+                                  dayLayout
+                                    ? "line-clamp-2 whitespace-normal break-words"
+                                    : "truncate",
+                                )}
+                              >
+                                {note}
+                              </p>
+                            ) : null}
+                            {showOvernight ? (
+                              <p className="mt-1 truncate text-[10.5px] leading-none text-[var(--color-ink-muted)]">
+                                跨日
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       </button>,
                     );
@@ -625,18 +715,18 @@ export function WeekGrid({
                     const hidden = pill.hiddenIds
                       .map((id) => byId.get(id))
                       .filter((entry): entry is NonNullable<typeof entry> => !!entry);
-                    const top = (pill.start / 60) * DAY_PX;
+                    const top = (pill.start / 60) * DAY_PX + 4;
                     nodes.push(
                       <button
                         key={`pill-${col.dateKey}-${pill.id}`}
                         type="button"
                         data-block="pill"
                         aria-label={`还有 ${hidden.length} 项`}
-                        className="absolute z-20 flex items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[10px] font-semibold tabular-nums text-[var(--color-ink)] shadow-[0_6px_16px_-10px_rgba(28,22,18,0.7)]"
+                        className="grid-pill absolute z-[24] inline-flex h-[22px] min-w-[28px] items-center justify-center rounded-full bg-[var(--color-accent-soft)] px-1.5 font-mono text-[11px] font-medium tabular-nums tracking-tight text-[var(--color-accent)] shadow-[0_8px_14px_-12px_rgba(143,61,46,0.9)]"
                         style={{
                           top,
-                          height: 22,
-                          ...slotFrame(pill),
+                          right: 8,
+                          left: "auto",
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1013,13 +1103,16 @@ export function WeekGrid({
 
       {menu ? (
         <div
-          className="fixed z-50 min-w-[148px] overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] py-1 shadow-[0_16px_40px_-24px_rgba(28,22,18,0.6)]"
+          className={cn(
+            "fixed z-50 min-w-[148px] overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] py-1 shadow-[0_16px_40px_-24px_rgba(28,22,18,0.6)]",
+            menu.kind === "overflow" && "overlap-menu",
+          )}
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
           {menu.kind === "overflow" ? (
-            <div className="max-h-72 min-w-[220px] overflow-auto">
-              <p className="border-b border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-ink-muted)]">
+            <div className="max-h-80 min-w-[248px] overflow-auto">
+              <p className="border-b border-[var(--color-line)] px-3.5 py-2.5 text-[12px] leading-none text-[var(--color-ink-muted)]">
                 这个时段还有 {menu.entries.length} 项
               </p>
               {menu.entries.map((entry) => {
@@ -1028,24 +1121,22 @@ export function WeekGrid({
                   <button
                     key={entry.item.id}
                     type="button"
-                    className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--color-accent-soft)]"
+                    className="flex min-h-11 w-full items-center gap-2.5 px-3.5 py-2 text-left transition-colors duration-150 hover:bg-[var(--color-accent-soft)]"
                     onClick={() => {
                       onEditItem(entry.item, menu.dateKey);
                       setMenu(null);
                     }}
                   >
                     <span
-                      className="h-2 w-2 shrink-0 rounded-full"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
                       style={{ backgroundColor: color }}
                       aria-label={ownerLabel(entry.item, couple)}
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">
-                        {itemDisplayTitle(entry.item)}
-                      </span>
-                      <span className="block truncate font-mono text-[10px] text-[var(--color-ink-muted)]">
-                        {entry.time}
-                      </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-snug">
+                      {itemDisplayTitle(entry.item)}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-[var(--color-ink-muted)]">
+                      {entry.time}
                     </span>
                   </button>
                 );

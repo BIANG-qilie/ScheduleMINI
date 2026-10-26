@@ -262,6 +262,54 @@ body.widget-body #root {
   font-size: 13px;
 }
 
+.grid-card {
+  transition: box-shadow 160ms ease;
+}
+
+.grid-pill,
+.grid-chip {
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.grid-pill:hover {
+  background: color-mix(in oklab, var(--color-accent) 14%, var(--color-accent-soft));
+}
+
+.grid-chip:hover {
+  border-color: color-mix(in oklab, var(--color-accent) 42%, var(--color-line));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .grid-card {
+    transition:
+      transform 160ms var(--ease-out),
+      box-shadow 160ms ease;
+  }
+
+  .grid-card:hover {
+    transform: translateY(-1px);
+  }
+
+  .grid-pill:active {
+    transform: translateY(1px);
+  }
+
+  .overlap-menu {
+    animation: overlap-menu-in 160ms var(--ease-out);
+  }
+}
+
+@keyframes overlap-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .now-line {
   height: 0;
   border-top: 1.5px solid var(--color-current);

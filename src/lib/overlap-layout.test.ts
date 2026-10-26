@@ -94,18 +94,39 @@ describe("computeOverlapLayout +N", () => {
       minCardWidth: WEEK_MIN_CARD_PX,
     });
     expect([...layout.cards.keys()]).toEqual(["math", "piano"]);
-    expect(layout.cards.get("math")?.columnCount).toBe(3);
-    expect(layout.cards.get("math")?.span).toBe(1);
+    expect(layout.cards.get("math")).toMatchObject({
+      column: 0,
+      span: 1,
+      columnCount: 2,
+    });
+    expect(layout.cards.get("piano")).toMatchObject({
+      column: 1,
+      span: 1,
+      columnCount: 2,
+    });
     expect(layout.pills).toHaveLength(1);
     expect(layout.pills[0]?.hiddenIds).toEqual(["meet", "science"]);
-    expect(layout.pills[0]).toMatchObject({ column: 2, span: 1, columnCount: 3 });
     expect(layout.hiddenIds).toEqual(["meet", "science"]);
   });
 
-  it("keeps every card when the phone column is wide enough", () => {
-    expect(DAY_MIN_CARD_PX).toBe(40);
+  it("keeps a readable card on the phone and folds the rest into +N", () => {
+    expect(DAY_MIN_CARD_PX).toBe(120);
     const layout = computeOverlapLayout(afternoon, {
       laneWidth: 311,
+      minCardWidth: DAY_MIN_CARD_PX,
+    });
+    expect([...layout.cards.keys()]).toEqual(["math"]);
+    expect(layout.cards.get("math")).toMatchObject({
+      column: 0,
+      span: 1,
+      columnCount: 1,
+    });
+    expect(layout.pills[0]?.hiddenIds).toEqual(["piano", "meet", "science"]);
+  });
+
+  it("keeps every card when the phone column is wide enough", () => {
+    const layout = computeOverlapLayout(afternoon, {
+      laneWidth: 520,
       minCardWidth: DAY_MIN_CARD_PX,
     });
     expect(layout.pills).toEqual([]);

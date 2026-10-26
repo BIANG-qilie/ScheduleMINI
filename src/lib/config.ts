@@ -782,8 +782,11 @@ export function buildCoexistenceSharedItemFields(finished: CoexistenceFinished) 
 export const OVERLAP_BAND_MIN_MINUTES = 4 * 60;
 /** 周视图一列里卡片的最小宽度。[拟定] */
 export const WEEK_MIN_CARD_PX = 64;
-/** 手机日列里卡片的最小宽度。[拟定] */
-export const DAY_MIN_CARD_PX = 40;
+/**
+ * 手机日列里卡片的最小宽度。
+ * 约 120px，一条里放得下两张可读标题；再挤就收成 +N，不再四张并排截断。
+ */
+export const DAY_MIN_CARD_PX = 120;
 
 /** 条目真实跨度（分钟）。过夜按跨午夜累加；有 durationMinutes 时以它为准。 */
 export function itemSpanMinutes(item: {
@@ -919,6 +922,7 @@ function rangesOverlap(
 /**
  * 前景卡片：分簇、贪心分列，再向右伸到下一张挡住的列。
  * 列宽放不下最小宽度时，只留前 k−1 张，其余收成一颗 +N。
+ * +N 浮在右上角，不占列，留下的卡片仍向右铺满。
  * 未给列宽时不折叠。
  */
 export function computeOverlapLayout(
@@ -939,35 +943,23 @@ export function computeOverlapLayout(
     const packed = overflow
       ? assignOverlapColumns(group, Math.max(0, limit - 1))
       : unlimited;
-    const columnCount = Math.max(
-      1,
-      packed.usedColumns + (packed.hidden.length > 0 ? 1 : 0),
-    );
-    const pillColumn = packed.usedColumns;
-    const pillObstacles: PlacedOverlap[] = [];
+    const columnCount = Math.max(1, packed.usedColumns);
     for (const cluster of clusterOverlapBlocks(packed.hidden)) {
       const ids = cluster.map((block) => block.id);
       hiddenIds.push(...ids);
       const start = Math.min(...cluster.map((block) => block.start));
       const end = Math.max(...cluster.map((block) => block.end));
-      const pill: OverlapPill = {
+      pills.push({
         id: `+${ids.join("+")}`,
         start,
         end,
-        column: pillColumn,
+        column: Math.max(0, packed.usedColumns - 1),
         span: 1,
         columnCount,
         hiddenIds: ids,
-      };
-      pills.push(pill);
-      pillObstacles.push({
-        id: pill.id,
-        start,
-        end,
-        column: pillColumn,
       });
     }
-    const obstacles = [...packed.placed, ...pillObstacles];
+    const obstacles = packed.placed;
     for (const event of packed.placed) {
       let span = columnCount - event.column;
       for (const other of obstacles) {
