@@ -79,6 +79,9 @@ describe("DayReplayEntry", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: ENTRY_LABEL }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.closest("body")).toBe(document.body);
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
     expect(screen.getByRole("heading", { name: "补今天" })).toBeTruthy();
     expect(screen.getByText("线索 · 微信")).toBeTruthy();
     expect(screen.getByText("手机通话")).toBeTruthy();

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,8 @@ export function Dialog({
 
   if (!open) return null;
 
-  return (
+  // 此刻页有位移动画和滚动裁剪。对话框留在那一块里时，fixed 盖不住顶栏。
+  return createPortal(
     <div
       className={cn(
         "fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4",
@@ -168,6 +170,7 @@ export function Dialog({
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
