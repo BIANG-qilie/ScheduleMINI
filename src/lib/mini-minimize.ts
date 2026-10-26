@@ -20,6 +20,8 @@ export type MiniWindowShell = {
 /**
  * 小窗没有系统标题栏。先退出置顶并回到任务栏，再最小化，
  * 这样用户能从任务栏点回来。
+ *
+ * 任一步失败时回滚置顶/任务栏状态，避免半截调用把小窗弄成既没最小化、又丢了置顶。
  */
 export async function minimizeDesktopMiniWindow(
   getWindow: () => Promise<MiniWindowShell | null> = defaultWidgetWindow,
@@ -27,10 +29,22 @@ export async function minimizeDesktopMiniWindow(
   const win = await getWindow();
   if (!win || win.label !== "widget") return;
   minimizeInFlight = true;
+  let chromeChanged = false;
   try {
     await win.setAlwaysOnTop(false);
+    chromeChanged = true;
     await win.setSkipTaskbar(false);
     await win.minimize();
+  } catch (error) {
+    if (chromeChanged) {
+      try {
+        await win.setAlwaysOnTop(true);
+        await win.setSkipTaskbar(true);
+      } catch {
+        // 回滚失败就留给下次获得焦点时的 restoreDesktopMiniChrome
+      }
+    }
+    throw error;
   } finally {
     minimizeInFlight = false;
   }
