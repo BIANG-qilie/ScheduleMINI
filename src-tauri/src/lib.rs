@@ -1,3 +1,5 @@
+mod widget_window;
+
 use tauri::{AppHandle, Manager};
 
 #[cfg(desktop)]
@@ -7,9 +9,32 @@ use tauri::{
     WebviewWindow,
 };
 
+use widget_window::should_hide_widget;
+
 #[tauri::command]
 fn show_settings(app: AppHandle) -> Result<(), String> {
     show_settings_window(&app)
+}
+
+/// 显示悬浮窗：必须 unminimize。仅 `show()` 对已可见的最小化窗是空操作，
+/// hide 后再 show 在 Windows 上也可能仍以最小化状态出现。
+#[cfg(desktop)]
+fn reveal_widget(widget: &WebviewWindow) -> Result<(), String> {
+    widget.show().map_err(|e| e.to_string())?;
+    widget.unminimize().map_err(|e| e.to_string())?;
+    widget
+        .set_always_on_top(true)
+        .map_err(|e| e.to_string())?;
+    widget
+        .set_skip_taskbar(true)
+        .map_err(|e| e.to_string())?;
+    widget.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(desktop))]
+fn reveal_widget(widget: &tauri::WebviewWindow) -> Result<(), String> {
+    widget.show().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -18,11 +43,7 @@ fn set_widget_visible(app: AppHandle, visible: bool) -> Result<(), String> {
         return Err("找不到悬浮窗".into());
     };
     if visible {
-        widget.show().map_err(|e| e.to_string())?;
-        #[cfg(desktop)]
-        widget
-            .set_always_on_top(true)
-            .map_err(|e| e.to_string())?;
+        reveal_widget(&widget)?;
     } else {
         widget.hide().map_err(|e| e.to_string())?;
     }
@@ -35,15 +56,15 @@ fn toggle_widget(app: AppHandle) -> Result<bool, String> {
         return Err("找不到悬浮窗".into());
     };
     let visible = widget.is_visible().map_err(|e| e.to_string())?;
-    if visible {
+    #[cfg(desktop)]
+    let minimized = widget.is_minimized().map_err(|e| e.to_string())?;
+    #[cfg(not(desktop))]
+    let minimized = false;
+    if should_hide_widget(visible, minimized) {
         widget.hide().map_err(|e| e.to_string())?;
         Ok(false)
     } else {
-        widget.show().map_err(|e| e.to_string())?;
-        #[cfg(desktop)]
-        widget
-            .set_always_on_top(true)
-            .map_err(|e| e.to_string())?;
+        reveal_widget(&widget)?;
         Ok(true)
     }
 }
