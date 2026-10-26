@@ -507,6 +507,7 @@ export function WeekGrid({
                       ) < 0.6;
                     const title = itemDisplayTitle(item);
                     const label = head ? title : `续 ${title}`;
+                    const labelTop = !dayLayout && !head && top < 4 ? 10 : 0;
                     nodes.push(
                       <div
                         key={`band-${item.id}-${col.dateKey}-${startMin}`}
@@ -534,11 +535,11 @@ export function WeekGrid({
                           title={itemHoverText(item)}
                           aria-label={label}
                           className={cn(
-                            "grid-chip pointer-events-auto absolute top-0 z-[16] inline-flex h-5 max-w-[calc(100%-16px)] items-center gap-1 bg-transparent text-[11px] leading-none",
+                            "grid-chip pointer-events-auto absolute z-[16] inline-flex h-5 max-w-[calc(100%-16px)] items-center gap-1 bg-transparent text-[11px] leading-none",
                             selectedIds?.has(item.id) &&
                               "ring-2 ring-[var(--color-ink)] ring-offset-1",
                           )}
-                          style={{ left: spine * 8 + 6 }}
+                          style={{ left: spine * 8 + 6, top: labelTop }}
                           {...bindItem(item)}
                         >
                           <span
