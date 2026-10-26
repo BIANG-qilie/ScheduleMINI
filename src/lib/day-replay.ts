@@ -197,6 +197,19 @@ function fullyCoveredByOnce(
   );
 }
 
+/** 显示名优先；桥接拿不到 label 时用包名最后一段，避免整页都是「这个应用」。 */
+export function cueDisplayLabel(label: string, packageName: string) {
+  const trimmed = label.trim();
+  if (trimmed) return trimmed;
+  const segment =
+    packageName
+      .trim()
+      .split(".")
+      .filter((part) => part.length > 0)
+      .pop() ?? "";
+  return segment || "这个应用";
+}
+
 function mergeSameAppSpans(
   spans: readonly ForegroundSpan[],
   gapMs: number,
@@ -349,7 +362,7 @@ export function buildReplayCues(input: {
     if (isPhonePackage(span.packageName) && covered) continue;
     cues.push({
       kind: "app",
-      label: span.label.trim() || "这个应用",
+      label: cueDisplayLabel(span.label, span.packageName),
       start: span.start,
       end: span.end,
     });
@@ -410,7 +423,7 @@ export function shortlistReplayCues(input: {
   for (const span of keptApps) {
     cues.push({
       kind: "app",
-      label: span.label.trim() || "这个应用",
+      label: cueDisplayLabel(span.label, span.packageName),
       start: span.start,
       end: span.end,
     });

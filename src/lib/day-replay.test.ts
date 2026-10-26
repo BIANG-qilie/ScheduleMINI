@@ -14,6 +14,7 @@ import {
   buildReplayCues,
   buildShortReplayCues,
   confirmReplayDrafts,
+  cueDisplayLabel,
   matchAllowlistedCalls,
   pairForegroundSpans,
   parseDayReplayRead,
@@ -283,6 +284,31 @@ describe("shortlistReplayCues", () => {
     expect(SHORTLIST_MIN_DURATION_MS).toBe(60_000);
     expect(SHORTLIST_SAME_APP_MERGE_GAP_MS).toBe(120_000);
     expect(SHORTLIST_MAX_APP_CUES).toBe(8);
+  });
+
+  it("uses the package last segment when the bridge sent an empty label", () => {
+    expect(cueDisplayLabel("", "com.tencent.mm")).toBe("mm");
+    expect(cueDisplayLabel("  ", "com.android.chrome")).toBe("chrome");
+    expect(cueDisplayLabel("微信", "com.tencent.mm")).toBe("微信");
+    expect(
+      shortlistReplayCues({
+        spans: [
+          {
+            packageName: "com.tencent.mm",
+            label: "",
+            start: on26(9, 0),
+            end: on26(9, 40),
+          },
+          {
+            packageName: "com.android.chrome",
+            label: "",
+            start: on26(10, 0),
+            end: on26(10, 25),
+          },
+        ],
+        matchedCalls: [],
+      }).map((cue) => (cue.kind === "app" ? cue.label : cue.title)),
+    ).toEqual(["mm", "chrome"]);
   });
 });
 
