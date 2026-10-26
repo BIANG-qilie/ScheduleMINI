@@ -954,10 +954,20 @@ export function startCoupleSyncLoop(getConfig: () => AppConfig) {
     schedule(next.delayMs);
   }
 
+  // 手机切到后台时 WebView 计时器和长轮询会被冻结；回到前台先拉一次，
+  // 对方的改动立刻落盘并刷新桌面小组件。
+  const onVisible = () => {
+    if (document.visibilityState !== "visible") return;
+    if (!getConfig().couple.inviteCode) return;
+    void useConfigStore.getState().syncNow();
+  };
+  document.addEventListener("visibilitychange", onVisible);
+
   void step();
   return () => {
     stopped = true;
     abort.abort();
     window.clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onVisible);
   };
 }

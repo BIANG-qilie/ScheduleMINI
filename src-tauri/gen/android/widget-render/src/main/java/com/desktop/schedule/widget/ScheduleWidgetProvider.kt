@@ -10,19 +10,11 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val action = intent.action
-        if (
-            action == ACTION_TICK ||
-            action == ACTION_HOUR ||
-            action == Intent.ACTION_BOOT_COMPLETED
-        ) {
-            WidgetUpdater.requestUpdate(context)
-            WidgetAlarms.schedule(context)
-        }
+        if (action in REFRESH_ACTIONS) WidgetUpdater.requestUpdate(context)
     }
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         WidgetUpdater.update(context, manager, ids)
-        WidgetAlarms.schedule(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -32,10 +24,6 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
         newOptions: Bundle,
     ) {
         WidgetUpdater.update(context, appWidgetManager, intArrayOf(appWidgetId))
-    }
-
-    override fun onEnabled(context: Context) {
-        WidgetAlarms.schedule(context)
     }
 
     override fun onDisabled(context: Context) {
@@ -48,6 +36,17 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_TICK = "com.desktop.schedule.widget.TICK"
-        const val ACTION_HOUR = "com.desktop.schedule.widget.HOUR"
+        const val ACTION_BOUNDARY = "com.desktop.schedule.widget.BOUNDARY"
+
+        private val REFRESH_ACTIONS = setOf(
+            ACTION_TICK,
+            ACTION_BOUNDARY,
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_DATE_CHANGED,
+            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED",
+        )
     }
 }
