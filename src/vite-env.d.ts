@@ -8,4 +8,8 @@ interface Window {
     notifyScheduleChanged?: () => void;
     consumeOpenNow?: () => boolean;
   };
+  SmDayReplay?: {
+    readToday?: () => string;
+    requestAccess?: () => void;
+  };
 }
