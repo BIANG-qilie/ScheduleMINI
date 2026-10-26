@@ -38,6 +38,38 @@ const PHONE_PACKAGES = new Set([
   "com.samsung.android.incallui",
 ]);
 
+/** 桌面 / 系统壳：不当成日程线索。 */
+const SHELL_PACKAGES = new Set([
+  "com.android.launcher",
+  "com.android.launcher3",
+  "com.google.android.apps.nexuslauncher",
+  "com.miui.home",
+  "com.huawei.android.launcher",
+  "com.hihonor.android.launcher",
+  "com.sec.android.app.launcher",
+  "com.oppo.launcher",
+  "com.android.systemui",
+  "com.android.settings",
+  "com.android.permissioncontroller",
+  "com.android.intentresolver",
+]);
+
+/** 本包自己，不当成日程线索。 */
+export const SELF_PACKAGE_PREFIX = "com.desktop.schedule";
+
+/**
+ * 最短前台时长、同应用合并空档、应用线索上限。
+ * 工作暂定值；另记那天的报告给出验收数字后锁进常量，不在那天上改阈值。
+ */
+export const SHORTLIST_MIN_DURATION_MS = 60_000;
+export const SHORTLIST_SAME_APP_MERGE_GAP_MS = 2 * 60_000;
+export const SHORTLIST_MAX_APP_CUES = 8;
+
+export type ExistingOnceSpan = {
+  start: number;
+  end: number;
+};
+
 const SCHEDULE_TAGS = new Set<ScheduleTag>([
   "work",
   "commute",
@@ -135,6 +167,17 @@ function isPhonePackage(packageName: string) {
   return PHONE_PACKAGES.has(packageName);
 }
 
+function isShellPackage(packageName: string) {
+  return SHELL_PACKAGES.has(packageName) || isPhonePackage(packageName);
+}
+
+function isSelfPackage(packageName: string) {
+  return (
+    packageName === SELF_PACKAGE_PREFIX ||
+    packageName.startsWith(`${SELF_PACKAGE_PREFIX}.`)
+  );
+}
+
 function overlaps(
   start: number,
   end: number,
@@ -142,6 +185,53 @@ function overlaps(
   otherEnd: number,
 ) {
   return start < otherEnd && otherStart < end;
+}
+
+function fullyCoveredByOnce(
+  start: number,
+  end: number,
+  existingOnce: readonly ExistingOnceSpan[],
+) {
+  return existingOnce.some(
+    (once) => start >= once.start && end <= once.end && once.end > once.start,
+  );
+}
+
+function mergeSameAppSpans(
+  spans: readonly ForegroundSpan[],
+  gapMs: number,
+): ForegroundSpan[] {
+  const byPackage = new Map<string, ForegroundSpan[]>();
+  for (const span of spans) {
+    const list = byPackage.get(span.packageName);
+    if (list) list.push(span);
+    else byPackage.set(span.packageName, [span]);
+  }
+  const merged: ForegroundSpan[] = [];
+  for (const group of byPackage.values()) {
+    group.sort((a, b) => a.start - b.start || a.end - b.end);
+    let current: ForegroundSpan | null = null;
+    for (const span of group) {
+      if (!current) {
+        current = { ...span };
+        continue;
+      }
+      if (span.start - current.end <= gapMs) {
+        current = {
+          packageName: current.packageName,
+          label: current.label || span.label,
+          start: current.start,
+          end: Math.max(current.end, span.end),
+        };
+        continue;
+      }
+      merged.push(current);
+      current = { ...span };
+    }
+    if (current) merged.push(current);
+  }
+  merged.sort((a, b) => a.start - b.start || a.end - b.end);
+  return merged;
 }
 
 export function pairForegroundSpans(
@@ -269,6 +359,149 @@ export function buildReplayCues(input: {
       a.start - b.start || (a.kind === b.kind ? 0 : a.kind === "call" ? -1 : 1),
   );
   return cues;
+}
+
+/**
+ * 已配对的前台时段 + 已匹配通话 + 当天已有仅一次 → 确认用短清单。
+ * 闪一下、壳、本包、完全落在已有仅一次里的时段不出现；通话规则不放宽。
+ */
+export function shortlistReplayCues(input: {
+  spans: readonly ForegroundSpan[];
+  matchedCalls: readonly MatchedCall[];
+  existingOnce?: readonly ExistingOnceSpan[];
+  minDurationMs?: number;
+  mergeGapMs?: number;
+  maxAppCues?: number;
+}): ReplayCue[] {
+  const minDurationMs = input.minDurationMs ?? SHORTLIST_MIN_DURATION_MS;
+  const mergeGapMs = input.mergeGapMs ?? SHORTLIST_SAME_APP_MERGE_GAP_MS;
+  const maxAppCues = input.maxAppCues ?? SHORTLIST_MAX_APP_CUES;
+  const existingOnce = input.existingOnce ?? [];
+
+  const filtered = input.spans.filter((span) => {
+    if (isShellPackage(span.packageName) || isSelfPackage(span.packageName)) {
+      return false;
+    }
+    if (span.end - span.start < minDurationMs) return false;
+    if (fullyCoveredByOnce(span.start, span.end, existingOnce)) return false;
+    const coveredByCall = input.matchedCalls.some((call) =>
+      overlaps(span.start, span.end, call.start, call.end),
+    );
+    if (isPhonePackage(span.packageName) && coveredByCall) return false;
+    return true;
+  });
+
+  const merged = mergeSameAppSpans(filtered, mergeGapMs);
+  const ranked = merged
+    .slice()
+    .sort(
+      (a, b) =>
+        b.end - b.start - (a.end - a.start) || a.start - b.start,
+    );
+  const keptApps = ranked.slice(0, Math.max(0, maxAppCues));
+  keptApps.sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const cues: ReplayCue[] = input.matchedCalls.map((call) => ({
+    kind: "call" as const,
+    title: PHONE_CALL_TITLE,
+    start: call.start,
+    end: call.end,
+  }));
+  for (const span of keptApps) {
+    cues.push({
+      kind: "app",
+      label: span.label.trim() || "这个应用",
+      start: span.start,
+      end: span.end,
+    });
+  }
+  cues.sort(
+    (a, b) =>
+      a.start - b.start || (a.kind === b.kind ? 0 : a.kind === "call" ? -1 : 1),
+  );
+  return cues;
+}
+
+export function buildShortReplayCues(input: {
+  events: readonly UsageEvent[];
+  calls: readonly CallRecord[];
+  allowlist: readonly string[];
+  queryTime: number;
+  existingOnce?: readonly ExistingOnceSpan[];
+}): ReplayCue[] {
+  return shortlistReplayCues({
+    spans: pairForegroundSpans(input.events, input.queryTime),
+    matchedCalls: matchAllowlistedCalls(
+      input.calls,
+      input.allowlist,
+      input.queryTime,
+    ),
+    existingOnce: input.existingOnce,
+  });
+}
+
+/** 当天已有的仅一次日程 → 毫秒区间，供短清单去掉完全重叠的前台。 */
+export function onceItemsToExistingSpans(
+  items: readonly {
+    recurrence?: string;
+    date?: string;
+    start: string;
+    end: string;
+    endDate?: string;
+    durationMinutes?: number;
+    enabled?: boolean;
+  }[],
+  dateKey: string,
+): ExistingOnceSpan[] {
+  const spans: ExistingOnceSpan[] = [];
+  for (const item of items) {
+    if (item.enabled === false) continue;
+    if ((item.recurrence ?? "weekly") !== "once" || item.date !== dateKey) {
+      continue;
+    }
+    const startAt = new Date(
+      Number(dateKey.slice(0, 4)),
+      Number(dateKey.slice(5, 7)) - 1,
+      Number(dateKey.slice(8, 10)),
+      0,
+      0,
+      0,
+      0,
+    );
+    const [sh, sm] = item.start.split(":").map(Number);
+    startAt.setHours(sh, sm, 0, 0);
+    let endAt: Date;
+    if (item.endDate && item.endDate > item.date) {
+      endAt = new Date(
+        Number(item.endDate.slice(0, 4)),
+        Number(item.endDate.slice(5, 7)) - 1,
+        Number(item.endDate.slice(8, 10)),
+        0,
+        0,
+        0,
+        0,
+      );
+      const [eh, em] = item.end.split(":").map(Number);
+      endAt.setHours(eh, em, 0, 0);
+    } else if (
+      item.durationMinutes != null &&
+      Number.isInteger(item.durationMinutes) &&
+      item.durationMinutes > 0
+    ) {
+      endAt = new Date(startAt.getTime() + item.durationMinutes * 60_000);
+    } else {
+      endAt = new Date(startAt);
+      const [eh, em] = item.end.split(":").map(Number);
+      endAt.setHours(eh, em, 0, 0);
+      if (endAt.getTime() <= startAt.getTime()) {
+        endAt.setDate(endAt.getDate() + 1);
+      }
+    }
+    if (endAt.getTime() > startAt.getTime()) {
+      spans.push({ start: startAt.getTime(), end: endAt.getTime() });
+    }
+  }
+  return spans;
 }
 
 export function formatCueRange(start: number, end: number) {

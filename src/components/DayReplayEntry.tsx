@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,12 @@ import {
 } from "@/lib/call-allowlist";
 import { SCHEDULE_TAG_OPTIONS, type ScheduleTag } from "@/lib/config";
 import {
-  buildReplayCues,
+  buildShortReplayCues,
   confirmReplayDrafts,
   formatCueRange,
   parseDayReplayRead,
   type DayReplayRead,
+  type ExistingOnceSpan,
   type ReplayCue,
   type ReplayScheduleDraft,
   type ReplaySelection,
@@ -38,9 +39,18 @@ type Props = {
   onCommit: (drafts: ReplayScheduleDraft[]) => Promise<void> | void;
   bridge?: DayReplayBridge | null;
   storage?: KeyValueStore;
+  existingOnce?: readonly ExistingOnceSpan[];
+  /** 默认：问候下的一行字。传 null 时不画触发器（仅测 Dialog 时少用）。 */
+  trigger?: "text" | null;
 };
 
-export function DayReplayEntry({ onCommit, bridge, storage }: Props) {
+export function DayReplayEntry({
+  onCommit,
+  bridge,
+  storage,
+  existingOnce = [],
+  trigger = "text",
+}: Props) {
   const resolved = bridge === undefined ? dayReplayBridge() : bridge;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -62,11 +72,12 @@ export function DayReplayEntry({ onCommit, bridge, storage }: Props) {
   ) => {
     setRows(
       rowsFromCues(
-        buildReplayCues({
+        buildShortReplayCues({
           events: nextPayload.events,
           calls: nextPayload.calls,
           allowlist: numbers,
           queryTime: nextPayload.queryTime,
+          existingOnce,
         }),
       ),
     );
@@ -133,19 +144,23 @@ export function DayReplayEntry({ onCommit, bridge, storage }: Props) {
     }
   };
 
+  const openDialog = () => {
+    setOpen(true);
+    load();
+  };
+
+  let triggerNode: ReactNode = null;
+  if (trigger === "text") {
+    triggerNode = (
+      <button type="button" className="now-replay-link" onClick={openDialog}>
+        根据手机记录补今天
+      </button>
+    );
+  }
+
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          setOpen(true);
-          load();
-        }}
-      >
-        补今天
-      </Button>
+      {triggerNode}
       <Dialog
         open={open}
         onOpenChange={setOpen}
@@ -165,54 +180,6 @@ export function DayReplayEntry({ onCommit, bridge, storage }: Props) {
         }
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-[var(--color-line)] p-3">
-            <p className="text-sm text-[var(--color-ink)]">本机号码名单</p>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-muted)]">
-              只留在这台手机上，不进同步。填写已经整理好的 E.164。
-            </p>
-            {allowlist.length === 0 ? (
-              <p className="mt-2 text-sm text-[var(--color-ink-muted)]">名单是空的，通话不会出现。</p>
-            ) : (
-              <ul className="mt-2 space-y-1">
-                {allowlist.map((number) => (
-                  <li key={number} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="tabular">{number}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
-                      onClick={() =>
-                        saveAllowlist(allowlist.filter((item) => item !== number))
-                      }
-                    >
-                      移除
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const next = draftNumber.trim();
-                if (!next || allowlist.includes(next)) return;
-                saveAllowlist([...allowlist, next]);
-                setDraftNumber("");
-              }}
-            >
-              <Input
-                value={draftNumber}
-                onChange={(event) => setDraftNumber(event.target.value)}
-                placeholder="+8613800138000"
-                aria-label="名单号码"
-                inputMode="tel"
-              />
-              <Button type="submit" variant="secondary" size="sm">
-                加入
-              </Button>
-            </form>
-          </div>
-
           {loading ? (
             <p className="text-sm text-[var(--color-ink-muted)]">正在读今天的记录。</p>
           ) : null}
@@ -313,6 +280,56 @@ export function DayReplayEntry({ onCommit, bridge, storage }: Props) {
               </li>
             ))}
           </ul>
+
+          <details className="rounded-2xl border border-[var(--color-line)] p-3">
+            <summary className="cursor-pointer text-sm text-[var(--color-ink)]">
+              本机号码名单
+            </summary>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--color-ink-muted)]">
+              只留在这台手机上，不进同步。填写已经整理好的 E.164。
+            </p>
+            {allowlist.length === 0 ? (
+              <p className="mt-2 text-sm text-[var(--color-ink-muted)]">名单是空的，通话不会出现。</p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {allowlist.map((number) => (
+                  <li key={number} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="tabular">{number}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+                      onClick={() =>
+                        saveAllowlist(allowlist.filter((item) => item !== number))
+                      }
+                    >
+                      移除
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const next = draftNumber.trim();
+                if (!next || allowlist.includes(next)) return;
+                saveAllowlist([...allowlist, next]);
+                setDraftNumber("");
+              }}
+            >
+              <Input
+                value={draftNumber}
+                onChange={(event) => setDraftNumber(event.target.value)}
+                placeholder="+8613800138000"
+                aria-label="名单号码"
+                inputMode="tel"
+              />
+              <Button type="submit" variant="secondary" size="sm">
+                加入
+              </Button>
+            </form>
+          </details>
         </div>
       </Dialog>
     </>

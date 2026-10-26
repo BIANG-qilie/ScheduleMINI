@@ -8,13 +8,19 @@ import {
   foregroundCases,
   on26,
   PHONE_CALL_TITLE,
+  shortlistCases,
 } from "@/lib/day-replay.fixtures";
 import {
   buildReplayCues,
+  buildShortReplayCues,
   confirmReplayDrafts,
   matchAllowlistedCalls,
   pairForegroundSpans,
   parseDayReplayRead,
+  SHORTLIST_MAX_APP_CUES,
+  SHORTLIST_MIN_DURATION_MS,
+  SHORTLIST_SAME_APP_MERGE_GAP_MS,
+  shortlistReplayCues,
 } from "@/lib/day-replay";
 
 function schemaFieldNames(schema: { shape?: Record<string, unknown> }) {
@@ -248,6 +254,35 @@ describe("bridge payload", () => {
       ok: false,
       reason: "permission",
     });
+  });
+});
+
+describe("shortlistReplayCues", () => {
+  it.each(shortlistCases)("$name", ({ spans, matchedCalls, existingOnce, cues }) => {
+    expect(
+      shortlistReplayCues({
+        spans,
+        matchedCalls,
+        existingOnce,
+      }),
+    ).toEqual(cues);
+  });
+
+  it("keeps allowlisted call cues unchanged beside the short app list", () => {
+    expect(
+      buildShortReplayCues({
+        events: callCases.events,
+        calls: callCases.calls,
+        allowlist: callCases.allowlist,
+        queryTime: callCases.queryTime,
+      }),
+    ).toEqual(callCases.cues);
+  });
+
+  it("locks working constants for min duration, merge gap, and app cue cap", () => {
+    expect(SHORTLIST_MIN_DURATION_MS).toBe(60_000);
+    expect(SHORTLIST_SAME_APP_MERGE_GAP_MS).toBe(120_000);
+    expect(SHORTLIST_MAX_APP_CUES).toBe(8);
   });
 });
 

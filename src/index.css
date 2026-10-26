@@ -457,6 +457,24 @@ body.widget-body #root {
   font-size: 12px;
 }
 
+.now-hero .now-replay-link {
+  display: block;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--color-accent);
+  text-align: left;
+  cursor: pointer;
+}
+.now-hero .now-replay-link:hover,
+.now-hero .now-replay-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* 双人票根：上半是我，下半是对方，中间齿孔 */
 .ticket {
   position: relative;
