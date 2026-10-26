@@ -240,8 +240,19 @@ describe("home widget text", () => {
     const last = new Date(2026, 9, 18, 19, 0, 0);
     const ended = new Date(2026, 9, 18, 20, 0, 0);
     const snapshot = await buildWidgetSnapshot(config([item(partial)]), middle);
+    expect(snapshot.version).toBe(1);
     expect(snapshot.self).toHaveLength(1);
-    expect(snapshot.self[0].time).toBe("10月16日 13:40–10月18日 20:00");
+    expect(snapshot.self[0]).toMatchObject({
+      startDate: "2026-10-16",
+      sortKey: "13:40",
+      title: "相处",
+      time: "10月16日 13:40–10月18日 20:00",
+      tag: "生活",
+    });
+    expect(snapshot.self[0].startMs).toBeLessThan(snapshot.self[0].endMs);
+    expect(snapshot.self[0].tagColor).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(snapshot.selfColor).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(snapshot.partnerColor).toMatch(/^#[0-9a-fA-F]{6}$/);
     expect(renderHomeWidget(snapshot, "self", middle).lanes[0]).toMatchObject({
       headline: "相处",
       time: "10月16日 13:40–10月18日 20:00",

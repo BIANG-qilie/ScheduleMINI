@@ -78,7 +78,7 @@ test.describe("批量操作", () => {
   test("周视图 Shift+多选出现批量栏", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "周视图" }).click();
-    const blocks = page.locator("button.group.absolute");
+    const blocks = page.locator('button[data-block="card"]');
     await expect(blocks.first()).toBeVisible({ timeout: 10_000 });
     const count = await blocks.count();
     test.skip(count < 2, "需要至少两条可见周块");

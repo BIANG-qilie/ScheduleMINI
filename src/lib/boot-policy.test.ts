@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyConfig } from "@/lib/config";
+import { columnCycleRanges, emptyConfig, parseAppConfig } from "@/lib/config";
 import {
   BOOT_RECOVER_LIMIT,
   applyDiskFailure,
@@ -94,6 +94,55 @@ describe("disk result", () => {
       applyDiskFailure({ hadCache: false, timedOut: false, recoveries: 0 })
         .useEmpty,
     ).toBe(true);
+  });
+});
+
+describe("boot cache keeps the week layout", () => {
+  it("round-trips a cross-day span the rails still slice per day", () => {
+    const base = emptyConfig();
+    const config = parseAppConfig({
+      ...base,
+      items: [
+        {
+          id: "meet",
+          start: "13:40",
+          end: "20:00",
+          title: "相处",
+          weekdays: [],
+          enabled: true,
+          recurrence: "once",
+          date: "2026-10-16",
+          endDate: "2026-10-18",
+          durationMinutes: 3260,
+          tag: "life",
+          skippedDates: [],
+          owner: "shared",
+        },
+        {
+          id: "night",
+          start: "22:00",
+          end: "06:00",
+          title: "值夜",
+          weekdays: [1],
+          enabled: true,
+          recurrence: "weekly",
+          tag: "rest",
+          skippedDates: [],
+          owner: "self",
+        },
+      ],
+    });
+    const restored = readCachedConfig(serializeBootCache(config));
+    expect(restored?.items.map((item) => item.id)).toEqual(["meet", "night"]);
+    const meet = restored!.items[0]!;
+    const night = restored!.items[1]!;
+    expect(columnCycleRanges(meet, "2026-10-16")[0]?.startMin).toBe(6 * 60 + 40);
+    expect(columnCycleRanges(meet, "2026-10-17")).toHaveLength(1);
+    expect(columnCycleRanges(meet, "2026-10-18")[0]?.endMin).toBe(13 * 60);
+    expect(columnCycleRanges(meet, "2026-10-15")).toEqual([]);
+    expect(columnCycleRanges(meet, "2026-10-19")).toEqual([]);
+    expect(columnCycleRanges(night, "2026-10-12").length).toBeGreaterThan(0);
+    expect(columnCycleRanges(night, "2026-10-13")).toEqual([]);
   });
 });
 
