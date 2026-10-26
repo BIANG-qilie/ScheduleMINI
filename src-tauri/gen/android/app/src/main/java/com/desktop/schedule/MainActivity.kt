@@ -38,6 +38,7 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(ApkInstaller(this, webView), "SmInstaller")
     webView.addJavascriptInterface(WidgetBridge(this), "SmWidget")
     webView.addJavascriptInterface(BootBridge(bootWatch), "SmBoot")
+    webView.addJavascriptInterface(DayReplayBridge(this), "SmDayReplay")
     bootWatch.attach(webView)
     dispatchOpenNow()
   }

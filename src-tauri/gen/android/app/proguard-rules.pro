@@ -15,6 +15,10 @@
 -keepclassmembers class com.desktop.schedule.BootBridge {
     @android.webkit.JavascriptInterface <methods>;
 }
+-keep class com.desktop.schedule.DayReplayBridge { *; }
+-keepclassmembers class com.desktop.schedule.DayReplayBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}
 -keep class com.desktop.schedule.widget.ScheduleWidgetProvider { *; }
 -keep class com.desktop.schedule.widget.ScheduleWidgetConfigureActivity { *; }
 

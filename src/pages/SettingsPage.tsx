@@ -32,6 +32,7 @@ import {
   toDatetimeLocalValue,
 } from "@/lib/call-backfill";
 import { markBootReady } from "@/lib/boot-native";
+import { DayReplayEntry } from "@/components/DayReplayEntry";
 
 const ScheduleEditor = lazy(() =>
   import("@/components/ScheduleEditor").then((m) => ({ default: m.ScheduleEditor })),
@@ -755,6 +756,12 @@ export function SettingsPage() {
             "phone-main px-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-2",
         )}
       >
+          <DayReplayEntry
+            onCommit={async (drafts) => {
+              for (const draft of drafts) await upsertItem(draft);
+              setStatus(`已记下 ${drafts.length} 条`);
+            }}
+          />
 
           {narrow && phoneTab === "now" ? (
             <PhoneGlance
