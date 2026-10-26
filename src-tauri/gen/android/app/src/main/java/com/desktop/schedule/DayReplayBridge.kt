@@ -135,6 +135,13 @@ internal object DayReplayRead {
         return array
     }
 
+    /** Visible for unit tests: prefer PackageManager label, else package last segment. */
+    fun resolveAppLabel(display: String, packageName: String): String {
+        val trimmed = display.trim()
+        if (trimmed.isNotEmpty()) return trimmed
+        return packageName.substringAfterLast('.').ifBlank { packageName }
+    }
+
     private fun appLabel(
         packages: PackageManager,
         cache: MutableMap<String, String>,
@@ -142,14 +149,16 @@ internal object DayReplayRead {
     ): String {
         if (packageName.isBlank()) return ""
         cache[packageName]?.let { return it }
-        val label = try {
+        val display = try {
             val info = packages.getApplicationInfo(packageName, 0)
             packages.getApplicationLabel(info)?.toString().orEmpty()
         } catch (_: PackageManager.NameNotFoundException) {
             ""
         }
-        cache[packageName] = label
-        return label
+        // Android 11+ 看不到别的包时 getApplicationInfo 会失败；至少留下包名末段，方便区分行。
+        val resolved = resolveAppLabel(display, packageName)
+        cache[packageName] = resolved
+        return resolved
     }
 
     private fun callRows(
