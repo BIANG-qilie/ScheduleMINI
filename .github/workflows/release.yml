@@ -53,14 +53,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-4；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.4
+          # 包版本用 MSI 可接受的 0.3.0-5；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.5
           releaseBody: |
-            0.3.0-beta.4 试用稿（未进 main；安装包版本 0.3.0-4）。
+            0.3.0-beta.5 试用稿（未进 main；安装包版本 0.3.0-5）。
 
-            - 「补今天」只出短清单，闪一下和桌面壳不再挤进来
-            - 入口收到手机「此刻」问候下面一行字
-            - 修了最小化/托盘后悬浮窗起不来
+            - 补今天线索显示真实应用名，不再整页「这个应用」
+            - 「补今天」只出短清单；入口在「此刻」问候下
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
