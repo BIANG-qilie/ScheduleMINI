@@ -52,6 +52,19 @@ describe("minimizeDesktopMiniWindow", () => {
     expect(win.minimize).not.toHaveBeenCalled();
   });
 
+  it("取消 skip-taskbar 被拒时不会假装已经最小化，并回滚置顶", async () => {
+    const win = shell("widget");
+    win.setSkipTaskbar.mockRejectedValueOnce(
+      new Error("not allowed: window.set_skip_taskbar"),
+    );
+    await expect(minimizeDesktopMiniWindow(async () => win)).rejects.toThrow(
+      /set_skip_taskbar/,
+    );
+    expect(win.minimize).not.toHaveBeenCalled();
+    expect(win.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+    expect(win.setSkipTaskbar).toHaveBeenLastCalledWith(true);
+  });
+
   it("最小化还没完成时，不会把窗口又置顶回去", async () => {
     const win = shell("widget");
     let release: () => void = () => {};
