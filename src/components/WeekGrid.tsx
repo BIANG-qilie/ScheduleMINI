@@ -379,6 +379,7 @@ export function WeekGrid({
                     "bg-[color-mix(in_oklab,#b45309_4%,transparent)]",
                 )}
                 style={{ height: totalHeight }}
+                data-lane={col.dateKey}
                 ref={index === 0 ? measureLane : undefined}
                 onClick={(e) => handleLaneClick(col.weekday, col.dateKey, e)}
               >

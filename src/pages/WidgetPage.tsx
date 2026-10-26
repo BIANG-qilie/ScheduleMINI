@@ -35,6 +35,13 @@ import {
   formatItemSubline,
 } from "@/lib/schedule-style";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
+import { DesktopMiniChrome } from "@/components/MiniMinimizeButton";
+import {
+  minimizeDesktopMiniWindow,
+  restoreDesktopMiniChrome,
+  type MiniWindowShell,
+} from "@/lib/mini-minimize";
+import { updatePlatform } from "@/lib/update/install";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import {
   applyWidgetOpacity,
@@ -270,9 +277,15 @@ function DualFocusWidget({
   return (
     <div className="h-full p-1">
       <div className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-white/[0.1] bg-[rgba(22,16,14,0.78)] text-white shadow-[0_22px_50px_rgba(20,10,8,0.48)] backdrop-blur-xl">
+        <DesktopMiniChrome
+          view="widget"
+          platform={updatePlatform()}
+          onMinimize={() => void minimizeDesktopMiniWindow()}
+          className="absolute right-2 top-1 z-20"
+        />
         <div
           data-tauri-drag-region
-          className="absolute inset-x-0 top-0 z-10 flex h-6 cursor-grab items-center justify-center active:cursor-grabbing"
+          className="absolute inset-x-9 top-0 z-10 flex h-6 cursor-grab items-center justify-center active:cursor-grabbing"
         >
           <div
             data-tauri-drag-region
@@ -359,6 +372,7 @@ export function WidgetPage() {
   useEffect(() => {
     let unlistenMoved: (() => void) | undefined;
     let unlistenResized: (() => void) | undefined;
+    let unlistenFocus: (() => void) | undefined;
     let timer: number | undefined;
 
     const scheduleSave = () => {
@@ -372,8 +386,24 @@ export function WidgetPage() {
       try {
         const win = getCurrentWindow();
         if (win.label !== "widget") return;
+        const shell = (): MiniWindowShell => ({
+          label: win.label,
+          minimize: () => win.minimize(),
+          setAlwaysOnTop: (alwaysOnTop) => win.setAlwaysOnTop(alwaysOnTop),
+          setSkipTaskbar: (skip) => win.setSkipTaskbar(skip),
+          isMinimized: () => win.isMinimized(),
+        });
+        const liftIfShown = () => {
+          void restoreDesktopMiniChrome(shell());
+        };
         unlistenMoved = await win.onMoved(() => scheduleSave());
-        unlistenResized = await win.onResized(() => scheduleSave());
+        unlistenResized = await win.onResized(() => {
+          scheduleSave();
+          liftIfShown();
+        });
+        unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
+          if (focused) liftIfShown();
+        });
       } catch {
         // browser preview
       }
@@ -383,6 +413,7 @@ export function WidgetPage() {
       window.clearTimeout(timer);
       unlistenMoved?.();
       unlistenResized?.();
+      unlistenFocus?.();
     };
   }, []);
 
@@ -507,22 +538,29 @@ export function WidgetPage() {
   return (
     <div className="h-full p-2">
       <div className="flex h-full flex-col overflow-hidden rounded-[26px] border border-white/12 bg-[linear-gradient(168deg,rgba(28,20,16,0.94),rgba(18,14,12,0.9))] text-white shadow-[0_22px_48px_rgba(20,10,8,0.4)] backdrop-blur-md">
-        <div
-          data-tauri-drag-region
-          className="flex cursor-grab items-center gap-2 border-b border-white/10 px-3 py-2 active:cursor-grabbing"
-        >
-          <GripHorizontal
-            className="h-4 w-4 text-white/55"
+        <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+          <div
             data-tauri-drag-region
-          />
-          <div data-tauri-drag-region className="min-w-0 flex-1">
-            <p data-tauri-drag-region className="truncate text-xs text-white/60">
-              {soloMode ? "今日安排" : pairedTitle}
-            </p>
-            <p data-tauri-drag-region className="truncate text-sm font-medium">
-              {dateText}
-            </p>
+            className="flex min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
+          >
+            <GripHorizontal
+              className="h-4 w-4 text-white/55"
+              data-tauri-drag-region
+            />
+            <div data-tauri-drag-region className="min-w-0 flex-1">
+              <p data-tauri-drag-region className="truncate text-xs text-white/60">
+                {soloMode ? "今日安排" : pairedTitle}
+              </p>
+              <p data-tauri-drag-region className="truncate text-sm font-medium">
+                {dateText}
+              </p>
+            </div>
           </div>
+          <DesktopMiniChrome
+            view="widget"
+            platform={updatePlatform()}
+            onMinimize={() => void minimizeDesktopMiniWindow()}
+          />
         </div>
 
         {config.showHolidays && holiday.kind !== "none" ? (
