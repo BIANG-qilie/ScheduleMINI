@@ -922,6 +922,7 @@ function rangesOverlap(
 /**
  * 前景卡片：分簇、贪心分列，再向右伸到下一张挡住的列。
  * 列宽放不下最小宽度时，只留前 k−1 张，其余收成一颗 +N。
+ * 同一重叠时段只出一颗，即使被收起的几项彼此不再相交。
  * +N 浮在右上角，不占列，留下的卡片仍向右铺满。
  * 未给列宽时不折叠。
  */
@@ -944,11 +945,11 @@ export function computeOverlapLayout(
       ? assignOverlapColumns(group, Math.max(0, limit - 1))
       : unlimited;
     const columnCount = Math.max(1, packed.usedColumns);
-    for (const cluster of clusterOverlapBlocks(packed.hidden)) {
-      const ids = cluster.map((block) => block.id);
+    if (packed.hidden.length) {
+      const ids = packed.hidden.map((block) => block.id);
       hiddenIds.push(...ids);
-      const start = Math.min(...cluster.map((block) => block.start));
-      const end = Math.max(...cluster.map((block) => block.end));
+      const start = Math.min(...packed.hidden.map((block) => block.start));
+      const end = Math.max(...packed.hidden.map((block) => block.end));
       pills.push({
         id: `+${ids.join("+")}`,
         start,

@@ -268,7 +268,15 @@ body.widget-body #root {
 
 .grid-pill,
 .grid-chip {
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.grid-chip {
+  text-shadow:
+    0 1px 0 var(--color-surface),
+    0 -1px 0 var(--color-surface),
+    1px 0 0 var(--color-surface),
+    -1px 0 0 var(--color-surface);
 }
 
 .grid-pill:hover {
@@ -276,7 +284,7 @@ body.widget-body #root {
 }
 
 .grid-chip:hover {
-  border-color: color-mix(in oklab, var(--color-accent) 42%, var(--color-line));
+  color: var(--color-accent);
 }
 
 @media (prefers-reduced-motion: no-preference) {

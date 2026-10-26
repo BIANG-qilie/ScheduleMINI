@@ -133,6 +133,21 @@ describe("computeOverlapLayout +N", () => {
     expect(layout.cards.size).toBe(4);
   });
 
+  it("folds one time slot into a single badge", () => {
+    const layout = computeOverlapLayout(
+      [
+        { id: "dinner", start: 17 * 60 + 30, end: 20 * 60 },
+        { id: "grocery", start: 18 * 60, end: 18 * 60 + 30 },
+        { id: "snack", start: 18 * 60, end: 18 * 60 + 20 },
+        { id: "dishes", start: 19 * 60, end: 19 * 60 + 40 },
+      ],
+      { laneWidth: 311, minCardWidth: DAY_MIN_CARD_PX },
+    );
+    expect([...layout.cards.keys()]).toEqual(["dinner"]);
+    expect(layout.pills).toHaveLength(1);
+    expect(layout.pills[0]?.hiddenIds).toEqual(["snack", "grocery", "dishes"]);
+  });
+
   it("collapses to a single +N when only one minimum slot fits", () => {
     const layout = computeOverlapLayout(
       [

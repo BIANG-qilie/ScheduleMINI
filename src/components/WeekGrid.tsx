@@ -497,9 +497,6 @@ export function WeekGrid({
                       8,
                       ((entry.endMin - entry.startMin) / 60) * DAY_PX,
                     );
-                    const once = itemRecurrence(item) === "once";
-                    const courseSwap = !!item.isCourseSwap;
-                    const dashed = once || courseSwap;
                     const color = ownerColor(item, couple);
                     const ink = spineInk(TAG_BAR[itemTag(item)]);
                     if (!spineOf.has(item.id)) spineOf.set(item.id, spineOf.size);
@@ -509,8 +506,7 @@ export function WeekGrid({
                         startMin - clockToCycleMinutes(item.start, gridStartHour),
                       ) < 0.6;
                     const title = itemDisplayTitle(item);
-                    const label = head ? title : `续 · ${title}`;
-                    const runsOff = top + height >= totalHeight - 2;
+                    const label = head ? title : `续 ${title}`;
                     nodes.push(
                       <div
                         key={`band-${item.id}-${col.dateKey}-${startMin}`}
@@ -523,41 +519,26 @@ export function WeekGrid({
                           type="button"
                           title={itemHoverText(item)}
                           aria-label={label}
-                          className="pointer-events-auto absolute bottom-0 top-0 z-[1] w-3"
+                          className="pointer-events-auto absolute inset-y-0 z-[1] w-2.5"
                           style={{ left: spine * 8 }}
                           {...bindItem(item)}
                         >
                           <span
-                            className="absolute bottom-1.5 top-1.5 w-0.5 rounded-full"
-                            style={{ left: 5, backgroundColor: ink }}
+                            className="absolute inset-y-0.5 left-1 w-0.5 rounded-full"
+                            style={{ backgroundColor: ink }}
                           />
-                          {head ? (
-                            <span
-                              className="absolute top-1.5 h-px w-1.5"
-                              style={{ left: 3, backgroundColor: ink }}
-                            />
-                          ) : null}
-                          {runsOff ? null : (
-                            <span
-                              className="absolute bottom-1.5 h-px w-1.5"
-                              style={{ left: 3, backgroundColor: ink }}
-                            />
-                          )}
                         </button>
                         <button
                           type="button"
                           data-block="band-label"
                           title={itemHoverText(item)}
+                          aria-label={label}
                           className={cn(
-                            "grid-chip pointer-events-auto absolute top-1 z-20 inline-flex h-[22px] max-w-[168px] items-center gap-1.5 rounded-md border bg-[var(--color-surface)] pl-1.5 pr-2 text-[11px] leading-none shadow-[inset_0_1px_0_rgba(255,252,246,0.9),0_8px_16px_-14px_rgba(28,22,18,0.45)]",
-                            dashed && "border-dashed",
+                            "grid-chip pointer-events-auto absolute top-0 z-[16] inline-flex h-5 max-w-[calc(100%-16px)] items-center gap-1 bg-transparent text-[11px] leading-none",
                             selectedIds?.has(item.id) &&
                               "ring-2 ring-[var(--color-ink)] ring-offset-1",
                           )}
-                          style={{
-                            left: 16 + spine * 8,
-                            borderColor: "var(--color-line)",
-                          }}
+                          style={{ left: spine * 8 + 6 }}
                           {...bindItem(item)}
                         >
                           <span
@@ -906,7 +887,7 @@ export function WeekGrid({
                     data-day-header=""
                     data-date={col.dateKey}
                     className={cn(
-                      "sticky top-0 z-20 w-full border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-center",
+                      "sticky top-0 z-40 w-full border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5 text-center",
                       col.dateKey === todayKey && "bg-[var(--color-accent-soft)]",
                       off &&
                         showHolidays &&
@@ -997,7 +978,7 @@ export function WeekGrid({
               : "52px repeat(7, minmax(0, 1fr))",
           }}
         >
-          <div className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-surface)]" />
+          <div className="sticky top-0 z-40 border-b border-[var(--color-line)] bg-[var(--color-surface)]" />
           {shown.map((col) => {
             const label = dayLabels.get(col.dateKey);
             const off = label?.isOff;
@@ -1006,7 +987,7 @@ export function WeekGrid({
                 key={`h-${col.dateKey}`}
                 type="button"
                 className={cn(
-                  "sticky top-0 z-20 border-b border-l border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-2.5 text-center",
+                  "sticky top-0 z-40 border-b border-l border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-2.5 text-center",
                   col.dateKey === todayKey && "bg-[var(--color-accent-soft)]",
                   off &&
                     showHolidays &&
