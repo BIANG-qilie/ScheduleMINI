@@ -55,9 +55,13 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 小日程 ${{ github.ref_name }}
           releaseBody: |
-            从 0.2.5 更新到 0.2.6。
+            从 0.2.6 更新到 0.2.7。
 
-            - 默认同步地址换了，更新后会连上新的
+            - 桌面端上的小窗口，现在自带最小化功能
+            - 桌面小组件现在会更新的更准时
+            - 尝试修复移动端进入APP的卡顿
+            - 很长的日程改成旁边一条细线，不再铺满整天。同一个时间太多时，多出来的收成一个小圆点
+            - 更新会先从国内地址下载，下不了再用原来的地址
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
