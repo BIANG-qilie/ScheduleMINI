@@ -18,6 +18,8 @@ type DialogProps = {
   dense?: boolean;
   /** 宽幅组合面板（编辑器） */
   panel?: boolean;
+  /** 贴底的矮层，大约占屏幕三分之一 */
+  third?: boolean;
   /**
    * 仅手机：整张卡片离底边的距离（px）。
    * 桌面端仍居中，不使用这个值。
@@ -36,6 +38,7 @@ export function Dialog({
   eyebrow,
   dense = false,
   panel = false,
+  third = false,
   mobileLift,
 }: DialogProps) {
   const dragStart = React.useRef<number | null>(null);
@@ -85,7 +88,8 @@ export function Dialog({
             : dense
               ? "sm:max-w-md"
               : "sm:max-w-lg",
-          !panel && !dense && "p-5 sm:p-6",
+          !panel && !dense && !third && "p-5 sm:p-6",
+          third && "create-sheet",
           className,
         )}
         style={dragY > 0 ? { transform: `translateY(${dragY}px)` } : undefined}
@@ -117,14 +121,15 @@ export function Dialog({
         <div
           className={cn(
             "flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-line)]",
-            panel || dense ? "px-5 py-4 sm:px-7" : "mb-5",
+            panel || dense ? "px-5 py-4 sm:px-7" : third ? "mb-3 px-4 pt-1" : "mb-5",
           )}
         >
           <div className="min-w-0 pt-0.5">
             {eyebrow ? <p className="kicker">{eyebrow}</p> : null}
             <h2
               className={cn(
-                "font-display text-[1.65rem] font-medium leading-none tracking-tight text-[var(--color-ink)]",
+                "font-display font-medium leading-none tracking-tight text-[var(--color-ink)]",
+                third ? "text-lg" : "text-[1.65rem]",
                 eyebrow && "mt-1",
               )}
             >
@@ -154,7 +159,9 @@ export function Dialog({
               ? "px-5 py-5 sm:px-7 sm:py-6"
               : dense
                 ? "flex flex-col gap-5 px-4 py-4"
-                : "flex flex-col gap-4 py-1",
+                : third
+                  ? "flex flex-col px-4 pb-4 pt-1"
+                  : "flex flex-col gap-4 py-1",
           )}
         >
           {children}

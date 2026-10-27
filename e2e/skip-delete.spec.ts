@@ -2,9 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function addWeekly(page: Page, title: string) {
   const narrow = (page.viewportSize()?.width ?? 1280) < 760;
-  await page
-    .getByRole("button", { name: narrow ? "新建" : "新建日程", exact: true })
-    .click();
+  if (narrow) {
+    await page.getByRole("button", { name: "新建", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "新建日程", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建日程" });
   await dialog.getByLabel(/标题/).fill(title);
   await dialog.locator("#start").fill("11:15");

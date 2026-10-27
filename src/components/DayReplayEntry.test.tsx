@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DayReplayEntry } from "@/components/DayReplayEntry";
 import { CALL_ALLOWLIST_STORAGE_KEY } from "@/lib/call-allowlist";
 import { APP_TAG_MEMORY_KEY } from "@/lib/app-tag-memory";
+import { REPLAY_MARKS_KEY } from "@/lib/replay-marks";
 import { on26 } from "@/lib/day-replay.fixtures";
 
 afterEach(() => {
@@ -189,6 +190,98 @@ describe("DayReplayEntry", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: "记下勾选的" }));
     expect(memory.get(APP_TAG_MEMORY_KEY)).toBeUndefined();
+    expect(readMarks(memory)).toEqual([]);
     expect(screen.getByText("没写进去，本机分类没改。")).toBeTruthy();
   });
+
+  it("shows a saved cue later, unchecked, with 已补录", async () => {
+    const user = userEvent.setup();
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        memory.set(key, value);
+      },
+    };
+    const readDay = () =>
+      JSON.stringify({
+        ok: true,
+        queryTime: on26(18, 0),
+        events: [
+          {
+            type: 1,
+            packageName: "com.tencent.mm",
+            timestamp: on26(9, 0),
+            label: "微信",
+          },
+          {
+            type: 2,
+            packageName: "com.tencent.mm",
+            timestamp: on26(9, 32),
+            label: "微信",
+          },
+          {
+            type: 1,
+            packageName: "com.ss.android.ugc.aweme",
+            timestamp: on26(10, 0),
+            label: "抖音",
+          },
+          {
+            type: 2,
+            packageName: "com.ss.android.ugc.aweme",
+            timestamp: on26(10, 20),
+            label: "抖音",
+          },
+        ],
+        calls: [],
+      });
+    memory.set(
+      REPLAY_MARKS_KEY,
+      JSON.stringify([
+        {
+          itemId: "saved-wechat",
+          kind: "app",
+          packageName: "com.tencent.mm",
+          label: "微信",
+          start: on26(9, 0),
+          end: on26(9, 32),
+        },
+      ]),
+    );
+    render(
+      <DayReplayEntry
+        open
+        onOpenChange={() => undefined}
+        onCommit={async () => undefined}
+        bridge={{ readDay }}
+        storage={storage}
+        scheduleItems={[
+          {
+            id: "saved-wechat",
+            title: "回消息",
+            tag: "social",
+            recurrence: "once",
+            date: "2026-10-26",
+            start: "09:00",
+            end: "09:32",
+            enabled: true,
+          },
+        ]}
+        trigger={null}
+      />,
+    );
+    expect(screen.getByText("线索 · 抖音")).toBeTruthy();
+    expect(screen.queryByText("已补录")).toBeNull();
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+    await user.click(screen.getByRole("button", { name: "下一条" }));
+    expect(screen.getByText("线索 · 微信")).toBeTruthy();
+    expect(screen.getByText("已补录")).toBeTruthy();
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+  });
 });
+
+function readMarks(memory: Map<string, string>) {
+  const raw = memory.get(REPLAY_MARKS_KEY);
+  if (!raw) return [];
+  return JSON.parse(raw) as unknown[];
+}

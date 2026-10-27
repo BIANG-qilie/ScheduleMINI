@@ -46,6 +46,7 @@ import {
   isCallItem,
   itemHoverText,
 } from "@/lib/schedule-style";
+import { estimateTextWidth, replayChipLayout, type ReplayObstacle } from "@/lib/replay-chip";
 import { cn } from "@/lib/utils";
 
 const DAY_PX = 52;
@@ -92,6 +93,8 @@ type WeekGridProps = {
   onSetDayOverride: (dateKey: string, value: DayOverride | null) => void;
   /** board：七列周历。day：一次看一天，给手机用。 */
   layout?: "board" | "day";
+  /** 已经补进日程的短条。界面不展示存储字段。 */
+  replayItemIds?: ReadonlySet<string>;
 };
 
 type GridMenu =
@@ -147,6 +150,7 @@ export function WeekGrid({
   onDeleteItem,
   onSetDayOverride,
   layout = "board",
+  replayItemIds,
 }: WeekGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [menu, setMenu] = useState<GridMenu | null>(null);
@@ -425,20 +429,37 @@ export function WeekGrid({
                     ]),
                   );
                   const minCardWidth = dayLayout ? DAY_MIN_CARD_PX : WEEK_MIN_CARD_PX;
+                  const bandFor = (entry: (typeof placed)[number]) =>
+                    isOverlapBand({
+                      startMin: entry.startMin,
+                      endMin: entry.endMin,
+                      durationMin: itemSpanMinutes(entry.item),
+                      overnight: entry.overnight,
+                      spanned: entry.spanned,
+                      call: isCallItem(entry.item),
+                    });
+                  const replayShortIds = new Set(
+                    placed
+                      .filter(
+                        (entry) =>
+                          replayItemIds?.has(entry.item.id) && !bandFor(entry),
+                      )
+                      .map((entry) => `${entry.item.id}@${entry.startMin}`),
+                  );
                   const layout = computeOverlapLayout(
-                    placed.map((entry) => ({
-                      id: `${entry.item.id}@${entry.startMin}`,
-                      start: entry.startMin,
-                      end: entry.endMin,
-                      band: isOverlapBand({
-                        startMin: entry.startMin,
-                        endMin: entry.endMin,
-                        durationMin: itemSpanMinutes(entry.item),
-                        overnight: entry.overnight,
-                        spanned: entry.spanned,
-                        call: isCallItem(entry.item),
-                      }),
-                    })),
+                    placed
+                      .filter(
+                        (entry) =>
+                          !replayShortIds.has(
+                            `${entry.item.id}@${entry.startMin}`,
+                          ),
+                      )
+                      .map((entry) => ({
+                        id: `${entry.item.id}@${entry.startMin}`,
+                        start: entry.startMin,
+                        end: entry.endMin,
+                        band: bandFor(entry),
+                      })),
                     laneWidth > 0
                       ? { laneWidth, minCardWidth }
                       : undefined,
@@ -566,6 +587,7 @@ export function WeekGrid({
                       </div>,
                     );
                   }
+                  const cardBoxes: ReplayObstacle[] = [];
                   for (const [id, slot] of layout.cards) {
                     const entry = byId.get(id);
                     if (!entry) continue;
@@ -580,6 +602,23 @@ export function WeekGrid({
                     const showOvernight = overnight && height >= 64 && !showNote;
                     const color = ownerColor(item, couple);
                     const rail = quietRail(TAG_BAR[itemTag(item)]);
+                    const columnCount = Math.max(1, slot.columnCount);
+                    const cardLeft =
+                      (slot.column / columnCount) * laneWidth + 4;
+                    const cardWidth = Math.max(
+                      0,
+                      (slot.span / columnCount) * laneWidth - 8,
+                    );
+                    cardBoxes.push({
+                      top,
+                      bottom: top + height,
+                      left: cardLeft,
+                      right: cardLeft + cardWidth,
+                      titleWidth: Math.min(
+                        estimateTextWidth(itemDisplayTitle(item), 12.5) + 28,
+                        cardWidth,
+                      ),
+                    });
                     const share =
                       (slot.span / Math.max(1, slot.columnCount)) * laneWidth;
                     const timeLabel = spanned
@@ -682,6 +721,62 @@ export function WeekGrid({
                             ) : null}
                           </div>
                         </div>
+                      </button>,
+                    );
+                  }
+                  const drawnChips: ReplayObstacle[] = [];
+                  for (const entry of placed) {
+                    const key = `${entry.item.id}@${entry.startMin}`;
+                    if (!replayShortIds.has(key)) continue;
+                    const title = itemDisplayTitle(entry.item);
+                    let chipTop = entry.top;
+                    let placedChip = replayChipLayout({
+                      title,
+                      top: chipTop,
+                      laneWidth,
+                      obstacles: [...cardBoxes, ...drawnChips],
+                    });
+                    for (let guard = 0; guard < 4; guard += 1) {
+                      const stacked = drawnChips.some(
+                        (box) =>
+                          !(chipTop + 16 <= box.top || chipTop >= box.bottom) &&
+                          Math.abs(box.left - placedChip.left) < 12,
+                      );
+                      if (!stacked) break;
+                      chipTop += 14;
+                      placedChip = replayChipLayout({
+                        title,
+                        top: chipTop,
+                        laneWidth,
+                        obstacles: [...cardBoxes, ...drawnChips],
+                      });
+                    }
+                    const chipWidth = placedChip.label
+                      ? estimateTextWidth(placedChip.label, 11) + 16
+                      : 12;
+                    drawnChips.push({
+                      top: chipTop,
+                      bottom: chipTop + 16,
+                      left: placedChip.left,
+                      right: placedChip.left + chipWidth,
+                      titleWidth: chipWidth,
+                    });
+                    nodes.push(
+                      <button
+                        key={`replay-${key}`}
+                        type="button"
+                        data-block="replay-chip"
+                        data-label={placedChip.label}
+                        title={itemHoverText(entry.item)}
+                        aria-label={title}
+                        className="replay-chip pointer-events-auto absolute z-[20]"
+                        style={{ top: chipTop, left: placedChip.left }}
+                        {...bindItem(entry.item)}
+                      >
+                        <span className="replay-chip-dot" aria-hidden />
+                        {placedChip.label ? (
+                          <span className="replay-chip-label">{placedChip.label}</span>
+                        ) : null}
                       </button>,
                     );
                   }
