@@ -16,31 +16,30 @@ permissions:
   contents: write
 
 jobs:
-  # 顺序：Android → Windows → macOS。手机包先上草稿，桌面再往同一份草稿里补。
+  # 顺序：Android → Windows → macOS。正式版直接发布，桌面安装包补到同一条 Release。
   android:
     if: ${{ !endsWith(github.ref_name, '-widget') && !inputs.probe_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Open draft release
+      - name: Open release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "draft already exists"
+            echo "release already exists"
             exit 0
           fi
           printf '%s\n' \
-            '0.3.0-beta.15 试用稿（未进 main；安装包版本 0.3.0-15）。' \
-            '' \
-            '- 周视图短安排和正课并排，正课缩短靠右，短名字放不下用省略号，圆点贴在淡底上。' \
+            '可根据手机记录补近几天。' \
+            '新建是矮抽屉，左右两张入口。' \
+            '设置里可改标签显示名，号码名单在数据里。' \
+            '周视图短安排和正课并排，圆点贴在淡底上。' \
             > /tmp/release-notes.md
           gh release create "$TAG" \
-            --draft \
-            --prerelease \
-            --title "小日程 v0.3.0-beta.15" \
+            --title "小日程 v0.3.0" \
             --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md
       - uses: actions/setup-node@v4
@@ -115,14 +114,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-15；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.15
+          releaseName: 小日程 v0.3.0
           releaseBody: |
-            0.3.0-beta.15 试用稿（未进 main；安装包版本 0.3.0-15）。
-
-            - 周视图短安排和正课并排，正课缩短靠右，短名字放不下用省略号，圆点贴在淡底上。
-          releaseDraft: true
-          prerelease: true
+            可根据手机记录补近几天。
+            新建是矮抽屉，左右两张入口。
+            设置里可改标签显示名，号码名单在数据里。
+            周视图短安排和正课并排，圆点贴在淡底上。
+          releaseDraft: false
+          prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           assetNamePattern: ${{ steps.names.outputs.pattern }}
@@ -158,18 +157,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 小日程 v0.3.0-beta.15
+          releaseName: 小日程 v0.3.0
           releaseBody: |
-            0.3.0-beta.15 试用稿（未进 main；安装包版本 0.3.0-15）。
-
-            - 周视图短安排和正课并排，正课缩短靠右，短名字放不下用省略号，圆点贴在淡底上。
-          releaseDraft: true
-          prerelease: true
+            可根据手机记录补近几天。
+            新建是矮抽屉，左右两张入口。
+            设置里可改标签显示名，号码名单在数据里。
+            周视图短安排和正课并排，圆点贴在淡底上。
+          releaseDraft: false
+          prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           assetNamePattern: ${{ steps.names.outputs.pattern }}
           args: --config src-tauri/ci-version.json --target universal-apple-darwin
-      - name: Updater manifest is on the draft
+      - name: Updater manifest is on the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
