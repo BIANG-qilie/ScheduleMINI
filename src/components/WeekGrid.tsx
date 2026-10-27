@@ -28,6 +28,7 @@ import {
   parseDateKey,
   itemAbsoluteInterval,
   itemDisplayTitle,
+  itemOwner,
   isOverlapBand,
   itemRecurrence,
   itemSpanMinutes,
@@ -775,6 +776,12 @@ export function WeekGrid({
                       });
                     }
                     const together = !placedChip.label || placedChip.top === entry.top;
+                    const roleColor = ownerColor(entry.item, couple);
+                    const roleDotStyle = {
+                      backgroundColor: roleColor,
+                      boxShadow: `0 0 0 2px color-mix(in oklab, ${roleColor} 22%, transparent)`,
+                    };
+                    const roleOwner = itemOwner(entry.item);
                     nodes.push(
                       <div
                         key={`replay-wash-${key}`}
@@ -808,7 +815,13 @@ export function WeekGrid({
                         {...bindItem(entry.item)}
                       >
                         {together ? (
-                          <span className="replay-chip-dot" data-replay-dot="" aria-hidden />
+                          <span
+                            className="replay-chip-dot"
+                            data-replay-dot=""
+                            data-owner={roleOwner}
+                            style={roleDotStyle}
+                            aria-hidden
+                          />
                         ) : null}
                         {placedChip.label ? (
                           <span className="replay-chip-label">{placedChip.label}</span>
@@ -820,10 +833,12 @@ export function WeekGrid({
                         <span
                           key={`replay-dot-${key}`}
                           data-replay-dot=""
+                          data-owner={roleOwner}
                           className="replay-chip-dot pointer-events-none absolute z-[20]"
                           style={{
-                            top: entry.top + (REPLAY_CHIP_HEIGHT - 6) / 2,
+                            top: placedChip.top + (REPLAY_CHIP_HEIGHT - 6) / 2,
                             left: REPLAY_CHIP_RAIL_LEFT,
+                            ...roleDotStyle,
                           }}
                         />,
                       );

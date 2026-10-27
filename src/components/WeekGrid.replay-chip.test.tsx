@@ -25,6 +25,31 @@ function weekly(id: string, title: string): ScheduleItem {
   };
 }
 
+function dotRowTop(dot: HTMLElement) {
+  if (dot.style.top) return Number.parseFloat(dot.style.top);
+  return Number.parseFloat((dot.parentElement as HTMLElement).style.top) + 5;
+}
+
+function dotRailLeft(dot: HTMLElement) {
+  return dot.style.left || (dot.parentElement as HTMLElement).style.left;
+}
+
+/** 每个短名字旁边都有一颗圆点，并且圆点都在同一条竖线上。 */
+function dotsOnChipRows(chips: HTMLElement[], dots: HTMLElement[]) {
+  const unused = [...dots];
+  for (const chip of chips) {
+    const top = Number.parseFloat(chip.style.top);
+    const index = unused.findIndex((dot) => {
+      const dotTop = dotRowTop(dot);
+      return dotTop >= top - 0.5 && dotTop + 6 <= top + 16.5;
+    });
+    if (index < 0) return false;
+    if (dotRailLeft(unused[index]) !== "6px") return false;
+    unused.splice(index, 1);
+  }
+  return unused.length === 0;
+}
+
 describe("replayed short spans", () => {
   it("keeps the class capsule and draws the replay as a light chip", () => {
     class StubResizeObserver {
@@ -303,6 +328,7 @@ describe("replayed short spans", () => {
         expect(separated).toBe(true);
       }
     }
+    expect(dotsOnChipRows(chips, dots as HTMLElement[])).toBe(true);
     const washes = [...(lane?.querySelectorAll("[data-block='replay-wash']") ?? [])] as HTMLElement[];
     expect(washes).toHaveLength(7);
     expect(washes.map((wash) => wash.getAttribute("data-item-id")).sort()).toEqual(
@@ -327,6 +353,127 @@ describe("replayed short spans", () => {
         if (overlaps) expect(cardZ).toBeGreaterThan(Number(wash.style.zIndex));
       }
     }
+    expect(document.body.textContent).not.toContain("已补录");
+    expect(document.querySelector(".phone-week")).toBeTruthy();
+  });
+
+  it("keeps both owners on one rail without squeezing class titles", () => {
+    class StubResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 300;
+      },
+    });
+
+    const today = formatDateKey(new Date());
+    const course = (
+      id: string,
+      primary: string,
+      secondary: string,
+      start: string,
+      end: string,
+    ): ScheduleItem => ({
+      id,
+      start,
+      end,
+      title: primary,
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      enabled: true,
+      recurrence: "weekly",
+      tag: "work",
+      workKind: "class",
+      workPrimary: primary,
+      workSecondary: secondary,
+      skippedDates: [],
+      owner: "self",
+    });
+    const once = (
+      id: string,
+      title: string,
+      start: string,
+      end: string,
+      owner: "self" | "partner",
+    ): ScheduleItem => ({
+      id,
+      start,
+      end,
+      title,
+      weekdays: [],
+      enabled: true,
+      recurrence: "once",
+      date: today,
+      tag: "life",
+      skippedDates: [],
+      owner,
+    });
+
+    const couple = defaultCouple();
+    render(
+      <WeekGrid
+        layout="day"
+        items={[
+          course("mind", "心理健康", "", "09:30", "10:10"),
+          once("dy1", "抖音", "10:06", "10:18", "self"),
+          once("tata1", "塔塔冒险队", "11:36", "11:50", "self"),
+          once("dy2", "抖音", "12:18", "12:30", "self"),
+          once("xin", "芯核智算 肖总开会", "13:52", "14:08", "self"),
+          course("read", "午读", "五年级", "14:00", "14:20"),
+          once("dy3", "抖音", "14:14", "14:26", "self"),
+          once("tata2", "塔塔冒险队", "15:41", "15:55", "self"),
+          once("dy4", "抖音", "15:58", "16:10", "self"),
+          once("walk", "散步", "13:55", "14:10", "partner"),
+        ]}
+        couple={couple}
+        showHolidays={false}
+        dayOverrides={{}}
+        gridStartHour={7}
+        gridEndHour={22}
+        onCreateAt={vi.fn()}
+        onEditItem={vi.fn()}
+        onSkipOccurrence={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onSetDayOverride={vi.fn()}
+      />,
+    );
+
+    const lane = document.querySelector("[data-label='芯核智算 肖总开会']")?.closest("[data-lane]");
+    expect(lane).toBeTruthy();
+    const dots = [...(lane?.querySelectorAll("[data-replay-dot]") ?? [])] as HTMLElement[];
+    const chips = [...(lane?.querySelectorAll("[data-block='replay-chip']") ?? [])] as HTMLElement[];
+    expect(dots).toHaveLength(8);
+    expect(new Set(dots.map(dotRailLeft))).toEqual(new Set(["6px"]));
+    expect(dotsOnChipRows(chips, dots)).toBe(true);
+    expect(dots.filter((dot) => dot.dataset.owner === "self")).toHaveLength(7);
+    expect(dots.filter((dot) => dot.dataset.owner === "partner")).toHaveLength(1);
+    const partnerDot = dots.find((dot) => dot.dataset.owner === "partner");
+    const selfDot = dots.find((dot) => dot.dataset.owner === "self");
+    const rgb = (hex: string) => {
+      const n = Number.parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    expect(partnerDot?.style.backgroundColor).toBe(rgb(couple.partnerColor));
+    expect(selfDot?.style.backgroundColor).toBe(rgb(couple.selfColor));
+
+    const classCards = [...(lane?.querySelectorAll("[data-block='card']") ?? [])] as HTMLElement[];
+    expect(classCards.map((card) => card.getAttribute("data-item-id")).sort()).toEqual([
+      "mind",
+      "read",
+    ]);
+    for (const card of classCards) {
+      expect(card.style.left).toBe("calc(0% + 4px)");
+      expect(card.style.width).toBe("calc(100% - 8px)");
+      const title = card.querySelector("p");
+      expect(title?.textContent === "心理健康" || title?.textContent === "午读 · 五年级").toBe(
+        true,
+      );
+    }
+    expect(lane?.textContent).toContain("散步");
     expect(document.body.textContent).not.toContain("已补录");
     expect(document.querySelector(".phone-week")).toBeTruthy();
   });
