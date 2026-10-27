@@ -67,6 +67,7 @@ describe("replayed short spans", () => {
         dayOverrides={{}}
         gridStartHour={7}
         gridEndHour={22}
+        layout="day"
         replayItemIds={new Set(["douyin", "tata"])}
         onCreateAt={vi.fn()}
         onEditItem={vi.fn()}
@@ -100,5 +101,74 @@ describe("replayed short spans", () => {
     expect(cards.length).toBe(0);
     expect(classCards.length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /语文/ }).length).toBeGreaterThan(0);
+    expect(document.querySelector(".phone-week")).toBeTruthy();
+  });
+
+  it("draws short one-off apps on the phone rail without a saved mark", () => {
+    class StubResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 280;
+      },
+    });
+
+    const today = formatDateKey(new Date());
+    const once = (id: string, title: string, start: string, end: string): ScheduleItem => ({
+      id,
+      start,
+      end,
+      title,
+      weekdays: [],
+      enabled: true,
+      recurrence: "once",
+      date: today,
+      tag: "life",
+      skippedDates: [],
+      owner: "self",
+    });
+
+    render(
+      <WeekGrid
+        layout="day"
+        items={[
+          weekly("class", "语文"),
+          once("xin", "芯片课", "09:12", "09:26"),
+          once("wu", "午餐", "09:32", "09:48"),
+        ]}
+        couple={defaultCouple()}
+        showHolidays={false}
+        dayOverrides={{}}
+        gridStartHour={7}
+        gridEndHour={22}
+        onCreateAt={vi.fn()}
+        onEditItem={vi.fn()}
+        onSkipOccurrence={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onSetDayOverride={vi.fn()}
+      />,
+    );
+
+    const chips = [...document.querySelectorAll("[data-block='replay-chip']")];
+    expect(chips.map((chip) => chip.getAttribute("data-label")).sort()).toEqual([
+      "午餐",
+      "芯片课",
+    ]);
+    const lane = chips[0]?.closest("[data-lane]");
+    const classCard = lane?.querySelector("[data-block='card']") as HTMLElement;
+    expect(classCard.style.width).toContain("100%");
+    expect(classCard.style.left).not.toContain("50%");
+    expect(document.querySelector(".phone-week")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("已补录");
+    for (const chip of chips) {
+      const label = chip.querySelector(".replay-chip-label");
+      expect(label?.textContent).toBe(chip.getAttribute("data-label"));
+      expect(label?.textContent?.includes("…")).toBe(false);
+    }
   });
 });

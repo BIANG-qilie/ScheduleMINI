@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -49,6 +50,7 @@ import {
 import {
   REPLAY_CHIP_HEIGHT,
   REPLAY_CHIP_RAIL_LEFT,
+  isRailMark,
   placeReplayLabel,
   replayCapsuleInset,
   replayCardRect,
@@ -181,19 +183,21 @@ export function WeekGrid({
 
   useEffect(() => onHolidayData(() => setHolidayTick((n) => n + 1)), []);
 
-  const measureLane = (node: HTMLDivElement | null) => {
+  const measureLane = useCallback((node: HTMLDivElement | null) => {
     laneObserver.current?.disconnect();
     laneObserver.current = null;
     if (!node) return;
     const update = () => {
       const next = node.clientWidth;
+      if (!(next > 0)) return;
       setLaneWidth((prev) => (prev === next ? prev : next));
     };
     update();
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(update);
     observer.observe(node);
     laneObserver.current = observer;
-  };
+  }, []);
 
   useEffect(() => () => laneObserver.current?.disconnect(), []);
 
@@ -441,6 +445,8 @@ export function WeekGrid({
                     ]),
                   );
                   const minCardWidth = dayLayout ? DAY_MIN_CARD_PX : WEEK_MIN_CARD_PX;
+                  const laneForLayout =
+                    laneWidth > 0 ? laneWidth : dayLayout ? minCardWidth * 2 : 0;
                   const bandFor = (entry: (typeof placed)[number]) =>
                     isOverlapBand({
                       startMin: entry.startMin,
@@ -452,9 +458,14 @@ export function WeekGrid({
                     });
                   const replayShortIds = new Set(
                     placed
-                      .filter(
-                        (entry) =>
-                          replayItemIds?.has(entry.item.id) && !bandFor(entry),
+                      .filter((entry) =>
+                        isRailMark({
+                          dayLayout,
+                          once: itemRecurrence(entry.item) === "once",
+                          minutes: itemSpanMinutes(entry.item),
+                          marked: replayItemIds?.has(entry.item.id) ?? false,
+                          band: bandFor(entry),
+                        }),
                       )
                       .map((entry) => `${entry.item.id}@${entry.startMin}`),
                   );
@@ -472,8 +483,8 @@ export function WeekGrid({
                         end: entry.endMin,
                         band: bandFor(entry),
                       })),
-                    laneWidth > 0
-                      ? { laneWidth, minCardWidth }
+                    laneForLayout > 0
+                      ? { laneWidth: laneForLayout, minCardWidth }
                       : undefined,
                   );
                   const bindItem = (item: ScheduleItem) => ({
@@ -529,7 +540,7 @@ export function WeekGrid({
                     .sort((a, b) => a.top - b.top || a.item.id.localeCompare(b.item.id));
                   const replayInset = replayCapsuleInset({
                     titles: replayEntries.map((entry) => itemDisplayTitle(entry.item)),
-                    laneWidth,
+                    laneWidth: laneForLayout,
                     minCapsule: minCardWidth,
                   });
                   const spineOf = new Map<string, number>();
@@ -624,7 +635,7 @@ export function WeekGrid({
                     const color = ownerColor(item, couple);
                     const rail = quietRail(TAG_BAR[itemTag(item)]);
                     const share =
-                      (slot.span / Math.max(1, slot.columnCount)) * laneWidth;
+                      (slot.span / Math.max(1, slot.columnCount)) * laneForLayout;
                     const timeLabel = spanned
                       ? formatItemSpan(item)
                       : `${item.start}–${item.end}`;
@@ -731,7 +742,7 @@ export function WeekGrid({
                   const takenLabels: ReplayRect[] = [];
                   const cardObstacles = [...layout.cards].flatMap(([id, slot]) => {
                     const entry = byId.get(id);
-                    if (!entry || laneWidth <= 0) return [];
+                    if (!entry || laneForLayout <= 0) return [];
                     return [
                       replayCardRect({
                         column: slot.column,
@@ -739,7 +750,7 @@ export function WeekGrid({
                         columnCount: slot.columnCount,
                         top: entry.top,
                         height: entry.height,
-                        laneWidth,
+                        laneWidth: laneForLayout,
                         inset: replayInset,
                       }),
                     ];
@@ -750,7 +761,7 @@ export function WeekGrid({
                     const placedChip = placeReplayLabel({
                       title,
                       top: entry.top,
-                      laneWidth,
+                      laneWidth: laneForLayout,
                       obstacles: cardObstacles,
                       taken: takenLabels,
                     });

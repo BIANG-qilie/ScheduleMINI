@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   REPLAY_CHIP_HEIGHT,
   REPLAY_CHIP_RAIL_LEFT,
+  isRailMark,
   placeReplayLabel,
   replayCapsuleInset,
   replayCardRect,
@@ -9,6 +10,36 @@ import {
 } from "@/lib/replay-chip";
 
 describe("replay chip layout", () => {
+  it("puts a short one-off on the phone rail even without a saved mark", () => {
+    expect(
+      isRailMark({
+        dayLayout: true,
+        once: true,
+        minutes: 18,
+        marked: false,
+        band: false,
+      }),
+    ).toBe(true);
+    expect(
+      isRailMark({
+        dayLayout: true,
+        once: false,
+        minutes: 50,
+        marked: false,
+        band: false,
+      }),
+    ).toBe(false);
+    expect(
+      isRailMark({
+        dayLayout: false,
+        once: true,
+        minutes: 18,
+        marked: false,
+        band: false,
+      }),
+    ).toBe(false);
+  });
+
   it("keeps every dot on the hour rail and the names in one column", () => {
     const douyin = replayChipSpan("抖音");
     const tata = replayChipSpan("塔塔冒险队");

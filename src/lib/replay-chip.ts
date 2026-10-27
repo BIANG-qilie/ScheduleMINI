@@ -16,6 +16,26 @@ export const REPLAY_CHIP_RAIL_LEFT = 6;
 
 export const REPLAY_CHIP_HEIGHT = 16;
 
+/** 手机按天列里，不超过这时长的一次性安排走圆点，不跟正课并排切标题。 */
+export const PHONE_RAIL_MAX_MINUTES = 60;
+
+export function isRailMark(input: {
+  dayLayout: boolean;
+  once: boolean;
+  minutes: number;
+  marked: boolean;
+  band: boolean;
+}) {
+  if (input.band) return false;
+  if (input.marked) return true;
+  return (
+    input.dayLayout &&
+    input.once &&
+    input.minutes > 0 &&
+    input.minutes <= PHONE_RAIL_MAX_MINUTES
+  );
+}
+
 const DOT_PX = 6;
 const DOT_GAP = 4;
 /** 名字和胶囊、名字和名字之间的空隙。 */
