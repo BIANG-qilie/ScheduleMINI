@@ -126,7 +126,6 @@ describe("replayed short spans", () => {
         gridStartHour={7}
         gridEndHour={22}
         layout="day"
-        replayItemIds={new Set(["douyin", "tata"])}
         onCreateAt={vi.fn()}
         onEditItem={vi.fn()}
         onSkipOccurrence={vi.fn()}
@@ -397,6 +396,102 @@ describe("replayed short spans", () => {
     }
     expect(document.body.textContent).not.toContain("已补录");
     expect(document.querySelector(".phone-week")).toBeTruthy();
+  });
+
+  it("draws a replay-marked short once on the same rail as a handwritten one", () => {
+    class StubResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 300;
+      },
+    });
+
+    const today = formatDateKey(new Date());
+    const course = (
+      id: string,
+      primary: string,
+      secondary: string,
+      start: string,
+      end: string,
+    ): ScheduleItem => ({
+      id,
+      start,
+      end,
+      title: primary,
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      enabled: true,
+      recurrence: "weekly",
+      tag: "work",
+      workKind: "class",
+      workPrimary: primary,
+      workSecondary: secondary,
+      skippedDates: [],
+      owner: "self",
+    });
+    const once = (
+      id: string,
+      title: string,
+      start: string,
+      end: string,
+      durationMinutes?: number,
+    ): ScheduleItem => ({
+      id,
+      start,
+      end,
+      title,
+      weekdays: [],
+      enabled: true,
+      recurrence: "once",
+      date: today,
+      tag: "life",
+      skippedDates: [],
+      owner: "self",
+      durationMinutes,
+    });
+
+    render(
+      <WeekGrid
+        layout="day"
+        items={[
+          course("read", "午读", "五年级", "14:00", "14:20"),
+          once("xin", "芯核智算 肖总开会", "13:52", "14:08", 16),
+          once("dy", "抖音", "12:18", "12:30", 12),
+          once("tata", "塔塔冒险队", "11:36", "11:50"),
+        ]}
+        couple={defaultCouple()}
+        showHolidays={false}
+        dayOverrides={{}}
+        gridStartHour={7}
+        gridEndHour={22}
+        onCreateAt={vi.fn()}
+        onEditItem={vi.fn()}
+        onSkipOccurrence={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onSetDayOverride={vi.fn()}
+      />,
+    );
+
+    const lane = document.querySelector("[data-label='芯核智算 肖总开会']")?.closest("[data-lane]");
+    expect(lane).toBeTruthy();
+    expect(lane?.querySelectorAll("[data-block='band']")).toHaveLength(0);
+    const chips = [...(lane?.querySelectorAll("[data-block='replay-chip']") ?? [])] as HTMLElement[];
+    expect(chips.map((chip) => chip.getAttribute("data-label")).sort()).toEqual(
+      ["抖音", "塔塔冒险队", "芯核智算 肖总开会"].sort(),
+    );
+    expect(new Set(chips.map((chip) => chip.style.left))).toEqual(new Set(["6px"]));
+    const read = lane?.querySelector("[data-block='card'][data-item-id='read']") as HTMLElement;
+    expect(read.style.left).toBe("calc(0% + 76px)");
+    expect(read.style.width).toBe("calc(100% - 80px)");
+    const xin = chips.find((chip) => chip.dataset.itemId === "xin");
+    expect(xin?.querySelector(".replay-chip-label-clip")).toBeTruthy();
+    washesCoverSpans(lane!);
+    expect(document.body.textContent).not.toContain("已补录");
   });
 
   it("keeps both owners on one rail without squeezing class titles", () => {

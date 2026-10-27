@@ -28,15 +28,14 @@ export const REPLAY_CHIP_HEIGHT = 16;
 /** 手机按天列里，不超过这时长的一次性安排走圆点，不跟正课并排切标题。 */
 export const PHONE_RAIL_MAX_MINUTES = 60;
 
+/** 补录和手写的短一次安排走同一条轨道，记号本身不另开摆法。 */
 export function isRailMark(input: {
   dayLayout: boolean;
   once: boolean;
   minutes: number;
-  marked: boolean;
   band: boolean;
 }) {
   if (input.band) return false;
-  if (input.marked) return true;
   return (
     input.dayLayout &&
     input.once &&

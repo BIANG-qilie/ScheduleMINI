@@ -105,8 +105,6 @@ type WeekGridProps = {
   onSetDayOverride: (dateKey: string, value: DayOverride | null) => void;
   /** board：七列周历。day：一次看一天，给手机用。 */
   layout?: "board" | "day";
-  /** 已经补进日程的短条。界面不展示存储字段。 */
-  replayItemIds?: ReadonlySet<string>;
 };
 
 type GridMenu =
@@ -166,7 +164,6 @@ export function WeekGrid({
   onDeleteItem,
   onSetDayOverride,
   layout = "board",
-  replayItemIds,
 }: WeekGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [menu, setMenu] = useState<GridMenu | null>(null);
@@ -378,7 +375,10 @@ export function WeekGrid({
               spanned: boolean;
             }[] = [];
             for (const it of enabledItems) {
-              const spanned = itemAbsoluteInterval(it) != null;
+              const interval = itemAbsoluteInterval(it);
+              const spanned =
+                interval != null &&
+                formatDateKey(interval.startAt) !== formatDateKey(interval.endAt);
               for (const range of columnCycleRanges(
                 it,
                 col.dateKey,
@@ -465,7 +465,6 @@ export function WeekGrid({
                           dayLayout,
                           once: itemRecurrence(entry.item) === "once",
                           minutes: itemSpanMinutes(entry.item),
-                          marked: replayItemIds?.has(entry.item.id) ?? false,
                           band: bandFor(entry),
                         }),
                       )

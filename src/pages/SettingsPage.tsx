@@ -26,7 +26,6 @@ import { CreateActionSheet } from "@/components/CreateActionSheet";
 import { CallAllowlistEditor } from "@/components/CallAllowlistEditor";
 import { DayReplayEntry } from "@/components/DayReplayEntry";
 import { hasDayReplayBridge } from "@/lib/day-replay-native";
-import { readReplayMarks, replayItemIds } from "@/lib/replay-marks";
 import type { Draft } from "@/components/ScheduleEditor";
 import {
   readTagLabelOverrides,
@@ -398,10 +397,6 @@ export function SettingsPage() {
     () => queryListItems(config.items, listFilters),
     [config.items, listFilters],
   );
-  const replayIds = useMemo(() => {
-    const live = new Set(config.items.map((item) => item.id));
-    return replayItemIds(readReplayMarks(), live);
-  }, [config.items]);
   const listShowingFilters =
     listFilters.tag !== "all" ||
     listFilters.owner !== "all" ||
@@ -894,7 +889,6 @@ export function SettingsPage() {
               dayOverrides={config.dayOverrides}
               gridStartHour={config.gridStartHour}
               gridEndHour={config.gridEndHour}
-              replayItemIds={replayIds}
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
               onCreateAt={openCreateAt}
