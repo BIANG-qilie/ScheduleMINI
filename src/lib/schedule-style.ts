@@ -24,7 +24,7 @@ export const TAG_BAR: Record<ScheduleTag, string> = {
   rest: "#3d8f62",
   life: "#c47a32",
   call: "#c45d6e",
-  entertainment: "#5c62b8",
+  game: "#5c62b8",
   social: "#8b6b9e",
   other: "#8a8176",
 };
@@ -64,7 +64,7 @@ export const TAG_SURFACE: Record<
     chip: "border-[#f0cdd2] bg-[#f8e0e4] text-[#7a3140]",
     bar: "bg-[#c45d6e]",
   },
-  entertainment: {
+  game: {
     block: "border border-[#c5c6e4] bg-[#f1f1f8] text-[#2e3160]",
     chip: "border-[#d2d3ec] bg-[#e4e5f4] text-[#3a3e78]",
     bar: "bg-[#5c62b8]",
@@ -116,7 +116,7 @@ export const TAG_WIDGET: Record<
     badge: "bg-rose-400/25 text-rose-100",
     accent: "#fb7185",
   },
-  entertainment: {
+  game: {
     card: "border-indigo-400/35 bg-indigo-500/18",
     badge: "bg-indigo-400/25 text-indigo-100",
     accent: "#818cf8",
@@ -158,7 +158,7 @@ export function isCallItem(item: ScheduleItem) {
 }
 
 export function isGameItem(item: ScheduleItem) {
-  return itemTag(item) === "entertainment";
+  return itemTag(item) === "game";
 }
 
 /** 周/列表/小窗副行：交通 / 通话 / 娱乐 / 工作子类 */

@@ -77,7 +77,7 @@ const SCHEDULE_TAGS = new Set<ScheduleTag>([
   "rest",
   "life",
   "call",
-  "entertainment",
+  "game",
   "social",
   "other",
 ]);
@@ -120,6 +120,8 @@ export type ReplayCue =
   | {
       kind: "app";
       label: string;
+      /** 本机分类记忆用；不进同步日程。 */
+      packageName: string;
       start: number;
       end: number;
     };
@@ -390,6 +392,7 @@ export function buildReplayCues(input: {
     cues.push({
       kind: "app",
       label: cueDisplayLabel(span.label, span.packageName),
+      packageName: span.packageName,
       start: span.start,
       end: span.end,
     });
@@ -451,6 +454,7 @@ export function shortlistReplayCues(input: {
     cues.push({
       kind: "app",
       label: cueDisplayLabel(span.label, span.packageName),
+      packageName: span.packageName,
       start: span.start,
       end: span.end,
     });

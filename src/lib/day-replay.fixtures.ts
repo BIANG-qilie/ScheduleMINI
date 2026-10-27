@@ -48,7 +48,7 @@ export type ExpectedSpan = {
 
 export type ExpectedCue =
   | { kind: "call"; title: typeof PHONE_CALL_TITLE; start: number; end: number }
-  | { kind: "app"; label: string; start: number; end: number };
+  | { kind: "app"; label: string; packageName: string; start: number; end: number };
 
 const wechat = "com.tencent.mm";
 const dialer = "com.android.dialer";
@@ -262,6 +262,7 @@ export const callCases = {
     {
       kind: "app",
       label: "微信",
+      packageName: "com.tencent.mm",
       start: on26(14, 55),
       end: on26(15, 5),
     },
@@ -332,6 +333,7 @@ export const shortlistCases: {
       {
         kind: "app",
         label: "微信",
+      packageName: "com.tencent.mm",
         start: on26(9, 0),
         end: on26(9, 40),
       },
@@ -359,6 +361,7 @@ export const shortlistCases: {
       {
         kind: "app",
         label: "微信",
+      packageName: "com.tencent.mm",
         start: on26(10, 5),
         end: on26(10, 35),
       },
@@ -386,6 +389,7 @@ export const shortlistCases: {
       {
         kind: "app",
         label: "微信",
+      packageName: "com.tencent.mm",
         start: on26(11, 0),
         end: on26(11, 25),
       },
@@ -407,6 +411,7 @@ export const shortlistCases: {
       {
         kind: "app",
         label: "微信",
+      packageName: "com.tencent.mm",
         start: on26(14, 0),
         end: on26(15, 20),
       },
@@ -434,6 +439,7 @@ export const shortlistCases: {
       {
         kind: "app",
         label: "Chrome",
+      packageName: "com.android.chrome",
         start: on26(17, 0),
         end: on26(17, 25),
       },

@@ -17,13 +17,11 @@ import {
   type ScheduleItem,
   type UpcomingRef,
 } from "@/lib/config";
-import { type ReplayScheduleDraft } from "@/lib/day-replay";
 import { getTodayLabel, onHolidayData } from "@/lib/holidays";
 import { formatItemSubline } from "@/lib/schedule-style";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import { useConfigStore } from "@/store/config-store";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
-import { DayReplayEntry } from "@/components/DayReplayEntry";
 
 function upcomingWhen(ref: UpcomingRef, todayKey: string) {
   if (ref.dateKey === todayKey) return ref.item.start;
@@ -123,12 +121,10 @@ export function PhoneGlance({
   couple,
   soloMode,
   showHolidays,
-  onReplayCommit,
 }: {
   couple: CoupleIdentity;
   soloMode: boolean;
   showHolidays: boolean;
-  onReplayCommit?: (drafts: ReplayScheduleDraft[]) => Promise<void> | void;
 }) {
   const items = useConfigStore((s) => s.config.items);
   const dayOverrides = useConfigStore((s) => s.config.dayOverrides);
@@ -193,13 +189,6 @@ export function PhoneGlance({
             <em>{holiday.name}</em>
           ) : null}
         </p>
-        {onReplayCommit ? (
-          <DayReplayEntry
-            onCommit={onReplayCommit}
-            scheduleItems={items}
-            trigger="text"
-          />
-        ) : null}
       </header>
 
       <div className={soloMode ? "ticket solo" : "ticket"}>
