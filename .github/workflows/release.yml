@@ -33,16 +33,17 @@ jobs:
             exit 0
           fi
           printf '%s\n' \
-            '0.3.0-beta.11 试用稿（未进 main；安装包版本 0.3.0-11）。' \
+            '0.3.0-beta.12 试用稿（未进 main；安装包版本 0.3.0-12）。' \
             '' \
-            '- 设置「显示」可改日程标签显示名' \
-            '- 本机号码名单迁到设置「数据」；补录只指向设置' \
-            '- 保留娱乐/社交标签、补录抽屉与列表筛选' \
+            '- 新建是矮抽屉，左右两张入口' \
+            '- 补录里已记下的会标已补录，并排在后面' \
+            '- 周视图短时段是细点或一行名字' \
+            '- 设置里可改标签显示名，号码名单在数据里' \
             > /tmp/release-notes.md
           gh release create "$TAG" \
             --draft \
             --prerelease \
-            --title "小日程 v0.3.0-beta.11" \
+            --title "小日程 v0.3.0-beta.12" \
             --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md
       - uses: actions/setup-node@v4
@@ -117,14 +118,15 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-11；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.11
+          # 包版本用 MSI 可接受的 0.3.0-12；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.12
           releaseBody: |
-            0.3.0-beta.11 试用稿（未进 main；安装包版本 0.3.0-11）。
+            0.3.0-beta.12 试用稿（未进 main；安装包版本 0.3.0-12）。
 
-            - 设置「显示」可改日程标签显示名
-            - 本机号码名单迁到设置「数据」；补录只指向设置
-            - 保留娱乐/社交标签、补录抽屉与列表筛选
+            - 新建是矮抽屉，左右两张入口
+            - 补录里已记下的会标已补录，并排在后面
+            - 周视图短时段是细点或一行名字
+            - 设置里可改标签显示名，号码名单在数据里
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
@@ -162,13 +164,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 小日程 v0.3.0-beta.11
+          releaseName: 小日程 v0.3.0-beta.12
           releaseBody: |
-            0.3.0-beta.11 试用稿（未进 main；安装包版本 0.3.0-11）。
+            0.3.0-beta.12 试用稿（未进 main；安装包版本 0.3.0-12）。
 
-            - 设置「显示」可改日程标签显示名
-            - 本机号码名单迁到设置「数据」；补录只指向设置
-            - 保留娱乐/社交标签、补录抽屉与列表筛选
+            - 新建是矮抽屉，左右两张入口
+            - 补录里已记下的会标已补录，并排在后面
+            - 周视图短时段是细点或一行名字
+            - 设置里可改标签显示名，号码名单在数据里
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
