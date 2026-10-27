@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   REPLAY_CHIP_HEIGHT,
   REPLAY_CHIP_RAIL_LEFT,
+  REPLAY_OVERLAP_RESERVE_PX,
   isRailMark,
   placeReplayLabel,
   placeReplayBand,
@@ -184,7 +185,7 @@ describe("replay chip layout", () => {
     ).toBe("");
   });
 
-  it("keeps the wash over the whole span and parks a covering name inside it", () => {
+  it("keeps a colliding short name beside the class, not above its title", () => {
     const spanTop = (6 * 60 + 52) / 60 * 52;
     const spanHeight = (16 / 60) * 52;
     const readTop = 7 * 52;
@@ -197,7 +198,10 @@ describe("replay chip layout", () => {
     });
     expect(placed.washTop).toBe(spanTop);
     expect(placed.washHeight).toBe(spanHeight);
-    expect(placed.labelTop + REPLAY_CHIP_HEIGHT).toBeLessThanOrEqual(readTop);
+    expect(placed.besideClass).toBe(true);
+    expect(placed.labelTop).toBeGreaterThanOrEqual(readTop);
+    expect(placed.labelTop).toBeLessThan(readTop + readHeight);
+    expect(REPLAY_OVERLAP_RESERVE_PX).toBeGreaterThan(0);
   });
 
   it("drops the name instead of cutting it in half", () => {

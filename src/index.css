@@ -973,6 +973,10 @@ body.widget-body #root {
 .replay-chip-label {
   white-space: nowrap;
 }
+.replay-chip-label-clip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .phone-sheet {
   height: min(94dvh, 900px);
   max-height: 94dvh !important;

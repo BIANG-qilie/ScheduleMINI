@@ -54,6 +54,9 @@ import {
   isRailMark,
   placeReplayBand,
   placeReplayLabel,
+  replayChipSpan,
+  REPLAY_NAME_LANE_PX,
+  REPLAY_OVERLAP_RESERVE_PX,
   replayCapsuleInset,
   type ReplayRect,
 } from "@/lib/replay-chip";
@@ -543,6 +546,20 @@ export function WeekGrid({
                     laneWidth: laneForLayout,
                     minCapsule: minCardWidth,
                   });
+                  const overlappedCardIds = new Set<string>();
+                  for (const [id] of layout.cards) {
+                    const card = byId.get(id);
+                    if (!card) continue;
+                    const cardBottom = card.top + card.height;
+                    for (const short of replayEntries) {
+                      const spanBottom =
+                        short.top + ((short.endMin - short.startMin) / 60) * DAY_PX;
+                      if (spanBottom > card.top && cardBottom > short.top) {
+                        overlappedCardIds.add(id);
+                        break;
+                      }
+                    }
+                  }
                   const spineOf = new Map<string, number>();
                   for (const id of layout.bands) {
                     const entry = byId.get(id);
@@ -657,7 +674,11 @@ export function WeekGrid({
                         style={{
                           top,
                           height,
-                          ...slotFrame(slot, 0, replayInset),
+                          ...slotFrame(
+                            slot,
+                            0,
+                            overlappedCardIds.has(id) ? REPLAY_OVERLAP_RESERVE_PX : replayInset,
+                          ),
                           zIndex: 10 + slot.column,
                           borderColor: "var(--color-line)",
                           boxShadow: `inset 2px 0 0 ${rail}, inset 0 1px 0 rgba(255,252,246,0.9), 0 10px 18px -16px rgba(28,22,18,0.55)`,
@@ -751,7 +772,7 @@ export function WeekGrid({
                       },
                     ];
                   });
-                  for (const entry of replayEntries) {
+                  const replayDrafts = replayEntries.map((entry) => {
                     const key = `${entry.item.id}@${entry.startMin}`;
                     const title = itemDisplayTitle(entry.item);
                     const spanHeight =
@@ -762,13 +783,41 @@ export function WeekGrid({
                       labelHeight: REPLAY_CHIP_HEIGHT,
                       obstacles: cardObstacles,
                     });
+                    return { entry, key, title, spanHeight, band };
+                  });
+                  const takenLabels: ReplayRect[] = [];
+                  const placedByKey = new Map<
+                    string,
+                    { top: number; label: string; labelLeft: number }
+                  >();
+                  const ranked = [...replayDrafts].sort(
+                    (a, b) =>
+                      b.band.overlap - a.band.overlap ||
+                      a.entry.startMin - b.entry.startMin,
+                  );
+                  for (const draft of ranked) {
                     const placedChip = placeReplayLabel({
-                      title,
-                      top: band.labelTop,
+                      title: draft.title,
+                      top: draft.band.labelTop,
                       laneWidth: laneForLayout,
                       obstacles: [],
-                      taken: [],
+                      taken: takenLabels,
                     });
+                    placedByKey.set(draft.key, placedChip);
+                    if (placedChip.label) {
+                      const span = replayChipSpan(placedChip.label);
+                      takenLabels.push({
+                        top: placedChip.top,
+                        bottom: placedChip.top + REPLAY_CHIP_HEIGHT,
+                        left: span.labelLeft,
+                        right: span.right,
+                      });
+                    }
+                  }
+                  for (const draft of replayDrafts) {
+                    const { entry, key, title, spanHeight, band } = draft;
+                    const placedChip = placedByKey.get(key)!;
+                    const clipName = band.besideClass && placedChip.label.length > 0;
                     const roleColor = ownerColor(entry.item, couple);
                     const roleDotStyle = {
                       backgroundColor: roleColor,
@@ -802,7 +851,7 @@ export function WeekGrid({
                         title={itemHoverText(entry.item)}
                         aria-label={title}
                         className="replay-chip pointer-events-auto absolute z-[20]"
-                        style={{ top: band.labelTop, left: REPLAY_CHIP_RAIL_LEFT }}
+                        style={{ top: placedChip.top, left: REPLAY_CHIP_RAIL_LEFT }}
                         {...bindItem(entry.item)}
                       >
                         <span
@@ -813,7 +862,15 @@ export function WeekGrid({
                           aria-hidden
                         />
                         {placedChip.label ? (
-                          <span className="replay-chip-label">{placedChip.label}</span>
+                          <span
+                            className={cn(
+                              "replay-chip-label",
+                              clipName && "replay-chip-label-clip",
+                            )}
+                            style={clipName ? { maxWidth: REPLAY_NAME_LANE_PX } : undefined}
+                          >
+                            {placedChip.label}
+                          </span>
                         ) : null}
                       </button>,
                     );
