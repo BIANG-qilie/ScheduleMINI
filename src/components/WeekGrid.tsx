@@ -54,7 +54,6 @@ import {
   isRailMark,
   placeReplayBand,
   placeReplayLabel,
-  replayChipSpan,
   REPLAY_NAME_LANE_PX,
   REPLAY_OVERLAP_RESERVE_PX,
   replayCapsuleInset,
@@ -785,38 +784,15 @@ export function WeekGrid({
                     });
                     return { entry, key, title, spanHeight, band };
                   });
-                  const takenLabels: ReplayRect[] = [];
-                  const placedByKey = new Map<
-                    string,
-                    { top: number; label: string; labelLeft: number }
-                  >();
-                  const ranked = [...replayDrafts].sort(
-                    (a, b) =>
-                      b.band.overlap - a.band.overlap ||
-                      a.entry.startMin - b.entry.startMin,
-                  );
-                  for (const draft of ranked) {
-                    const placedChip = placeReplayLabel({
-                      title: draft.title,
-                      top: draft.band.labelTop,
-                      laneWidth: laneForLayout,
-                      obstacles: [],
-                      taken: takenLabels,
-                    });
-                    placedByKey.set(draft.key, placedChip);
-                    if (placedChip.label) {
-                      const span = replayChipSpan(placedChip.label);
-                      takenLabels.push({
-                        top: placedChip.top,
-                        bottom: placedChip.top + REPLAY_CHIP_HEIGHT,
-                        left: span.labelLeft,
-                        right: span.right,
-                      });
-                    }
-                  }
                   for (const draft of replayDrafts) {
                     const { entry, key, title, spanHeight, band } = draft;
-                    const placedChip = placedByKey.get(key)!;
+                    const placedChip = placeReplayLabel({
+                      title,
+                      top: band.labelTop,
+                      laneWidth: laneForLayout,
+                      obstacles: [],
+                      taken: [],
+                    });
                     const clipName = band.besideClass && placedChip.label.length > 0;
                     const roleColor = ownerColor(entry.item, couple);
                     const roleDotStyle = {
