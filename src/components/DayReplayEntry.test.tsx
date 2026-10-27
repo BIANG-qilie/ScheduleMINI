@@ -10,7 +10,7 @@ afterEach(() => {
   cleanup();
 });
 
-const ENTRY_LABEL = "根据手机记录补今天";
+const ENTRY_LABEL = "根据手机记录补日程";
 
 describe("DayReplayEntry", () => {
   it("shows no button when the Android bridge is missing", () => {
@@ -23,7 +23,15 @@ describe("DayReplayEntry", () => {
     render(
       <DayReplayEntry
         onCommit={() => undefined}
-        bridge={{ readToday: () => JSON.stringify({ ok: true, queryTime: on26(12, 0), events: [], calls: [] }) }}
+        bridge={{
+          readDay: () =>
+            JSON.stringify({
+              ok: true,
+              queryTime: on26(12, 0),
+              events: [],
+              calls: [],
+            }),
+        }}
       />,
     );
     const trigger = screen.getByRole("button", { name: ENTRY_LABEL });
@@ -31,7 +39,7 @@ describe("DayReplayEntry", () => {
     expect(screen.queryByRole("button", { name: "补今天" })).toBeNull();
   });
 
-  it("asks for a real title before an app cue becomes a schedule item", async () => {
+  it("defaults the title to the app name and still keeps the cue label", async () => {
     const user = userEvent.setup();
     const onCommit = vi.fn();
     const memory = new Map<string, string>([
@@ -43,8 +51,9 @@ describe("DayReplayEntry", () => {
         memory.set(key, value);
       },
     };
-    const readToday = () =>
-      JSON.stringify({
+    const readDay = (dayOffset: number) => {
+      expect(dayOffset).toBe(0);
+      return JSON.stringify({
         ok: true,
         queryTime: on26(18, 0),
         events: [
@@ -71,42 +80,61 @@ describe("DayReplayEntry", () => {
           },
         ],
       });
+    };
     render(
       <DayReplayEntry
         onCommit={onCommit}
-        bridge={{ readToday }}
+        bridge={{ readDay }}
         storage={storage}
       />,
     );
     await user.click(screen.getByRole("button", { name: ENTRY_LABEL }));
     const dialog = screen.getByRole("dialog");
     expect(dialog.closest("body")).toBe(document.body);
-    expect(dialog.parentElement?.parentElement).toBe(document.body);
-    expect(screen.getByRole("heading", { name: "补今天" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "根据手机记录补日程" })).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "补哪一天" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /今天/ })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /昨天/ })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /前天/ })).toBeTruthy();
     expect(screen.getByText("线索 · 微信")).toBeTruthy();
     expect(screen.getByText("手机通话")).toBeTruthy();
     expect(screen.queryByText("com.tencent.mm")).toBeNull();
-    expect(screen.getByText("本机号码名单").closest("details")).toBeTruthy();
+    expect((screen.getByLabelText("微信的标题") as HTMLInputElement).value).toBe(
+      "微信",
+    );
 
-    await user.type(screen.getByLabelText("微信的标题"), "微信");
     await user.selectOptions(screen.getByLabelText("微信的标签"), "life");
     await user.click(screen.getAllByRole("checkbox")[0]);
-    await user.click(screen.getByRole("button", { name: "记下勾选的" }));
-    expect(screen.getByText("先改标题和标签。应用名不能当作做了什么。")).toBeTruthy();
-    expect(onCommit).not.toHaveBeenCalled();
-
-    await user.clear(screen.getByLabelText("微信的标题"));
-    await user.type(screen.getByLabelText("微信的标题"), "回消息");
     await user.click(screen.getByRole("button", { name: "记下勾选的" }));
     expect(onCommit).toHaveBeenCalledTimes(1);
     const drafts = onCommit.mock.calls[0][0] as Record<string, unknown>[];
     expect(drafts[0]).toMatchObject({
-      title: "回消息",
+      title: "微信",
       tag: "life",
       recurrence: "once",
       owner: "self",
     });
     expect(JSON.stringify(drafts)).not.toContain("com.tencent.mm");
     expect(JSON.stringify(drafts)).not.toContain("+8613800138000");
+  });
+
+  it("reloads through readDay when switching to yesterday", async () => {
+    const user = userEvent.setup();
+    const offsets: number[] = [];
+    const readDay = (dayOffset: number) => {
+      offsets.push(dayOffset);
+      return JSON.stringify({
+        ok: true,
+        queryTime: on26(18, 0) - dayOffset * 86_400_000,
+        events: [],
+        calls: [],
+      });
+    };
+    render(
+      <DayReplayEntry onCommit={() => undefined} bridge={{ readDay }} />,
+    );
+    await user.click(screen.getByRole("button", { name: ENTRY_LABEL }));
+    await user.click(screen.getByRole("tab", { name: /昨天/ }));
+    expect(offsets).toEqual([0, 1]);
   });
 });

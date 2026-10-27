@@ -149,15 +149,32 @@ describe("schedule drafts", () => {
     });
   });
 
-  it("refuses to save an app cue whose title is still the app name", () => {
+  it("allows saving an app cue whose title is the app display name", () => {
     const app = cues.find((cue) => cue.kind === "app");
     if (app?.kind !== "app") throw new Error("missing app cue");
     const { drafts, rejected } = confirmReplayDrafts(
       [{ cue: app, checked: true, title: app.label, tag: "life" }],
       () => "draft-2",
     );
-    expect(drafts).toEqual([]);
-    expect(rejected).toBe(1);
+    expect(rejected).toBe(0);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({
+      title: app.label,
+      tag: "life",
+      recurrence: "once",
+    });
+  });
+
+  it("defaults a blank app title to the cue label", () => {
+    const app = cues.find((cue) => cue.kind === "app");
+    if (app?.kind !== "app") throw new Error("missing app cue");
+    const { drafts, rejected } = confirmReplayDrafts(
+      [{ cue: app, checked: true, title: "  ", tag: "social" }],
+      () => "draft-blank",
+    );
+    expect(rejected).toBe(0);
+    expect(drafts[0]?.title).toBe(app.label);
+    expect(drafts[0]?.tag).toBe("social");
   });
 
   it("writes an overnight span with the existing end date", () => {

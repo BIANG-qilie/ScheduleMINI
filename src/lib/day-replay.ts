@@ -77,7 +77,8 @@ const SCHEDULE_TAGS = new Set<ScheduleTag>([
   "rest",
   "life",
   "call",
-  "game",
+  "entertainment",
+  "social",
   "other",
 ]);
 
@@ -155,6 +156,32 @@ export type DayReplayRead =
       events: UsageEvent[];
       calls: CallRecord[];
     };
+
+/** 可补录：今天与往前两天（共 3 天）。 */
+export const DAY_REPLAY_MAX_OFFSET = 2;
+
+export function replayDateKeyForOffset(
+  dayOffset: number,
+  now = new Date(),
+): string {
+  const offset = Math.min(
+    Math.max(0, Math.trunc(dayOffset)),
+    DAY_REPLAY_MAX_OFFSET,
+  );
+  const day = new Date(now);
+  day.setHours(12, 0, 0, 0);
+  day.setDate(day.getDate() - offset);
+  return formatDateKey(day);
+}
+
+export function replayDayChoices(now = new Date()) {
+  return Array.from({ length: DAY_REPLAY_MAX_OFFSET + 1 }, (_, offset) => {
+    const dateKey = replayDateKeyForOffset(offset, now);
+    const label =
+      offset === 0 ? "今天" : offset === 1 ? "昨天" : "前天";
+    return { offset, dateKey, label };
+  });
+}
 
 function eventRank(type: number) {
   if (type === USAGE_BACKGROUND || TRUNCATE_TYPES.has(type)) return 0;
@@ -580,8 +607,8 @@ function draftFromCue(
       callChannel: "phone",
     };
   }
-  const title = edits.title.trim();
-  if (!title || title === cue.label) return null;
+  const title = edits.title.trim() || cue.label.trim();
+  if (!title) return null;
   if (!SCHEDULE_TAGS.has(edits.tag as ScheduleTag)) return null;
   return {
     id,

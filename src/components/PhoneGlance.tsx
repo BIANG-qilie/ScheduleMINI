@@ -17,7 +17,7 @@ import {
   type ScheduleItem,
   type UpcomingRef,
 } from "@/lib/config";
-import { onceItemsToExistingSpans, type ReplayScheduleDraft } from "@/lib/day-replay";
+import { type ReplayScheduleDraft } from "@/lib/day-replay";
 import { getTodayLabel, onHolidayData } from "@/lib/holidays";
 import { formatItemSubline } from "@/lib/schedule-style";
 import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
@@ -149,10 +149,6 @@ export function PhoneGlance({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [now, dayOverrides, holidayTick],
   );
-  const existingOnce = useMemo(
-    () => onceItemsToExistingSpans(items, todayKey),
-    [items, todayKey],
-  );
   const mine = useMemo(() => laneSelfItems(items), [items]);
   const theirs = useMemo(
     () => (soloMode ? [] : lanePartnerItems(items)),
@@ -200,7 +196,7 @@ export function PhoneGlance({
         {onReplayCommit ? (
           <DayReplayEntry
             onCommit={onReplayCommit}
-            existingOnce={existingOnce}
+            scheduleItems={items}
             trigger="text"
           />
         ) : null}

@@ -235,7 +235,7 @@ describe("call tag migrate", () => {
     expect(cfg.items[0].callChannel).toBeUndefined();
   });
 
-  it("migrates legacy gamePlatform values", () => {
+  it("migrates legacy game tag and gamePlatform values", () => {
     const cfg = parseAppConfig({
       version: 1,
       showHolidays: true,
@@ -264,6 +264,8 @@ describe("call tag migrate", () => {
         },
       ],
     });
+    expect(cfg.items[0].tag).toBe("entertainment");
+    expect(cfg.items[1].tag).toBe("entertainment");
     expect(cfg.items[0].gamePlatform).toBe("pc");
     expect(formatItemSubline(cfg.items[0])).toBe("PC");
     expect(cfg.items[1].gamePlatform).toBe("mobile");
