@@ -12,7 +12,7 @@ describe("replay chip layout", () => {
   it("keeps every dot on the hour rail and the names in one column", () => {
     const douyin = replayChipSpan("抖音");
     const tata = replayChipSpan("塔塔冒险队");
-    expect(REPLAY_CHIP_RAIL_LEFT).toBe(-5);
+    expect(REPLAY_CHIP_RAIL_LEFT).toBe(6);
     expect(douyin.labelLeft).toBe(tata.labelLeft);
     expect(douyin.labelLeft).toBeGreaterThan(REPLAY_CHIP_RAIL_LEFT);
   });

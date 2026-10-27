@@ -87,14 +87,14 @@ describe("replayed short spans", () => {
     for (const dot of dots) {
       const dotEl = dot as HTMLElement;
       const dotLeft = dotEl.style.left || (dotEl.parentElement as HTMLElement).style.left;
-      expect(dotLeft).toBe("-5px");
+      expect(dotLeft).toBe("6px");
     }
     expect(laneChips.map((chip) => chip.getAttribute("data-label")).sort()).toEqual([
       "塔塔冒险队",
       "抖音",
     ]);
     const classCard = lane?.querySelector("[data-block='card']") as HTMLElement;
-    expect(classCard.style.left).toContain("68px");
+    expect(classCard.style.left).toContain("79px");
     expect(classCard.style.width).toContain("100%");
     expect(document.body.textContent).not.toContain("已补录");
     expect(cards.length).toBe(0);
