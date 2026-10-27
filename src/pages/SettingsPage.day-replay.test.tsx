@@ -11,4 +11,22 @@ describe("SettingsPage main section", () => {
     expect(source).not.toMatch(/phone-create[\s\S]{0,200}openCreate/);
     expect(source).toMatch(/phone-create[\s\S]{0,200}setCreateSheetOpen\(true\)/);
   });
+
+  it("shows 已补录 only inside the replay dialog", () => {
+    const settings = readFileSync(new URL("./SettingsPage.tsx", import.meta.url), "utf8");
+    const week = readFileSync(
+      new URL("../components/WeekGrid.tsx", import.meta.url),
+      "utf8",
+    );
+    const css = readFileSync(new URL("../index.css", import.meta.url), "utf8");
+    const replay = readFileSync(
+      new URL("../components/DayReplayEntry.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(settings).not.toContain("已补录");
+    expect(week).not.toContain("已补录");
+    expect(css).not.toContain("phone-list-replay");
+    expect(css).not.toContain("phone-replay-badge");
+    expect(replay).toContain("已补录");
+  });
 });
