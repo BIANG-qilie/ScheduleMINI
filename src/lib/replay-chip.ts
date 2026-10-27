@@ -1,4 +1,4 @@
-/** 短标记的圆点留在钟点竖线上，名字让开课程胶囊，整名放不下就不写。 */
+/** 短标记的圆点留在钟点竖线内侧，名字让开课程胶囊，整名放不下就不写。 */
 
 export function estimateTextWidth(text: string, fontPx: number) {
   let width = 0;
@@ -11,8 +11,8 @@ export function estimateTextWidth(text: string, fontPx: number) {
   return width;
 }
 
-/** 和当前时间圆点同一条竖线（相对日程列左缘）。 */
-export const REPLAY_CHIP_RAIL_LEFT = -5;
+/** 相对日程列左缘。整颗圆点都在边框里面，留出一小段空隙。当前时间圆点用同一个数。 */
+export const REPLAY_CHIP_RAIL_LEFT = 6;
 
 export const REPLAY_CHIP_HEIGHT = 16;
 
