@@ -28,6 +28,7 @@ import {
   WORK_KIND_OPTIONS,
   compareTime,
   formatDateKey,
+  formatTagLabel,
   partnerFacingName,
   shiftDateKey,
   itemSkippedDates,
@@ -292,7 +293,7 @@ export function ScheduleEditor({
                   }))
                 }
               >
-                {opt.label}
+                {formatTagLabel(opt.id)}
               </Chip>
             ))}
           </div>

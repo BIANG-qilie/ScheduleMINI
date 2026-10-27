@@ -4,7 +4,6 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   readCallAllowlist,
-  writeCallAllowlist,
   type KeyValueStore,
 } from "@/lib/call-allowlist";
 import {
@@ -13,6 +12,7 @@ import {
 } from "@/lib/app-tag-memory";
 import {
   formatDateKey,
+  formatTagLabel,
   SCHEDULE_TAG_OPTIONS,
   type ScheduleTag,
 } from "@/lib/config";
@@ -102,18 +102,13 @@ export function DayReplayEntry({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [payload, setPayload] = useState<Extract<DayReplayRead, { ok: true }> | null>(
-    null,
-  );
   const [allowlist, setAllowlist] = useState<string[]>([]);
-  const [draftNumber, setDraftNumber] = useState("");
   const [rows, setRows] = useState<RowState[]>([]);
   const [busy, setBusy] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
 
   const dayChoices = useMemo(() => replayDayChoices(new Date()), [open]);
-  const selectedDay = dayChoices[dayOffset] ?? dayChoices[0];
 
   const canRead =
     typeof resolved?.readDay === "function" ||
@@ -165,14 +160,12 @@ export function DayReplayEntry({
     try {
       const raw = resolved ? readDayReplay(resolved, offset) : undefined;
       if (typeof raw !== "string") {
-        setPayload(null);
         setRows([]);
         setError("读不到这一天的记录。");
         return;
       }
       const parsed = parseDayReplayRead(raw);
       if (!parsed.ok) {
-        setPayload(null);
         setRows([]);
         setError(
           parsed.reason === "permission"
@@ -181,21 +174,13 @@ export function DayReplayEntry({
         );
         return;
       }
-      setPayload(parsed);
       fillRows(parsed, numbers, dateKey);
     } catch {
-      setPayload(null);
       setRows([]);
       setError("读不到这一天的记录。");
     } finally {
       setLoading(false);
     }
-  };
-
-  const saveAllowlist = (numbers: string[]) => {
-    writeCallAllowlist(numbers, storage);
-    setAllowlist(numbers);
-    if (payload && selectedDay) fillRows(payload, numbers, selectedDay.dateKey);
   };
 
   const commit = async () => {
@@ -409,7 +394,7 @@ export function DayReplayEntry({
                       >
                         {SCHEDULE_TAG_OPTIONS.map((option) => (
                           <option key={option.id} value={option.id}>
-                            {option.label}
+                            {formatTagLabel(option.id)}
                           </option>
                         ))}
                       </select>
@@ -455,60 +440,11 @@ export function DayReplayEntry({
             </div>
           ) : null}
 
-          <details className="rounded-2xl border border-[var(--color-line)] p-3">
-            <summary className="cursor-pointer text-sm text-[var(--color-ink)]">
-              本机号码名单
-            </summary>
-            <p className="mt-2 text-xs leading-relaxed text-[var(--color-ink-muted)]">
-              只留在这台手机上。
+          {allowlist.length === 0 ? (
+            <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">
+              号码名单为空时通话不会出现；到 设置 → 数据 里改。
             </p>
-            {allowlist.length === 0 ? (
-              <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
-                名单是空的，通话不会出现。
-              </p>
-            ) : (
-              <ul className="mt-2 space-y-1">
-                {allowlist.map((number) => (
-                  <li
-                    key={number}
-                    className="flex items-center justify-between gap-2 text-sm"
-                  >
-                    <span className="tabular">{number}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
-                      onClick={() =>
-                        saveAllowlist(allowlist.filter((item) => item !== number))
-                      }
-                    >
-                      移除
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const next = draftNumber.trim();
-                if (!next || allowlist.includes(next)) return;
-                saveAllowlist([...allowlist, next]);
-                setDraftNumber("");
-              }}
-            >
-              <Input
-                value={draftNumber}
-                onChange={(event) => setDraftNumber(event.target.value)}
-                placeholder="+8613800138000"
-                aria-label="名单号码"
-                inputMode="tel"
-              />
-              <Button type="submit" variant="secondary" size="sm">
-                加入
-              </Button>
-            </form>
-          </details>
+          ) : null}
         </div>
       </Dialog>
     </>

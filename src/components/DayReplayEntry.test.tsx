@@ -110,6 +110,39 @@ describe("DayReplayEntry", () => {
     });
   });
 
+  it("points empty allowlist to settings data, without an editor", async () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        memory.set(key, value);
+      },
+    };
+    render(
+      <DayReplayEntry
+        open
+        onOpenChange={() => undefined}
+        onCommit={() => undefined}
+        bridge={{
+          readDay: () =>
+            JSON.stringify({
+              ok: true,
+              queryTime: on26(12, 0),
+              events: [],
+              calls: [],
+            }),
+        }}
+        storage={storage}
+        trigger={null}
+      />,
+    );
+    expect(
+      screen.getByText("号码名单为空时通话不会出现；到 设置 → 数据 里改。"),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("名单号码")).toBeNull();
+    expect(screen.queryByRole("button", { name: "加入" })).toBeNull();
+  });
+
   it("does not update app-tag memory when commit fails", async () => {
     const user = userEvent.setup();
     const memory = new Map<string, string>();
