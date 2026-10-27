@@ -22,6 +22,9 @@ import { Switch } from "@/components/ui/switch";
 import { WeekGrid } from "@/components/WeekGrid";
 import { PhoneGlance } from "@/components/PhoneGlance";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
+import { CreateActionSheet } from "@/components/CreateActionSheet";
+import { DayReplayEntry } from "@/components/DayReplayEntry";
+import { hasDayReplayBridge } from "@/lib/day-replay-native";
 import type { Draft } from "@/components/ScheduleEditor";
 import {
   callBackfillTitle,
@@ -78,7 +81,6 @@ import {
   DEFAULT_LIST_FILTERS,
   queryListItems,
   type ListFilters,
-  type ListSortKey,
 } from "@/lib/list-query";
 import { resolveRelayBaseUrl } from "@/lib/sync/relay";
 import { syncAutostart } from "@/lib/widget-chrome";
@@ -245,7 +247,9 @@ export function SettingsPage() {
   const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list">("now");
   const [listFilters, setListFilters] =
     useState<ListFilters>(DEFAULT_LIST_FILTERS);
-  const [listSort, setListSort] = useState<ListSortKey>("start");
+  const [createSheetOpen, setCreateSheetOpen] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
+  const canReplay = narrow && hasDayReplayBridge();
 
   useEffect(() => {
     const openNow = () => setPhoneTab("now");
@@ -379,14 +383,13 @@ export function SettingsPage() {
     [config.items],
   );
   const listItems = useMemo(
-    () => queryListItems(config.items, listFilters, listSort),
-    [config.items, listFilters, listSort],
+    () => queryListItems(config.items, listFilters),
+    [config.items, listFilters],
   );
   const listShowingFilters =
     listFilters.tag !== "all" ||
     listFilters.owner !== "all" ||
-    !!listFilters.dateFrom ||
-    !!listFilters.dateTo;
+    listFilters.recurrence !== "all";
 
   const openCreate = () => {
     setDraft(emptyDraft());
@@ -563,7 +566,7 @@ export function SettingsPage() {
             ? draft.callChannel || DEFAULT_CALL_CHANNEL
             : undefined,
         gamePlatform:
-          draft.tag === "entertainment" && draft.gamePlatform
+          draft.tag === "game" && draft.gamePlatform
             ? draft.gamePlatform
             : undefined,
         workKind: draft.tag === "work" ? draft.workKind : undefined,
@@ -802,10 +805,6 @@ export function SettingsPage() {
               couple={config.couple}
               soloMode={config.soloMode}
               showHolidays={config.showHolidays}
-              onReplayCommit={async (drafts) => {
-                for (const draft of drafts) await upsertItem(draft);
-                setStatus(`已记下 ${drafts.length} 条`);
-              }}
             />
           ) : null}
 
@@ -972,48 +971,21 @@ export function SettingsPage() {
                   </label>
                 ) : null}
                 <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
-                  <span>从</span>
-                  <Input
-                    type="date"
-                    className="h-9 w-[9.5rem] px-2 text-sm"
-                    aria-label="日期起"
-                    value={listFilters.dateFrom}
-                    onChange={(e) =>
-                      setListFilters((prev) => ({
-                        ...prev,
-                        dateFrom: e.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
-                  <span>到</span>
-                  <Input
-                    type="date"
-                    className="h-9 w-[9.5rem] px-2 text-sm"
-                    aria-label="日期止"
-                    value={listFilters.dateTo}
-                    onChange={(e) =>
-                      setListFilters((prev) => ({
-                        ...prev,
-                        dateTo: e.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
-                  <span>排序</span>
+                  <span>重复</span>
                   <select
                     className="block h-9 min-w-[6.5rem] rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-ink)]"
-                    aria-label="列表排序"
-                    value={listSort}
+                    aria-label="按仅一次或重复筛选"
+                    value={listFilters.recurrence}
                     onChange={(e) =>
-                      setListSort(e.target.value as ListSortKey)
+                      setListFilters((prev) => ({
+                        ...prev,
+                        recurrence: e.target.value as ListFilters["recurrence"],
+                      }))
                     }
                   >
-                    <option value="start">开始时间</option>
-                    <option value="title">标题</option>
-                    <option value="date">日期</option>
+                    <option value="all">全部</option>
+                    <option value="once">仅一次</option>
+                    <option value="weekly">会重复</option>
                   </select>
                 </label>
                 {listShowingFilters ? (
@@ -1178,7 +1150,7 @@ export function SettingsPage() {
             <button
               type="button"
               className="phone-create"
-              onClick={openCreate}
+              onClick={() => setCreateSheetOpen(true)}
               disabled={busy}
             >
               <Plus aria-hidden />
@@ -1716,6 +1688,29 @@ export function SettingsPage() {
           </TabsContent>
         </Tabs>
       </Dialog>
+
+      <CreateActionSheet
+        open={createSheetOpen}
+        onOpenChange={setCreateSheetOpen}
+        onCreate={openCreate}
+        onReplay={
+          canReplay
+            ? () => {
+                setReplayOpen(true);
+              }
+            : undefined
+        }
+      />
+      <DayReplayEntry
+        open={replayOpen}
+        onOpenChange={setReplayOpen}
+        trigger={null}
+        scheduleItems={config.items}
+        onCommit={async (drafts) => {
+          for (const draft of drafts) await upsertItem(draft);
+          setStatus(`已记下 ${drafts.length} 条`);
+        }}
+      />
 
       <Dialog
         open={editorOpen}

@@ -286,8 +286,7 @@ export function ScheduleEditor({
                         : prev.workKind,
                     isCourseSwap: opt.id === "work" ? prev.isCourseSwap : false,
                     owner:
-                      opt.id === "entertainment" &&
-                      prev.tag !== "entertainment"
+                      opt.id === "game" && prev.tag !== "game"
                         ? "shared"
                         : prev.owner,
                   }))
@@ -413,7 +412,7 @@ export function ScheduleEditor({
           </Block>
         ) : null}
 
-        {draft.tag === "entertainment" ? (
+        {draft.tag === "game" ? (
           <Block label="平台">
             <div className="flex flex-wrap gap-1.5">
               {GAME_PLATFORM_OPTIONS.map((opt) => (
@@ -422,7 +421,7 @@ export function ScheduleEditor({
                   active={draft.gamePlatform === opt.id}
                   className={
                     draft.gamePlatform === opt.id
-                      ? TAG_SURFACE.entertainment.chip
+                      ? TAG_SURFACE.game.chip
                       : undefined
                   }
                   onClick={() =>

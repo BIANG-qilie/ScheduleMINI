@@ -183,7 +183,7 @@ describe("schedule drafts", () => {
     const { drafts } = confirmReplayDrafts(
       [
         {
-          cue: { kind: "app", label: "微信", start, end },
+          cue: { kind: "app", label: "微信", packageName: "com.tencent.mm", start, end },
           checked: true,
           title: "夜读",
           tag: "study",
@@ -264,7 +264,8 @@ describe("bridge payload", () => {
       queryTime: parsed.queryTime,
     });
     expect(cues.filter((cue) => cue.kind === "call")).toHaveLength(1);
-    expect(JSON.stringify(cues)).not.toContain("packageName");
+    expect(cues.some((cue) => cue.kind === "app" && cue.packageName)).toBe(true);
+    expect(JSON.stringify(cues.filter((c) => c.kind === "call"))).not.toContain("packageName");
   });
 
   it("stops when the bridge cannot read", () => {

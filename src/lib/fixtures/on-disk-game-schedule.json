@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "showHolidays": true,
+  "widgetVisible": true,
+  "items": [
+    {
+      "id": "disk-game-1",
+      "start": "21:00",
+      "end": "23:00",
+      "title": "开黑",
+      "weekdays": [5],
+      "enabled": true,
+      "recurrence": "weekly",
+      "tag": "game",
+      "gamePlatform": "pc",
+      "owner": "shared",
+      "skippedDates": []
+    },
+    {
+      "id": "disk-social-1",
+      "start": "19:00",
+      "end": "20:00",
+      "title": "见面",
+      "weekdays": [],
+      "enabled": true,
+      "recurrence": "once",
+      "date": "2026-10-26",
+      "tag": "social",
+      "owner": "self",
+      "skippedDates": []
+    },
+    {
+      "id": "disk-entertainment-legacy",
+      "start": "14:00",
+      "end": "15:00",
+      "title": "误写成 entertainment",
+      "weekdays": [0],
+      "enabled": true,
+      "recurrence": "weekly",
+      "tag": "entertainment",
+      "owner": "self",
+      "skippedDates": []
+    }
+  ]
+}

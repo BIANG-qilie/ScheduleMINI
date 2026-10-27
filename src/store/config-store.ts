@@ -518,8 +518,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
             : undefined,
         callChannel:
           tag === "call" ? (item.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
-        gamePlatform:
-          tag === "entertainment" ? item.gamePlatform : undefined,
+        gamePlatform: tag === "game" ? item.gamePlatform : undefined,
         workKind,
         workPrimary,
         workSecondary,
@@ -587,7 +586,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           next.isCourseSwap = undefined;
           next.origin = undefined;
           next.destination = undefined;
-        } else if (tag === "entertainment") {
+        } else if (tag === "game") {
           next.gamePlatform = patch.gamePlatform ?? it.gamePlatform;
           next.callChannel = undefined;
           next.workKind = undefined;
@@ -619,7 +618,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         if (patch.callChannel && tag === "call") {
           next.callChannel = patch.callChannel;
         }
-        if (patch.gamePlatform && tag === "entertainment") {
+        if (patch.gamePlatform && tag === "game") {
           next.gamePlatform = patch.gamePlatform;
         }
       }

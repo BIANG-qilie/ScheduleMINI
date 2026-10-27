@@ -33,16 +33,16 @@ jobs:
             exit 0
           fi
           printf '%s\n' \
-            '0.3.0-beta.8 试用稿（未进 main；安装包版本 0.3.0-8）。' \
+            '0.3.0-beta.9 试用稿（未进 main；安装包版本 0.3.0-9）。' \
             '' \
-            '- 游戏改成娱乐，并加了社交标签' \
-            '- 根据手机记录可补近三天；标题默认用应用名' \
-            '- 列表可按标签、归属、日期筛选并排序' \
+            '- 娱乐仍存 game，另加社交；补录记住本机分类' \
+            '- 新建抽屉可开补录；卡片左右滑多选' \
+            '- 列表按标签、归属、仅一次或重复筛选' \
             > /tmp/release-notes.md
           gh release create "$TAG" \
             --draft \
             --prerelease \
-            --title "小日程 v0.3.0-beta.8" \
+            --title "小日程 v0.3.0-beta.9" \
             --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md
       - uses: actions/setup-node@v4
@@ -117,14 +117,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-8；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.8
+          # 包版本用 MSI 可接受的 0.3.0-9；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.9
           releaseBody: |
-            0.3.0-beta.8 试用稿（未进 main；安装包版本 0.3.0-8）。
+            0.3.0-beta.9 试用稿（未进 main；安装包版本 0.3.0-9）。
 
-            - 游戏改成娱乐，并加了社交标签
-            - 根据手机记录可补近三天；标题默认用应用名
-            - 列表可按标签、归属、日期筛选并排序
+            - 娱乐仍存 game，另加社交；补录记住本机分类
+            - 新建抽屉可开补录；卡片左右滑多选
+            - 列表按标签、归属、仅一次或重复筛选
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
@@ -162,13 +162,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 小日程 v0.3.0-beta.8
+          releaseName: 小日程 v0.3.0-beta.9
           releaseBody: |
-            0.3.0-beta.8 试用稿（未进 main；安装包版本 0.3.0-8）。
+            0.3.0-beta.9 试用稿（未进 main；安装包版本 0.3.0-9）。
 
-            - 游戏改成娱乐，并加了社交标签
-            - 根据手机记录可补近三天；标题默认用应用名
-            - 列表可按标签、归属、日期筛选并排序
+            - 娱乐仍存 game，另加社交；补录记住本机分类
+            - 新建抽屉可开补录；卡片左右滑多选
+            - 列表按标签、归属、仅一次或重复筛选
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
