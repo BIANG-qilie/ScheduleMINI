@@ -950,8 +950,14 @@ body.widget-body #root {
   color: var(--color-ink-muted);
   font-size: 11px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 16px;
   overflow: visible;
+  transition: color 160ms var(--ease-out);
+}
+.replay-chip:hover,
+.replay-chip:focus-visible,
+.replay-chip:active {
+  color: var(--color-ink);
 }
 .replay-chip-dot {
   width: 6px;
@@ -959,7 +965,7 @@ body.widget-body #root {
   flex: none;
   border-radius: 99px;
   background: color-mix(in oklab, var(--color-accent) 42%, var(--color-line));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-accent) 12%, transparent);
 }
 .replay-chip-label {
   white-space: nowrap;

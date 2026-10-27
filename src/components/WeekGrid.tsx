@@ -46,7 +46,15 @@ import {
   isCallItem,
   itemHoverText,
 } from "@/lib/schedule-style";
-import { REPLAY_CHIP_RAIL_LEFT, replayChipLayout } from "@/lib/replay-chip";
+import {
+  REPLAY_CHIP_HEIGHT,
+  REPLAY_CHIP_RAIL_LEFT,
+  placeReplayLabel,
+  replayCapsuleInset,
+  replayCardRect,
+  replayChipSpan,
+  type ReplayRect,
+} from "@/lib/replay-chip";
 import { cn } from "@/lib/utils";
 
 const DAY_PX = 52;
@@ -117,13 +125,17 @@ type GridMenu =
 function slotFrame(
   slot: { column: number; span: number; columnCount: number },
   reserveRight = 0,
+  reserveLeft = 0,
 ) {
   const count = Math.max(1, slot.columnCount);
   const left = (slot.column / count) * 100;
   const width = (slot.span / count) * 100;
+  const leftPad = Math.round((4 + reserveLeft * (1 - left / 100)) * 100) / 100;
+  const widthCut =
+    Math.round((8 + reserveRight + reserveLeft * (width / 100)) * 100) / 100;
   return {
-    left: `calc(${left}% + 4px)`,
-    width: `calc(${width}% - ${8 + reserveRight}px)`,
+    left: `calc(${left}% + ${leftPad}px)`,
+    width: `calc(${width}% - ${widthCut}px)`,
   };
 }
 
@@ -510,6 +522,16 @@ export function WeekGrid({
                     },
                   });
                   const nodes: ReactNode[] = [];
+                  const replayEntries = placed
+                    .filter((entry) =>
+                      replayShortIds.has(`${entry.item.id}@${entry.startMin}`),
+                    )
+                    .sort((a, b) => a.top - b.top || a.item.id.localeCompare(b.item.id));
+                  const replayInset = replayCapsuleInset({
+                    titles: replayEntries.map((entry) => itemDisplayTitle(entry.item)),
+                    laneWidth,
+                    minCapsule: minCardWidth,
+                  });
                   const spineOf = new Map<string, number>();
                   for (const id of layout.bands) {
                     const entry = byId.get(id);
@@ -543,7 +565,7 @@ export function WeekGrid({
                           title={itemHoverText(item)}
                           aria-label={label}
                           className="pointer-events-auto absolute inset-y-0 z-[1] w-2.5"
-                          style={{ left: spine * 8 }}
+                          style={{ left: spine * 8 + replayInset }}
                           {...bindItem(item)}
                         >
                           <span
@@ -561,7 +583,7 @@ export function WeekGrid({
                             selectedIds?.has(item.id) &&
                               "ring-2 ring-[var(--color-ink)] ring-offset-1",
                           )}
-                          style={{ left: spine * 8 + 6, top: labelTop }}
+                          style={{ left: spine * 8 + 6 + replayInset, top: labelTop }}
                           {...bindItem(item)}
                         >
                           <span
@@ -624,7 +646,7 @@ export function WeekGrid({
                         style={{
                           top,
                           height,
-                          ...slotFrame(slot),
+                          ...slotFrame(slot, 0, replayInset),
                           zIndex: 10 + slot.column,
                           borderColor: "var(--color-line)",
                           boxShadow: `inset 2px 0 0 ${rail}, inset 0 1px 0 rgba(255,252,246,0.9), 0 10px 18px -16px rgba(28,22,18,0.55)`,
@@ -706,24 +728,42 @@ export function WeekGrid({
                       </button>,
                     );
                   }
-                  const drawnChipTops: number[] = [];
-                  for (const entry of placed) {
+                  const takenLabels: ReplayRect[] = [];
+                  const cardObstacles = [...layout.cards].flatMap(([id, slot]) => {
+                    const entry = byId.get(id);
+                    if (!entry || laneWidth <= 0) return [];
+                    return [
+                      replayCardRect({
+                        column: slot.column,
+                        span: slot.span,
+                        columnCount: slot.columnCount,
+                        top: entry.top,
+                        height: entry.height,
+                        laneWidth,
+                        inset: replayInset,
+                      }),
+                    ];
+                  });
+                  for (const entry of replayEntries) {
                     const key = `${entry.item.id}@${entry.startMin}`;
-                    if (!replayShortIds.has(key)) continue;
                     const title = itemDisplayTitle(entry.item);
-                    let chipTop = entry.top;
-                    const placedChip = replayChipLayout({
+                    const placedChip = placeReplayLabel({
                       title,
+                      top: entry.top,
                       laneWidth,
+                      obstacles: cardObstacles,
+                      taken: takenLabels,
                     });
-                    for (let guard = 0; guard < 6; guard += 1) {
-                      const stacked = drawnChipTops.some(
-                        (top) => Math.abs(top - chipTop) < 16,
-                      );
-                      if (!stacked) break;
-                      chipTop += 16;
+                    if (placedChip.label) {
+                      const span = replayChipSpan(placedChip.label);
+                      takenLabels.push({
+                        top: placedChip.top,
+                        bottom: placedChip.top + REPLAY_CHIP_HEIGHT,
+                        left: span.labelLeft,
+                        right: span.right,
+                      });
                     }
-                    drawnChipTops.push(chipTop);
+                    const together = !placedChip.label || placedChip.top === entry.top;
                     nodes.push(
                       <button
                         key={`replay-${key}`}
@@ -733,15 +773,34 @@ export function WeekGrid({
                         title={itemHoverText(entry.item)}
                         aria-label={title}
                         className="replay-chip pointer-events-auto absolute z-[20]"
-                        style={{ top: chipTop, left: REPLAY_CHIP_RAIL_LEFT }}
+                        style={
+                          together
+                            ? { top: entry.top, left: REPLAY_CHIP_RAIL_LEFT }
+                            : { top: placedChip.top, left: placedChip.labelLeft }
+                        }
                         {...bindItem(entry.item)}
                       >
-                        <span className="replay-chip-dot" aria-hidden />
+                        {together ? (
+                          <span className="replay-chip-dot" data-replay-dot="" aria-hidden />
+                        ) : null}
                         {placedChip.label ? (
                           <span className="replay-chip-label">{placedChip.label}</span>
                         ) : null}
                       </button>,
                     );
+                    if (placedChip.label && !together) {
+                      nodes.push(
+                        <span
+                          key={`replay-dot-${key}`}
+                          data-replay-dot=""
+                          className="replay-chip-dot pointer-events-none absolute z-[20]"
+                          style={{
+                            top: entry.top + (REPLAY_CHIP_HEIGHT - 6) / 2,
+                            left: REPLAY_CHIP_RAIL_LEFT,
+                          }}
+                        />,
+                      );
+                    }
                   }
                   for (const pill of layout.pills) {
                     const hidden = pill.hiddenIds

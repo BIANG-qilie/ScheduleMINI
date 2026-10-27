@@ -1,4 +1,4 @@
-/** 短标记都贴在钟点竖线同一列。整名放得下才写字，避免截成半个字。 */
+/** 短标记的圆点留在钟点竖线上，名字让开课程胶囊，整名放不下就不写。 */
 
 export function estimateTextWidth(text: string, fontPx: number) {
   let width = 0;
@@ -14,21 +14,127 @@ export function estimateTextWidth(text: string, fontPx: number) {
 /** 和当前时间圆点同一条竖线（相对日程列左缘）。 */
 export const REPLAY_CHIP_RAIL_LEFT = -5;
 
-const DOT_PX = 6;
-const GAP_PX = 4;
+export const REPLAY_CHIP_HEIGHT = 16;
 
-export function replayChipLayout(input: {
-  title: string;
+const DOT_PX = 6;
+const DOT_GAP = 4;
+/** 名字和胶囊、名字和名字之间的空隙。 */
+const CLEAR_GAP = 8;
+const FONT_PX = 11;
+
+export type ReplayRect = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
+
+export function replayChipSpan(title: string, fontPx = FONT_PX) {
+  const text = estimateTextWidth(title.trim(), fontPx);
+  const labelLeft = REPLAY_CHIP_RAIL_LEFT + DOT_PX + DOT_GAP;
+  return {
+    text,
+    labelLeft,
+    right: labelLeft + text,
+  };
+}
+
+/**
+ * 名字列有多宽时，把胶囊往右让。列宽会把胶囊挤到最小宽度以下时返回 0，
+ * 改由名字另找空档。
+ */
+export function replayCapsuleInset(input: {
+  titles: readonly string[];
   laneWidth: number;
-  fontPx?: number;
-}): { left: number; label: string } {
-  const fontPx = input.fontPx ?? 11;
-  const left = REPLAY_CHIP_RAIL_LEFT;
-  const room = input.laneWidth - 8;
-  const text = estimateTextWidth(input.title, fontPx);
+  minCapsule: number;
+}): number {
+  if (input.laneWidth <= 0) return 0;
+  let right = REPLAY_CHIP_RAIL_LEFT;
+  for (const title of input.titles) {
+    const trimmed = title.trim();
+    if (!trimmed) continue;
+    right = Math.max(right, replayChipSpan(trimmed).right);
+  }
+  if (right <= REPLAY_CHIP_RAIL_LEFT) return 0;
+  const cardLeft = Math.ceil(right + CLEAR_GAP);
+  const capsule = input.laneWidth - cardLeft - 4;
+  if (capsule < input.minCapsule) return 0;
+  return Math.max(0, cardLeft - 4);
+}
+
+function overlaps(a: ReplayRect, b: ReplayRect, gap: number) {
+  return !(
+    a.right + gap <= b.left ||
+    b.right + gap <= a.left ||
+    a.bottom + gap <= b.top ||
+    b.bottom + gap <= a.top
+  );
+}
+
+export function placeReplayLabel(input: {
+  title: string;
+  top: number;
+  laneWidth: number;
+  obstacles: readonly ReplayRect[];
+  taken: readonly ReplayRect[];
+}): { top: number; label: string; labelLeft: number } {
+  const title = input.title.trim();
+  const span = replayChipSpan(title);
   const fits =
-    input.title.trim().length > 0 &&
-    room > 0 &&
-    text + DOT_PX + GAP_PX <= room;
-  return { left, label: fits ? input.title : "" };
+    title.length > 0 &&
+    input.laneWidth > 0 &&
+    span.text + DOT_PX + DOT_GAP <= input.laneWidth - 8;
+  if (!fits) {
+    return { top: input.top, label: "", labelLeft: span.labelLeft };
+  }
+
+  const blocks = [...input.obstacles, ...input.taken];
+  const fitsAt = (top: number) => {
+    if (top < 0) return false;
+    const box: ReplayRect = {
+      top,
+      bottom: top + REPLAY_CHIP_HEIGHT,
+      left: span.labelLeft,
+      right: span.right,
+    };
+    return !blocks.some((block) => overlaps(box, block, CLEAR_GAP));
+  };
+
+  if (fitsAt(input.top)) {
+    return { top: input.top, label: title, labelLeft: span.labelLeft };
+  }
+
+  const limit = 6 * 60;
+  for (let delta = 4; delta <= limit; delta += 4) {
+    if (fitsAt(input.top + delta)) {
+      return { top: input.top + delta, label: title, labelLeft: span.labelLeft };
+    }
+    if (fitsAt(input.top - delta)) {
+      return { top: input.top - delta, label: title, labelLeft: span.labelLeft };
+    }
+  }
+
+  return { top: input.top, label: title, labelLeft: span.labelLeft };
+}
+
+export function replayCardRect(input: {
+  column: number;
+  span: number;
+  columnCount: number;
+  top: number;
+  height: number;
+  laneWidth: number;
+  inset: number;
+}): ReplayRect {
+  const count = Math.max(1, input.columnCount);
+  const leftPct = input.column / count;
+  const widthPct = input.span / count;
+  const left = leftPct * input.laneWidth + 4 + input.inset * (1 - leftPct);
+  const width = widthPct * input.laneWidth - 8 - input.inset * widthPct;
+  return {
+    top: input.top,
+    bottom: input.top + input.height,
+    left,
+    right: left + width,
+  };
 }

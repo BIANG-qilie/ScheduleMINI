@@ -80,18 +80,25 @@ describe("replayed short spans", () => {
     const cards = document.querySelectorAll("[data-block='card'][data-item-id='douyin']");
     const classCards = document.querySelectorAll("[data-block='card'][data-item-id='class']");
     expect(chips.length).toBeGreaterThan(1);
-    const lefts = new Set(chips.map((chip) => (chip as HTMLElement).style.left));
-    expect(lefts.size).toBe(1);
-    expect([...lefts][0]).toBe("-5px");
-    expect(chips.map((chip) => chip.getAttribute("data-label")).sort()).toEqual([
+    const lane = chips[0]?.closest("[data-lane]");
+    const laneChips = [...(lane?.querySelectorAll("[data-block='replay-chip']") ?? [])];
+    const dots = [...(lane?.querySelectorAll("[data-replay-dot]") ?? [])];
+    expect(dots.length).toBeGreaterThan(1);
+    for (const dot of dots) {
+      const dotEl = dot as HTMLElement;
+      const dotLeft = dotEl.style.left || (dotEl.parentElement as HTMLElement).style.left;
+      expect(dotLeft).toBe("-5px");
+    }
+    expect(laneChips.map((chip) => chip.getAttribute("data-label")).sort()).toEqual([
       "塔塔冒险队",
       "抖音",
     ]);
+    const classCard = lane?.querySelector("[data-block='card']") as HTMLElement;
+    expect(classCard.style.left).toContain("68px");
+    expect(classCard.style.width).toContain("100%");
     expect(document.body.textContent).not.toContain("已补录");
     expect(cards.length).toBe(0);
     expect(classCards.length).toBeGreaterThan(0);
-    const classCard = classCards[0] as HTMLElement;
-    expect(classCard.style.width).toContain("100%");
     expect(screen.getAllByRole("button", { name: /语文/ }).length).toBeGreaterThan(0);
   });
 });
