@@ -303,6 +303,30 @@ describe("replayed short spans", () => {
         expect(separated).toBe(true);
       }
     }
+    const washes = [...(lane?.querySelectorAll("[data-block='replay-wash']") ?? [])] as HTMLElement[];
+    expect(washes).toHaveLength(7);
+    expect(washes.map((wash) => wash.getAttribute("data-item-id")).sort()).toEqual(
+      ["dy1", "dy2", "dy3", "dy4", "tata1", "tata2", "xin"].sort(),
+    );
+    for (const wash of washes) {
+      expect(wash.style.left).toBe("4px");
+      expect(wash.style.right).toBe("4px");
+      expect(Number.parseFloat(wash.style.height)).toBeGreaterThan(0);
+      expect(Number(wash.style.zIndex)).toBeLessThan(10);
+      expect(wash.style.background).toContain("color-mix");
+      expect(wash.className).not.toContain("border");
+    }
+    for (const card of classCards) {
+      const cardTop = Number.parseFloat(card.style.top);
+      const cardBottom = cardTop + Number.parseFloat(card.style.height);
+      const cardZ = Number(card.style.zIndex);
+      for (const wash of washes) {
+        const washTop = Number.parseFloat(wash.style.top);
+        const washBottom = washTop + Number.parseFloat(wash.style.height);
+        const overlaps = washBottom > cardTop && cardBottom > washTop;
+        if (overlaps) expect(cardZ).toBeGreaterThan(Number(wash.style.zIndex));
+      }
+    }
     expect(document.body.textContent).not.toContain("已补录");
     expect(document.querySelector(".phone-week")).toBeTruthy();
   });

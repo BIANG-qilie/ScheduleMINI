@@ -938,6 +938,9 @@ body.widget-body #root {
   line-height: 1.35;
   color: var(--color-ink-muted);
 }
+.replay-span-wash {
+  border-radius: 4px;
+}
 .replay-chip {
   display: inline-flex;
   align-items: center;
