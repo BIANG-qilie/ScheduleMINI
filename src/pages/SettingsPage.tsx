@@ -23,9 +23,15 @@ import { WeekGrid } from "@/components/WeekGrid";
 import { PhoneGlance } from "@/components/PhoneGlance";
 import { CoexistenceBar } from "@/components/CoexistenceBar";
 import { CreateActionSheet } from "@/components/CreateActionSheet";
+import { CallAllowlistEditor } from "@/components/CallAllowlistEditor";
 import { DayReplayEntry } from "@/components/DayReplayEntry";
 import { hasDayReplayBridge } from "@/lib/day-replay-native";
 import type { Draft } from "@/components/ScheduleEditor";
+import {
+  readTagLabelOverrides,
+  setTagLabelOverride,
+  type TagLabelOverrides,
+} from "@/lib/tag-label-overrides";
 import {
   callBackfillTitle,
   describeCallBackfill,
@@ -50,6 +56,7 @@ import {
   formatDateKey,
   formatItemSpan,
   formatScheduleScope,
+  formatTagLabel,
   pairBanner,
   itemCallChannel,
   itemDisplayTitle,
@@ -71,6 +78,7 @@ import {
 import { ensureHolidayData, getTodayLabel, onHolidayData } from "@/lib/holidays";
 import { startReminderLoop } from "@/lib/reminders";
 import {
+  TAG_BAR,
   formatItemSubline,
   itemHoverText,
   ownerChipStyle,
@@ -240,6 +248,9 @@ export function SettingsPage() {
   };
   const clearSelection = () => setSelectedIds(new Set());
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [tagLabelOverrides, setTagLabelOverrides] = useState<TagLabelOverrides>(
+    {},
+  );
   const [prefsTab, setPrefsTab] = useState<"couple" | "display" | "data">(
     "couple",
   );
@@ -840,7 +851,7 @@ export function SettingsPage() {
                 </option>
                 {SCHEDULE_TAG_OPTIONS.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.label}
+                    {formatTagLabel(o.id, tagLabelOverrides)}
                   </option>
                 ))}
               </select>
@@ -942,7 +953,7 @@ export function SettingsPage() {
                     <option value="all">全部</option>
                     {SCHEDULE_TAG_OPTIONS.map((opt) => (
                       <option key={opt.id} value={opt.id}>
-                        {opt.label}
+                        {formatTagLabel(opt.id)}
                       </option>
                     ))}
                   </select>
@@ -1057,7 +1068,7 @@ export function SettingsPage() {
                           {ownerLabel(item, config.couple)}
                         </span>
                         <span className={scheduleChipClass(tag)}>
-                          {SCHEDULE_TAG_OPTIONS.find((o) => o.id === tag)?.label}
+                          {formatTagLabel(tag)}
                         </span>
                         {courseSwap ? (
                           <span className="rounded-full border border-[#e4c98a] bg-[#fbf6ea] px-2 py-0.5 text-[10px] text-[#7a5a22]">
@@ -1184,7 +1195,10 @@ export function SettingsPage() {
         open={prefsOpen}
         onOpenChange={(open) => {
           setPrefsOpen(open);
-          if (open) setPrefsTab("couple");
+          if (open) {
+            setPrefsTab("couple");
+            setTagLabelOverrides(readTagLabelOverrides());
+          }
         }}
         title="设置"
         eyebrow="偏好"
@@ -1661,9 +1675,48 @@ export function SettingsPage() {
               </Button>
             </div>
             ) : null}
+
+            <div className="space-y-3 rounded-2xl border border-[var(--color-line)] p-4">
+              <div>
+                <h3 className="text-sm font-semibold">日程标签</h3>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-muted)]">
+                  存储仍用原来的代号（例如娱乐仍是 game），只改你看到的名字。
+                </p>
+              </div>
+              <ul className="space-y-2">
+                {SCHEDULE_TAG_OPTIONS.map((opt) => (
+                  <li
+                    key={opt.id}
+                    className="flex items-center gap-3"
+                  >
+                    <span
+                      className="h-3.5 w-3.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: TAG_BAR[opt.id] }}
+                      aria-hidden
+                    />
+                    <Input
+                      value={
+                        tagLabelOverrides[opt.id] ??
+                        formatTagLabel(opt.id, {})
+                      }
+                      aria-label={`${formatTagLabel(opt.id, {})}显示名`}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setTagLabelOverrides((prev) => ({
+                          ...prev,
+                          [opt.id]: next,
+                        }));
+                        setTagLabelOverride(opt.id, next);
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
           </TabsContent>
 
           <TabsContent value={prefsTab} when="data">
+            <CallAllowlistEditor refreshKey={prefsOpen && prefsTab === "data"} />
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"

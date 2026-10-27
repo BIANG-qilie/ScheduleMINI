@@ -222,7 +222,28 @@ export function tagRespectsHolidays(tag: ScheduleTag) {
   return SCHEDULE_TAG_META[tag]?.respectsHolidays ?? false;
 }
 
-export function formatTagLabel(tag: ScheduleTag) {
+/** 展示名：本机覆盖优先，否则字典默认。不改存储 / 同步 id。 */
+export function formatTagLabel(
+  tag: ScheduleTag,
+  overrides?: Partial<Record<ScheduleTag, string>>,
+) {
+  if (overrides) {
+    const override = overrides[tag]?.trim();
+    if (override) return override;
+  } else if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(
+        "desktop-schedule-widget:tag-label-overrides",
+      );
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const value = parsed?.[tag];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+    } catch {
+      /* ignore corrupt local override */
+    }
+  }
   return SCHEDULE_TAG_META[tag]?.label ?? tag;
 }
 
