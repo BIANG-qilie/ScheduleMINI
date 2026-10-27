@@ -3,29 +3,32 @@ import { describe, expect, it } from "vitest";
 import { WIDGET_VISIBILITY_EVENT } from "@/lib/windows";
 
 /**
- * 0.3.0-2 仍无效的根因：
- * 1) 托盘 `toggle_widget` 从不通知前端 → `widgetVisible`/按钮不变；
- * 2) Windows 上对小窗 `hide()` 后再 show/unminimize 经常起不来，收起应走
- *    minimize+skip_taskbar；拉起须先 skip_taskbar(false)。
+ * 0.3.0 最小化后再也出不来：拉起在 unminimize 之前先 set_always_on_top。
+ * Windows 改置顶会 SW_SHOW，把「已最小化」清掉但窗口不展开，后面的
+ * unminimize 就跳过还原。设置和托盘走同一个函数，所以两个入口都没反应。
  */
-describe("widget reveal after minimize (0.3.0-3)", () => {
+describe("widget reveal after minimize", () => {
   const lib = readFileSync("src-tauri/src/lib.rs", "utf8");
   const strategy = readFileSync("src-tauri/src/widget_window.rs", "utf8");
 
-  it("显示路径先取消 skip_taskbar，再 unminimize/show，最后恢复浮窗样式", () => {
+  it("显示路径先取消 skip_taskbar，再 unminimize/show，最后才置顶", () => {
     const reveal = lib.match(
-      /fn reveal_widget\(widget: &WebviewWindow\)[\s\S]*?\n\}/,
+      /fn reveal_widget_now\(widget: &WebviewWindow\)[\s\S]*?\n\}/,
     );
     expect(reveal?.[0]).toBeTruthy();
     const body = reveal![0];
     const skipFalse = body.indexOf("set_skip_taskbar(false)");
     const unminimize = body.indexOf(".unminimize()");
     const show = body.indexOf(".show()");
+    const alwaysOnTop = body.indexOf("set_always_on_top(true)");
     const skipTrue = body.indexOf("set_skip_taskbar(true)");
     expect(skipFalse).toBeGreaterThanOrEqual(0);
     expect(unminimize).toBeGreaterThan(skipFalse);
     expect(show).toBeGreaterThan(unminimize);
-    expect(skipTrue).toBeGreaterThan(show);
+    expect(alwaysOnTop).toBeGreaterThan(show);
+    expect(skipTrue).toBeGreaterThan(alwaysOnTop);
+    expect(lib).toContain("run_on_main_thread");
+    expect(strategy).toContain("REVEAL_STEPS_BROKEN_0_3_0");
   });
 
   it("Windows 收起路径用 minimize，不用 hide", () => {

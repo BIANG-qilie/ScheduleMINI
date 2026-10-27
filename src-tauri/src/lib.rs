@@ -20,26 +20,39 @@ fn notify_widget_visibility(app: &AppHandle, visible: bool) {
     let _ = app.emit(WIDGET_VISIBILITY_EVENT, visible);
 }
 
-/// 拉起悬浮窗。
+/// 拉起悬浮窗。设置「打开悬浮窗」和托盘「显示/隐藏」都走这里。
 ///
-/// Windows：先 `skip_taskbar(false)`，再 unminimize/show/focus，最后恢复置顶与跳过任务栏。
-/// 若先 `skip_taskbar(true)` 或只靠 `show()`，最小化/收起后经常起不来。
+/// 必须整段在主线程做完再返回，否则显隐事件会早于窗口真正出现。
+/// 步骤见 `reveal_widget_now`：先取消跳过任务栏，再 unminimize/show，
+/// 最后才置顶并重新跳过任务栏。
 #[cfg(desktop)]
 fn reveal_widget(widget: &WebviewWindow) -> Result<(), String> {
+    let widget = widget.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
     widget
-        .set_skip_taskbar(false)
+        .clone()
+        .run_on_main_thread(move || {
+            let _ = tx.send(reveal_widget_now(&widget));
+        })
         .map_err(|e| e.to_string())?;
-    // 短暂置顶，绕过 Windows 前台激活限制
-    let _ = widget.set_always_on_top(true);
+    rx.recv()
+        .map_err(|_| "悬浮窗没有在主线程拉起".to_string())?
+}
+
+/// 真正的拉起顺序。调用方必须已经在主线程上。
+///
+/// 不要在 `unminimize` 之前 `set_always_on_top`。Windows 改置顶时会顺手
+/// `ShowWindow(SW_SHOW)`。窗口还最小化时，这一下会清掉「已最小化」，
+/// 但窗口并不展开；紧接着的 `unminimize` 看到它已经不是最小化，就不再
+/// `SW_RESTORE`。设置和托盘因此都像没点到。
+#[cfg(desktop)]
+fn reveal_widget_now(widget: &WebviewWindow) -> Result<(), String> {
+    widget.set_skip_taskbar(false).map_err(|e| e.to_string())?;
     widget.unminimize().map_err(|e| e.to_string())?;
     widget.show().map_err(|e| e.to_string())?;
     widget.set_focus().map_err(|e| e.to_string())?;
-    widget
-        .set_always_on_top(true)
-        .map_err(|e| e.to_string())?;
-    widget
-        .set_skip_taskbar(true)
-        .map_err(|e| e.to_string())?;
+    widget.set_always_on_top(true).map_err(|e| e.to_string())?;
+    widget.set_skip_taskbar(true).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -54,9 +67,7 @@ fn conceal_widget(widget: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let _ = widget.set_always_on_top(false);
-        widget
-            .set_skip_taskbar(true)
-            .map_err(|e| e.to_string())?;
+        widget.set_skip_taskbar(true).map_err(|e| e.to_string())?;
         widget.minimize().map_err(|e| e.to_string())?;
         return Ok(());
     }
@@ -122,7 +133,8 @@ fn show_settings_window(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(desktop)]
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show_settings_i = MenuItem::with_id(app, "show_settings", "打开小日程", true, None::<&str>)?;
+    let show_settings_i =
+        MenuItem::with_id(app, "show_settings", "打开小日程", true, None::<&str>)?;
     let toggle_widget_i =
         MenuItem::with_id(app, "toggle_widget", "显示/隐藏悬浮窗", true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

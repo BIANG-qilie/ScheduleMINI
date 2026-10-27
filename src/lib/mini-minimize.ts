@@ -8,6 +8,21 @@ export function showDesktopMiniMinimize(view: AppView, platform: ShellPlatform) 
 }
 
 let minimizeInFlight = false;
+/**
+ * 用户点了最小化之后，在窗口真正缩下去又再展开之前，
+ * 不要把置顶和跳过任务栏设回去。否则一次提前的 resize
+ * 会在窗口还没缩下去时删掉任务栏按钮，紧接着的最小化
+ * 就变成既看不见、任务栏也点不回来。
+ */
+let suppressChromeRestore = false;
+let sawIconic = false;
+
+/** 测试之间清掉模块状态。 */
+export function resetDesktopMiniChromeForTests() {
+  minimizeInFlight = false;
+  suppressChromeRestore = false;
+  sawIconic = false;
+}
 
 export type MiniWindowShell = {
   label: string;
@@ -29,6 +44,8 @@ export async function minimizeDesktopMiniWindow(
   const win = await getWindow();
   if (!win || win.label !== "widget") return;
   minimizeInFlight = true;
+  suppressChromeRestore = true;
+  sawIconic = false;
   let chromeChanged = false;
   try {
     await win.setAlwaysOnTop(false);
@@ -36,6 +53,8 @@ export async function minimizeDesktopMiniWindow(
     await win.setSkipTaskbar(false);
     await win.minimize();
   } catch (error) {
+    suppressChromeRestore = false;
+    sawIconic = false;
     if (chromeChanged) {
       try {
         await win.setAlwaysOnTop(true);
@@ -54,7 +73,19 @@ export async function minimizeDesktopMiniWindow(
 export async function restoreDesktopMiniChrome(win: MiniWindowShell | null) {
   if (minimizeInFlight) return;
   if (!win || win.label !== "widget") return;
-  if (await win.isMinimized()) return;
+  const minimized = await win.isMinimized();
+  if (suppressChromeRestore) {
+    if (minimized) {
+      sawIconic = true;
+      return;
+    }
+    // 最小化指令已经返回，但窗口线程可能还没把它缩下去。
+    if (!sawIconic) return;
+    suppressChromeRestore = false;
+    sawIconic = false;
+  } else if (minimized) {
+    return;
+  }
   await win.setAlwaysOnTop(true);
   await win.setSkipTaskbar(true);
 }
