@@ -940,10 +940,10 @@ body.widget-body #root {
 }
 .replay-chip {
   display: inline-flex;
-  max-width: calc(100% - 8px);
   align-items: center;
   gap: 4px;
   height: 16px;
+  max-width: none;
   padding: 0;
   border: 0;
   background: transparent;
@@ -951,6 +951,7 @@ body.widget-body #root {
   font-size: 11px;
   font-weight: 500;
   line-height: 1;
+  overflow: visible;
 }
 .replay-chip-dot {
   width: 6px;

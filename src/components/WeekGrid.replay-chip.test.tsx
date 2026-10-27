@@ -41,11 +41,11 @@ describe("replayed short spans", () => {
     });
 
     const today = formatDateKey(new Date());
-    const replay: ScheduleItem = {
-      id: "douyin",
-      start: "09:10",
-      end: "09:25",
-      title: "抖音",
+    const replay = (id: string, title: string, start: string, end: string): ScheduleItem => ({
+      id,
+      start,
+      end,
+      title,
       weekdays: [],
       enabled: true,
       recurrence: "once",
@@ -53,17 +53,21 @@ describe("replayed short spans", () => {
       tag: "life",
       skippedDates: [],
       owner: "self",
-    };
+    });
 
     render(
       <WeekGrid
-        items={[weekly("class", "语文"), replay]}
+        items={[
+          weekly("class", "语文"),
+          replay("douyin", "抖音", "09:10", "09:25"),
+          replay("tata", "塔塔冒险队", "09:30", "09:48"),
+        ]}
         couple={defaultCouple()}
         showHolidays={false}
         dayOverrides={{}}
         gridStartHour={7}
         gridEndHour={22}
-        replayItemIds={new Set(["douyin"])}
+        replayItemIds={new Set(["douyin", "tata"])}
         onCreateAt={vi.fn()}
         onEditItem={vi.fn()}
         onSkipOccurrence={vi.fn()}
@@ -72,11 +76,18 @@ describe("replayed short spans", () => {
       />,
     );
 
-    const chip = document.querySelector("[data-block='replay-chip']");
+    const chips = [...document.querySelectorAll("[data-block='replay-chip']")];
     const cards = document.querySelectorAll("[data-block='card'][data-item-id='douyin']");
     const classCards = document.querySelectorAll("[data-block='card'][data-item-id='class']");
-    expect(chip).toBeTruthy();
-    expect(chip?.getAttribute("data-label")).toBe("抖音");
+    expect(chips.length).toBeGreaterThan(1);
+    const lefts = new Set(chips.map((chip) => (chip as HTMLElement).style.left));
+    expect(lefts.size).toBe(1);
+    expect([...lefts][0]).toBe("-5px");
+    expect(chips.map((chip) => chip.getAttribute("data-label")).sort()).toEqual([
+      "塔塔冒险队",
+      "抖音",
+    ]);
+    expect(document.body.textContent).not.toContain("已补录");
     expect(cards.length).toBe(0);
     expect(classCards.length).toBeGreaterThan(0);
     const classCard = classCards[0] as HTMLElement;

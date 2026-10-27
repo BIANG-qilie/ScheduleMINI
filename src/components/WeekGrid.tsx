@@ -46,7 +46,7 @@ import {
   isCallItem,
   itemHoverText,
 } from "@/lib/schedule-style";
-import { estimateTextWidth, replayChipLayout, type ReplayObstacle } from "@/lib/replay-chip";
+import { REPLAY_CHIP_RAIL_LEFT, replayChipLayout } from "@/lib/replay-chip";
 import { cn } from "@/lib/utils";
 
 const DAY_PX = 52;
@@ -587,7 +587,6 @@ export function WeekGrid({
                       </div>,
                     );
                   }
-                  const cardBoxes: ReplayObstacle[] = [];
                   for (const [id, slot] of layout.cards) {
                     const entry = byId.get(id);
                     if (!entry) continue;
@@ -602,23 +601,6 @@ export function WeekGrid({
                     const showOvernight = overnight && height >= 64 && !showNote;
                     const color = ownerColor(item, couple);
                     const rail = quietRail(TAG_BAR[itemTag(item)]);
-                    const columnCount = Math.max(1, slot.columnCount);
-                    const cardLeft =
-                      (slot.column / columnCount) * laneWidth + 4;
-                    const cardWidth = Math.max(
-                      0,
-                      (slot.span / columnCount) * laneWidth - 8,
-                    );
-                    cardBoxes.push({
-                      top,
-                      bottom: top + height,
-                      left: cardLeft,
-                      right: cardLeft + cardWidth,
-                      titleWidth: Math.min(
-                        estimateTextWidth(itemDisplayTitle(item), 12.5) + 28,
-                        cardWidth,
-                      ),
-                    });
                     const share =
                       (slot.span / Math.max(1, slot.columnCount)) * laneWidth;
                     const timeLabel = spanned
@@ -724,43 +706,24 @@ export function WeekGrid({
                       </button>,
                     );
                   }
-                  const drawnChips: ReplayObstacle[] = [];
+                  const drawnChipTops: number[] = [];
                   for (const entry of placed) {
                     const key = `${entry.item.id}@${entry.startMin}`;
                     if (!replayShortIds.has(key)) continue;
                     const title = itemDisplayTitle(entry.item);
                     let chipTop = entry.top;
-                    let placedChip = replayChipLayout({
+                    const placedChip = replayChipLayout({
                       title,
-                      top: chipTop,
                       laneWidth,
-                      obstacles: [...cardBoxes, ...drawnChips],
                     });
-                    for (let guard = 0; guard < 4; guard += 1) {
-                      const stacked = drawnChips.some(
-                        (box) =>
-                          !(chipTop + 16 <= box.top || chipTop >= box.bottom) &&
-                          Math.abs(box.left - placedChip.left) < 12,
+                    for (let guard = 0; guard < 6; guard += 1) {
+                      const stacked = drawnChipTops.some(
+                        (top) => Math.abs(top - chipTop) < 16,
                       );
                       if (!stacked) break;
-                      chipTop += 14;
-                      placedChip = replayChipLayout({
-                        title,
-                        top: chipTop,
-                        laneWidth,
-                        obstacles: [...cardBoxes, ...drawnChips],
-                      });
+                      chipTop += 16;
                     }
-                    const chipWidth = placedChip.label
-                      ? estimateTextWidth(placedChip.label, 11) + 16
-                      : 12;
-                    drawnChips.push({
-                      top: chipTop,
-                      bottom: chipTop + 16,
-                      left: placedChip.left,
-                      right: placedChip.left + chipWidth,
-                      titleWidth: chipWidth,
-                    });
+                    drawnChipTops.push(chipTop);
                     nodes.push(
                       <button
                         key={`replay-${key}`}
@@ -770,7 +733,7 @@ export function WeekGrid({
                         title={itemHoverText(entry.item)}
                         aria-label={title}
                         className="replay-chip pointer-events-auto absolute z-[20]"
-                        style={{ top: chipTop, left: placedChip.left }}
+                        style={{ top: chipTop, left: REPLAY_CHIP_RAIL_LEFT }}
                         {...bindItem(entry.item)}
                       >
                         <span className="replay-chip-dot" aria-hidden />
