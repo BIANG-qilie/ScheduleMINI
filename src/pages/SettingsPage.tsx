@@ -1040,7 +1040,6 @@ export function SettingsPage() {
                 const subline = formatItemSubline(item);
                 const once = (item.recurrence ?? "weekly") === "once";
                 const courseSwap = itemIsCourseSwap(item);
-                const replayed = replayIds.has(item.id);
                 const color = ownerColor(item, config.couple);
                 return (
                   <li
@@ -1048,7 +1047,6 @@ export function SettingsPage() {
                     title={itemHoverText(item)}
                     className={cn(
                       narrow && "phone-card phone-list-row",
-                      narrow && replayed && "phone-list-replay",
                       "group relative flex flex-col gap-3 rounded-2xl border p-4 transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-px hover:shadow-[0_14px_30px_-22px_rgba(28,22,18,0.55)] sm:flex-row sm:items-start sm:justify-between",
                       (once || courseSwap) && "border-dashed border-[#d7b15a]",
                       selectedIds.has(item.id) &&
@@ -1078,9 +1076,6 @@ export function SettingsPage() {
                         <span className={scheduleChipClass(tag)}>
                           {formatTagLabel(tag)}
                         </span>
-                        {narrow && replayed ? (
-                          <span className="phone-replay-badge">已补录</span>
-                        ) : null}
                         {courseSwap ? (
                           <span className="rounded-full border border-[#e4c98a] bg-[#fbf6ea] px-2 py-0.5 text-[10px] text-[#7a5a22]">
                             换课
