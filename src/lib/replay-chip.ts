@@ -1,4 +1,4 @@
-/** 短标记的圆点留在钟点竖线内侧。正课胶囊保持整列宽，名字只占竖向空档，放不下就不写。 */
+/** 短标记的圆点留在钟点竖线内侧。和正课重叠时胶囊右移，左边只留一段短名字。 */
 
 export function estimateTextWidth(text: string, fontPx: number) {
   let width = 0;
@@ -13,6 +13,15 @@ export function estimateTextWidth(text: string, fontPx: number) {
 
 /** 相对日程列左缘。整颗圆点都在边框里面，留出一小段空隙。当前时间圆点用同一个数。 */
 export const REPLAY_CHIP_RAIL_LEFT = 6;
+
+/** 和正课重叠时，左边只露出这么宽的短名字，其余用省略号。 */
+export const REPLAY_NAME_LANE_PX = 52;
+
+const NAME_BEFORE_CAPSULE = 8;
+
+/** 传给胶囊的左侧预留。slotFrame 还会再加 4px 内边距。 */
+export const REPLAY_OVERLAP_RESERVE_PX =
+  REPLAY_CHIP_RAIL_LEFT + 6 + 4 + REPLAY_NAME_LANE_PX + NAME_BEFORE_CAPSULE - 4;
 
 export const REPLAY_CHIP_HEIGHT = 16;
 
@@ -127,48 +136,53 @@ export function placeReplayLabel(input: {
 }
 
 /**
- * 淡色底只占这段起止时间。名字会压到正课标题时，整行挪到胶囊上方或下方，
- * 两个标题不占同一块像素。
+ * 淡色底只占这段起止时间。和正课重叠时，名字留在胶囊左侧同一高度，不叠到标题上面。
  */
 export function placeReplayBand(input: {
   top: number;
   height: number;
   labelHeight: number;
   obstacles: readonly ReplayRect[];
-  gap?: number;
-}): { washTop: number; washHeight: number; labelTop: number } {
-  const gap = input.gap ?? 8;
+}): {
+  washTop: number;
+  washHeight: number;
+  labelTop: number;
+  besideClass: boolean;
+  overlap: number;
+} {
   const spanTop = input.top;
   const spanHeight = Math.max(0, input.height);
   const spanBottom = spanTop + spanHeight;
   const labelH = input.labelHeight;
-  const hits = (top: number) => {
-    const bottom = top + labelH;
-    return input.obstacles.some((block) => bottom > block.top && top < block.bottom);
-  };
-  const overlap = (top: number) =>
-    Math.max(0, Math.min(top + labelH, spanBottom) - Math.max(top, spanTop));
-
   let labelTop = spanTop + (spanHeight - labelH) / 2;
-  if (hits(labelTop)) {
-    const clear = input.obstacles
-      .flatMap((block) => [block.top - gap - labelH, block.bottom + gap])
-      .filter((top) => !hits(top));
-    if (clear.length) {
-      const center = spanTop + spanHeight / 2;
-      clear.sort((a, b) => {
-        const byOverlap = overlap(b) - overlap(a);
-        if (byOverlap !== 0) return byOverlap;
-        return Math.abs(a + labelH / 2 - center) - Math.abs(b + labelH / 2 - center);
-      });
-      labelTop = clear[0];
+  let bestOverlap = 0;
+  let bestCard: ReplayRect | null = null;
+  for (const block of input.obstacles) {
+    const top = Math.max(spanTop, block.top);
+    const bottom = Math.min(spanBottom, block.bottom);
+    const overlap = bottom - top;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      bestCard = block;
     }
   }
-
+  if (bestCard && bestOverlap > 0) {
+    const bandTop = Math.max(spanTop, bestCard.top);
+    const bandBottom = Math.min(spanBottom, bestCard.bottom);
+    labelTop = bandTop + (bandBottom - bandTop - labelH) / 2;
+    if (bestCard.bottom - bestCard.top >= labelH) {
+      labelTop = Math.min(
+        Math.max(labelTop, bestCard.top),
+        bestCard.bottom - labelH,
+      );
+    }
+  }
   return {
     washTop: spanTop,
     washHeight: spanHeight,
     labelTop,
+    besideClass: bestOverlap > 0,
+    overlap: bestOverlap,
   };
 }
 

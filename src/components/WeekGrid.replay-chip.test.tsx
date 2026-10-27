@@ -57,8 +57,11 @@ function washesCoverSpans(lane: ParentNode) {
     for (const card of cards) {
       const cardTop = Number.parseFloat(card.style.top);
       const cardBottom = cardTop + Number.parseFloat(card.style.height);
-      const clear = chipBottom <= cardTop || cardBottom <= chipTop;
-      expect(clear).toBe(true);
+      const sharesRow = chipBottom > cardTop && chipTop < cardBottom;
+      if (!sharesRow) continue;
+      expect(card.style.left).toBe("calc(0% + 76px)");
+      expect(card.style.width).toBe("calc(100% - 80px)");
+      expect(chip!.querySelector(".replay-chip-label-clip")).toBeTruthy();
     }
   }
 }
@@ -149,8 +152,8 @@ describe("replayed short spans", () => {
       "抖音",
     ]);
     const classCard = lane?.querySelector("[data-block='card']") as HTMLElement;
-    expect(classCard.style.left).toBe("calc(0% + 4px)");
-    expect(classCard.style.width).toBe("calc(100% - 8px)");
+    expect(classCard.style.left).toBe("calc(0% + 76px)");
+    expect(classCard.style.width).toBe("calc(100% - 80px)");
     washesCoverSpans(lane!);
     expect(document.body.textContent).not.toContain("已补录");
     expect(cards.length).toBe(0);
@@ -320,8 +323,8 @@ describe("replayed short spans", () => {
       "read",
     ]);
     for (const card of classCards) {
-      expect(card.style.left).toBe("calc(0% + 4px)");
-      expect(card.style.width).toBe("calc(100% - 8px)");
+      expect(card.style.left).toBe("calc(0% + 76px)");
+      expect(card.style.width).toBe("calc(100% - 80px)");
     }
     expect(lane?.textContent).toContain("心理健康");
     expect(lane?.textContent).toContain("午读 · 五年级");
@@ -337,6 +340,18 @@ describe("replayed short spans", () => {
       );
     }
 
+    const xin = chips.find((chip) => chip.dataset.itemId === "xin");
+    const dy3 = chips.find((chip) => chip.dataset.itemId === "dy3");
+    const read = classCards.find((card) => card.dataset.itemId === "read");
+    expect(xin && dy3 && read).toBeTruthy();
+    const xinTop = Number.parseFloat(xin!.style.top);
+    const dy3Top = Number.parseFloat(dy3!.style.top);
+    const readTop = Number.parseFloat(read!.style.top);
+    const readBottom = readTop + Number.parseFloat(read!.style.height);
+    expect(xinTop).toBeGreaterThanOrEqual(readTop - 0.5);
+    expect(xinTop).toBeLessThan(readBottom);
+    expect(dy3Top).toBeGreaterThanOrEqual(xinTop + 16);
+    expect(xin!.querySelector(".replay-chip-label-clip")).toBeTruthy();
     expect(dotsOnChipRows(chips, dots as HTMLElement[])).toBe(true);
     washesCoverSpans(lane!);
     const washes = [...(lane?.querySelectorAll("[data-block='replay-wash']") ?? [])] as HTMLElement[];
@@ -477,8 +492,8 @@ describe("replayed short spans", () => {
       "read",
     ]);
     for (const card of classCards) {
-      expect(card.style.left).toBe("calc(0% + 4px)");
-      expect(card.style.width).toBe("calc(100% - 8px)");
+      expect(card.style.left).toBe("calc(0% + 76px)");
+      expect(card.style.width).toBe("calc(100% - 80px)");
       const title = card.querySelector("p");
       expect(title?.textContent === "心理健康" || title?.textContent === "午读 · 五年级").toBe(
         true,
