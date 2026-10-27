@@ -63,7 +63,7 @@
     },
     "createUpdaterArtifacts": true,
     "android": {
-      "versionCode": 2015
+      "versionCode": 2016
     }
   },
   "plugins": {

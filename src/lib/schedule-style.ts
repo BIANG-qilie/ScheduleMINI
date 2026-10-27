@@ -24,7 +24,8 @@ export const TAG_BAR: Record<ScheduleTag, string> = {
   rest: "#3d8f62",
   life: "#c47a32",
   call: "#c45d6e",
-  game: "#5c62b8",
+  entertainment: "#5c62b8",
+  social: "#8b6b9e",
   other: "#8a8176",
 };
 
@@ -63,10 +64,15 @@ export const TAG_SURFACE: Record<
     chip: "border-[#f0cdd2] bg-[#f8e0e4] text-[#7a3140]",
     bar: "bg-[#c45d6e]",
   },
-  game: {
+  entertainment: {
     block: "border border-[#c5c6e4] bg-[#f1f1f8] text-[#2e3160]",
     chip: "border-[#d2d3ec] bg-[#e4e5f4] text-[#3a3e78]",
     bar: "bg-[#5c62b8]",
+  },
+  social: {
+    block: "border border-[#d4c0db] bg-[#f6f0f8] text-[#4a2f58]",
+    chip: "border-[#e0cee6] bg-[#ece0f0] text-[#5c3a6e]",
+    bar: "bg-[#8b6b9e]",
   },
   other: {
     block: "border border-[#d5cec4] bg-[#f4f0ea] text-[#3a342c]",
@@ -110,10 +116,15 @@ export const TAG_WIDGET: Record<
     badge: "bg-rose-400/25 text-rose-100",
     accent: "#fb7185",
   },
-  game: {
+  entertainment: {
     card: "border-indigo-400/35 bg-indigo-500/18",
     badge: "bg-indigo-400/25 text-indigo-100",
     accent: "#818cf8",
+  },
+  social: {
+    card: "border-fuchsia-400/30 bg-fuchsia-500/15",
+    badge: "bg-fuchsia-400/25 text-fuchsia-100",
+    accent: "#c084fc",
   },
   other: {
     card: "border-white/15 bg-white/8",
@@ -147,10 +158,10 @@ export function isCallItem(item: ScheduleItem) {
 }
 
 export function isGameItem(item: ScheduleItem) {
-  return itemTag(item) === "game";
+  return itemTag(item) === "entertainment";
 }
 
-/** 周/列表/小窗副行：交通 / 通话 / 游戏 / 工作子类 */
+/** 周/列表/小窗副行：交通 / 通话 / 娱乐 / 工作子类 */
 export function formatItemSubline(item: ScheduleItem): string | null {
   if (isCallItem(item)) {
     const ch = itemCallChannel(item);

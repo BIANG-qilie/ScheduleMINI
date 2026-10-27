@@ -28,7 +28,10 @@ test.describe("小日程设置页", () => {
       page.getByRole("button", { name: "通话", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "游戏", exact: true }),
+      page.getByRole("button", { name: "娱乐", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "社交", exact: true }),
     ).toBeVisible();
   });
 
@@ -72,12 +75,12 @@ test.describe("小日程设置页", () => {
     await expect(row.getByText("通话", { exact: true })).toBeVisible();
   });
 
-  test("游戏标签默认共同并可选手台", async ({ page }) => {
+  test("娱乐标签默认共同并可选手台", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "新建日程" }).click();
     const dialog = page.getByRole("dialog", { name: "新建日程" });
     await dialog.getByLabel(/标题/).fill("一起开黑");
-    await dialog.getByRole("button", { name: "游戏", exact: true }).click();
+    await dialog.getByRole("button", { name: "娱乐", exact: true }).click();
     await expect(dialog.getByRole("button", { name: "共同", exact: true })).toHaveCSS(
       "background-color",
       "rgb(243, 166, 160)",
@@ -90,7 +93,7 @@ test.describe("小日程设置页", () => {
     await page.getByRole("button", { name: "列表" }).click();
     const row = page.locator("li").filter({ hasText: "一起开黑" });
     await expect(row.getByText("PC", { exact: true })).toBeVisible();
-    await expect(row.getByText("游戏", { exact: true })).toBeVisible();
+    await expect(row.getByText("娱乐", { exact: true })).toBeVisible();
     await expect(row.getByText("共同")).toBeVisible();
   });
 

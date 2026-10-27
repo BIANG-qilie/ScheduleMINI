@@ -6,12 +6,12 @@ import { defaultCouple } from "@/lib/config";
 import { on26 } from "@/lib/day-replay.fixtures";
 import { useConfigStore } from "@/store/config-store";
 
-const ENTRY_LABEL = "根据手机记录补今天";
+const ENTRY_LABEL = "根据手机记录补日程";
 const couple = defaultCouple();
 
 vi.mock("@/lib/day-replay-native", () => ({
   dayReplayBridge: () => ({
-    readToday: () =>
+    readDay: () =>
       JSON.stringify({
         ok: true,
         queryTime: on26(18, 0),
@@ -20,6 +20,10 @@ vi.mock("@/lib/day-replay-native", () => ({
       }),
   }),
   hasDayReplayBridge: () => true,
+  readDayReplay: (
+    bridge: { readDay?: (dayOffset: number) => string },
+    dayOffset: number,
+  ) => bridge.readDay?.(dayOffset),
 }));
 
 afterEach(() => {

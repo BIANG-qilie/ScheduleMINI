@@ -9,6 +9,7 @@ interface Window {
     consumeOpenNow?: () => boolean;
   };
   SmDayReplay?: {
+    readDay?: (dayOffset: number) => string;
     readToday?: () => string;
     requestAccess?: () => void;
   };

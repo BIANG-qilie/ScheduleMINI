@@ -33,16 +33,16 @@ jobs:
             exit 0
           fi
           printf '%s\n' \
-            '0.3.0-beta.7 试用稿（未进 main；安装包版本 0.3.0-7）。' \
+            '0.3.0-beta.8 试用稿（未进 main；安装包版本 0.3.0-8）。' \
             '' \
-            '- 补今天弹窗不再被顶栏挡住' \
-            '- 补今天线索显示真实应用名，不再整页「这个应用」' \
-            '- 「补今天」只出短清单；入口在「此刻」问候下' \
+            '- 游戏改成娱乐，并加了社交标签' \
+            '- 根据手机记录可补近三天；标题默认用应用名' \
+            '- 列表可按标签、归属、日期筛选并排序' \
             > /tmp/release-notes.md
           gh release create "$TAG" \
             --draft \
             --prerelease \
-            --title "小日程 v0.3.0-beta.7" \
+            --title "小日程 v0.3.0-beta.8" \
             --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md
       - uses: actions/setup-node@v4
@@ -117,14 +117,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-7；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.7
+          # 包版本用 MSI 可接受的 0.3.0-8；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.8
           releaseBody: |
-            0.3.0-beta.7 试用稿（未进 main；安装包版本 0.3.0-7）。
+            0.3.0-beta.8 试用稿（未进 main；安装包版本 0.3.0-8）。
 
-            - 补今天弹窗不再被顶栏挡住
-            - 补今天线索显示真实应用名，不再整页「这个应用」
-            - 「补今天」只出短清单；入口在「此刻」问候下
+            - 游戏改成娱乐，并加了社交标签
+            - 根据手机记录可补近三天；标题默认用应用名
+            - 列表可按标签、归属、日期筛选并排序
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
@@ -162,13 +162,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 小日程 v0.3.0-beta.7
+          releaseName: 小日程 v0.3.0-beta.8
           releaseBody: |
-            0.3.0-beta.7 试用稿（未进 main；安装包版本 0.3.0-7）。
+            0.3.0-beta.8 试用稿（未进 main；安装包版本 0.3.0-8）。
 
-            - 补今天弹窗不再被顶栏挡住
-            - 补今天线索显示真实应用名，不再整页「这个应用」
-            - 「补今天」只出短清单；入口在「此刻」问候下
+            - 游戏改成娱乐，并加了社交标签
+            - 根据手机记录可补近三天；标题默认用应用名
+            - 列表可按标签、归属、日期筛选并排序
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true

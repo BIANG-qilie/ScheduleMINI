@@ -74,6 +74,12 @@ import {
   ownerRailStyle,
   scheduleChipClass,
 } from "@/lib/schedule-style";
+import {
+  DEFAULT_LIST_FILTERS,
+  queryListItems,
+  type ListFilters,
+  type ListSortKey,
+} from "@/lib/list-query";
 import { resolveRelayBaseUrl } from "@/lib/sync/relay";
 import { syncAutostart } from "@/lib/widget-chrome";
 import {
@@ -237,6 +243,9 @@ export function SettingsPage() {
   );
   const narrow = useNarrow();
   const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list">("now");
+  const [listFilters, setListFilters] =
+    useState<ListFilters>(DEFAULT_LIST_FILTERS);
+  const [listSort, setListSort] = useState<ListSortKey>("start");
 
   useEffect(() => {
     const openNow = () => setPhoneTab("now");
@@ -369,6 +378,15 @@ export function SettingsPage() {
       ),
     [config.items],
   );
+  const listItems = useMemo(
+    () => queryListItems(config.items, listFilters, listSort),
+    [config.items, listFilters, listSort],
+  );
+  const listShowingFilters =
+    listFilters.tag !== "all" ||
+    listFilters.owner !== "all" ||
+    !!listFilters.dateFrom ||
+    !!listFilters.dateTo;
 
   const openCreate = () => {
     setDraft(emptyDraft());
@@ -545,7 +563,7 @@ export function SettingsPage() {
             ? draft.callChannel || DEFAULT_CALL_CHANNEL
             : undefined,
         gamePlatform:
-          draft.tag === "game" && draft.gamePlatform
+          draft.tag === "entertainment" && draft.gamePlatform
             ? draft.gamePlatform
             : undefined,
         workKind: draft.tag === "work" ? draft.workKind : undefined,
@@ -902,8 +920,133 @@ export function SettingsPage() {
               ) : null}
             </div>
           ) : (
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <div
+                className={cn(
+                  "flex shrink-0 flex-wrap items-end gap-2 border-b border-[var(--color-line)] pb-3",
+                  narrow && "px-0.5",
+                )}
+              >
+                <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
+                  <span>标签</span>
+                  <select
+                    className="block h-9 min-w-[6.5rem] rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-ink)]"
+                    aria-label="按标签筛选"
+                    value={listFilters.tag}
+                    onChange={(e) =>
+                      setListFilters((prev) => ({
+                        ...prev,
+                        tag: e.target.value as ListFilters["tag"],
+                      }))
+                    }
+                  >
+                    <option value="all">全部</option>
+                    {SCHEDULE_TAG_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {!config.soloMode ? (
+                  <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
+                    <span>归属</span>
+                    <select
+                      className="block h-9 min-w-[5.5rem] rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-ink)]"
+                      aria-label="按归属筛选"
+                      value={listFilters.owner}
+                      onChange={(e) =>
+                        setListFilters((prev) => ({
+                          ...prev,
+                          owner: e.target.value as ListFilters["owner"],
+                        }))
+                      }
+                    >
+                      <option value="all">全部</option>
+                      <option value="self">{config.couple.selfName}</option>
+                      <option value="partner">
+                        {partnerFacingName(config.couple)}
+                      </option>
+                      <option value="shared">共同</option>
+                    </select>
+                  </label>
+                ) : null}
+                <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
+                  <span>从</span>
+                  <Input
+                    type="date"
+                    className="h-9 w-[9.5rem] px-2 text-sm"
+                    aria-label="日期起"
+                    value={listFilters.dateFrom}
+                    onChange={(e) =>
+                      setListFilters((prev) => ({
+                        ...prev,
+                        dateFrom: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
+                  <span>到</span>
+                  <Input
+                    type="date"
+                    className="h-9 w-[9.5rem] px-2 text-sm"
+                    aria-label="日期止"
+                    value={listFilters.dateTo}
+                    onChange={(e) =>
+                      setListFilters((prev) => ({
+                        ...prev,
+                        dateTo: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
+                  <span>排序</span>
+                  <select
+                    className="block h-9 min-w-[6.5rem] rounded-xl border border-[var(--color-line)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-ink)]"
+                    aria-label="列表排序"
+                    value={listSort}
+                    onChange={(e) =>
+                      setListSort(e.target.value as ListSortKey)
+                    }
+                  >
+                    <option value="start">开始时间</option>
+                    <option value="title">标题</option>
+                    <option value="date">日期</option>
+                  </select>
+                </label>
+                {listShowingFilters ? (
+                  <button
+                    type="button"
+                    className="mb-0.5 text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+                    onClick={() => setListFilters(DEFAULT_LIST_FILTERS)}
+                  >
+                    清除筛选
+                  </button>
+                ) : null}
+                <p className="ml-auto self-center text-xs text-[var(--color-ink-muted)]">
+                  {listShowingFilters
+                    ? `${listItems.length} / ${sortedItems.length} 条`
+                    : `${listItems.length} 条`}
+                </p>
+              </div>
+              {listItems.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-12 text-center">
+                  <p className="font-display text-xl text-[var(--color-ink)]">
+                    没有符合的安排
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-3 text-sm text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+                    onClick={() => setListFilters(DEFAULT_LIST_FILTERS)}
+                  >
+                    清除筛选
+                  </button>
+                </div>
+              ) : (
             <ul className={cn("min-h-0 flex-1 space-y-2 overflow-auto pr-1", narrow && "phone-list")}>
-              {sortedItems.map((item) => {
+              {listItems.map((item) => {
                 const tag = item.tag ?? "work";
                 const subline = formatItemSubline(item);
                 const once = (item.recurrence ?? "weekly") === "once";
@@ -1007,6 +1150,8 @@ export function SettingsPage() {
                 );
               })}
             </ul>
+              )}
+            </div>
           )}
         </section>
 

@@ -115,17 +115,29 @@ export function widgetCoupleTitle(couple: CoupleIdentity) {
 export const RecurrenceSchema = z.enum(["weekly", "once"]);
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
 
-export const ScheduleTagSchema = z.enum([
+/** 旧 tag=game → entertainment（标签文案「娱乐」） */
+export function migrateScheduleTag(raw: unknown): unknown {
+  if (raw === "game") return "entertainment";
+  return raw;
+}
+
+export const ScheduleTagValues = [
   "work",
   "commute",
   "study",
   "rest",
   "life",
   "call",
-  "game",
+  "entertainment",
+  "social",
   "other",
-]);
-export type ScheduleTag = z.infer<typeof ScheduleTagSchema>;
+] as const;
+
+export const ScheduleTagSchema = z.preprocess(
+  migrateScheduleTag,
+  z.enum(ScheduleTagValues),
+);
+export type ScheduleTag = (typeof ScheduleTagValues)[number];
 
 /** 通话渠道（仅 tag=call） */
 export const CallChannelSchema = z.enum([
@@ -149,7 +161,7 @@ export const CALL_CHANNEL_OPTIONS = (
   Object.keys(CALL_CHANNEL_META) as CallChannel[]
 ).map((id) => ({ id, ...CALL_CHANNEL_META[id] }));
 
-/** 游戏平台（仅 tag=game，可选） */
+/** 娱乐平台（仅 tag=entertainment，可选；字段名沿用 gamePlatform） */
 export const GamePlatformValues = ["mobile", "pc", "switch", "other"] as const;
 export type GamePlatform = (typeof GamePlatformValues)[number];
 
@@ -197,7 +209,8 @@ export const SCHEDULE_TAG_META: Record<
   rest: { label: "休息", respectsHolidays: false },
   life: { label: "生活", respectsHolidays: false },
   call: { label: "通话", respectsHolidays: false },
-  game: { label: "游戏", respectsHolidays: false },
+  entertainment: { label: "娱乐", respectsHolidays: false },
+  social: { label: "社交", respectsHolidays: false },
   other: { label: "其他", respectsHolidays: false },
 };
 
@@ -233,7 +246,7 @@ export function itemGamePlatform(item: {
   tag?: ScheduleTag;
   gamePlatform?: GamePlatform;
 }): GamePlatform | undefined {
-  if ((item.tag ?? "work") !== "game") return undefined;
+  if ((item.tag ?? "work") !== "entertainment") return undefined;
   return item.gamePlatform;
 }
 
@@ -396,7 +409,7 @@ export const ScheduleItemSchema = z
     destination: z.string().trim().optional(),
     /** 通话渠道；仅 tag=call 有意义，旧数据缺省在 parse 时补 phone */
     callChannel: CallChannelSchema.optional(),
-    /** 游戏平台；仅 tag=game，可选 */
+    /** 娱乐平台；仅 tag=entertainment，可选 */
     gamePlatform: GamePlatformSchema.optional(),
     /** 工作子类型；仅 tag=work；旧数据缺省 other */
     workKind: WorkKindSchema.optional(),
@@ -1144,7 +1157,7 @@ export function parseAppConfig(raw: unknown): AppConfig {
       callChannel:
         tag === "call" ? (it.callChannel ?? DEFAULT_CALL_CHANNEL) : undefined,
       gamePlatform:
-        tag === "game"
+        tag === "entertainment"
           ? migrateGamePlatform(it.gamePlatform) ?? it.gamePlatform
           : undefined,
       workKind: tag === "work" ? (it.workKind ?? DEFAULT_WORK_KIND) : undefined,

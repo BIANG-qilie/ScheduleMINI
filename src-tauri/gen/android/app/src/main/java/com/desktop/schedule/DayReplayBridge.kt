@@ -21,7 +21,11 @@ import java.util.Locale
 
 class DayReplayBridge(private val activity: MainActivity) {
     @JavascriptInterface
-    fun readToday(): String = DayReplayRead.read(activity)
+    fun readToday(): String = DayReplayRead.read(activity, 0)
+
+    /** dayOffset: 0=今天，1=昨天，2=前天（与网页补录一致）。 */
+    @JavascriptInterface
+    fun readDay(dayOffset: Int): String = DayReplayRead.read(activity, dayOffset)
 
     @JavascriptInterface
     fun requestAccess() {
@@ -30,24 +34,51 @@ class DayReplayBridge(private val activity: MainActivity) {
 }
 
 internal object DayReplayRead {
-    fun read(context: Context): String {
+    const val MAX_DAY_OFFSET = 2
+
+    fun read(context: Context, dayOffset: Int = 0): String {
         if (!hasUsageAccess(context) || !hasCallLog(context)) {
             return JSONObject().put("ok", false).put("reason", "permission").toString()
         }
         return try {
             val now = System.currentTimeMillis()
-            val start = startOfLocalDay(now)
+            val offset = dayOffset.coerceIn(0, MAX_DAY_OFFSET)
+            val window = dayWindow(now, offset)
             val country = deviceCountryIso(context)
             val root = JSONObject()
             root.put("ok", true)
-            root.put("queryTime", now)
-            root.put("events", usageEvents(context, start, now))
-            root.put("calls", callRows(context, start, now, country))
+            root.put("queryTime", window.queryTime)
+            root.put("events", usageEvents(context, window.start, window.end))
+            root.put("calls", callRows(context, window.start, window.end, country))
             root.toString()
         } catch (_: SecurityException) {
             JSONObject().put("ok", false).put("reason", "permission").toString()
         } catch (_: RuntimeException) {
             JSONObject().put("ok", false).put("reason", "read-failed").toString()
+        }
+    }
+
+    data class DayWindow(val start: Long, val end: Long, val queryTime: Long)
+
+    /** Visible for unit tests: local calendar window for today / yesterday / day before. */
+    fun dayWindow(now: Long, dayOffset: Int): DayWindow {
+        val offset = dayOffset.coerceIn(0, MAX_DAY_OFFSET)
+        val startCal = Calendar.getInstance()
+        startCal.timeInMillis = now
+        startCal.add(Calendar.DAY_OF_YEAR, -offset)
+        startCal.set(Calendar.HOUR_OF_DAY, 0)
+        startCal.set(Calendar.MINUTE, 0)
+        startCal.set(Calendar.SECOND, 0)
+        startCal.set(Calendar.MILLISECOND, 0)
+        val start = startCal.timeInMillis
+        val endCal = Calendar.getInstance()
+        endCal.timeInMillis = start
+        endCal.add(Calendar.DAY_OF_YEAR, 1)
+        val nextMidnight = endCal.timeInMillis
+        return if (offset == 0) {
+            DayWindow(start = start, end = now, queryTime = now)
+        } else {
+            DayWindow(start = start, end = nextMidnight, queryTime = nextMidnight - 1)
         }
     }
 
@@ -101,16 +132,6 @@ internal object DayReplayRead {
             .firstOrNull { !it.isNullOrBlank() }
             .orEmpty()
         return raw.uppercase(Locale.US)
-    }
-
-    private fun startOfLocalDay(now: Long): Long {
-        val calendar = Calendar.getInstance()
-        calendar.timeInMillis = now
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        return calendar.timeInMillis
     }
 
     private fun usageEvents(context: Context, start: Long, end: Long): JSONArray {
