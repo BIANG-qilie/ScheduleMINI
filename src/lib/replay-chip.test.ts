@@ -48,9 +48,9 @@ describe("replay chip layout", () => {
     expect(douyin.labelLeft).toBeGreaterThan(REPLAY_CHIP_RAIL_LEFT);
   });
 
-  it("shifts the class capsule aside when the name column fits", () => {
+  it("keeps the class capsule full width and parks the name clear of it", () => {
     const inset = replayCapsuleInset({
-      titles: ["抖音", "塔塔冒险队"],
+      titles: ["抖音", "塔塔冒险队", "芯核智算 肖总开会"],
       laneWidth: 300,
       minCapsule: 120,
     });
@@ -63,10 +63,28 @@ describe("replay chip layout", () => {
       laneWidth: 300,
       inset,
     });
-    const name = replayChipSpan("塔塔冒险队");
-    expect(inset).toBeGreaterThan(0);
-    expect(card.left - name.right).toBeGreaterThanOrEqual(8);
-    expect(card.right - card.left).toBeGreaterThanOrEqual(120);
+    const placed = placeReplayLabel({
+      title: "塔塔冒险队",
+      top: 120,
+      laneWidth: 300,
+      obstacles: [card],
+      taken: [],
+    });
+    const span = replayChipSpan(placed.label);
+    const box = {
+      top: placed.top,
+      bottom: placed.top + REPLAY_CHIP_HEIGHT,
+      left: span.labelLeft,
+      right: span.right,
+    };
+    expect(inset).toBe(0);
+    expect(card.left).toBe(4);
+    expect(card.right - card.left).toBe(300 - 8);
+    expect(placed.label).toBe("塔塔冒险队");
+    expect(placed.labelLeft).toBe(replayChipSpan("抖音").labelLeft);
+    const separated =
+      box.bottom + 8 <= card.top || card.bottom + 8 <= box.top;
+    expect(separated).toBe(true);
   });
 
   it("does not crush a narrow column, and parks the name outside the capsule", () => {
@@ -151,6 +169,18 @@ describe("replay chip layout", () => {
     expect(second.label).toBe("塔塔冒险队");
     expect(second.top).toBeGreaterThanOrEqual(first.top + REPLAY_CHIP_HEIGHT + 8);
     expect(first.labelLeft).toBe(second.labelLeft);
+  });
+
+  it("drops a name that has nowhere clear of the capsule", () => {
+    expect(
+      placeReplayLabel({
+        title: "抖音",
+        top: 40,
+        laneWidth: 300,
+        obstacles: [{ top: 0, bottom: 800, left: 0, right: 300 }],
+        taken: [],
+      }).label,
+    ).toBe("");
   });
 
   it("drops the name instead of cutting it in half", () => {
