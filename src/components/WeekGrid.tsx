@@ -776,6 +776,22 @@ export function WeekGrid({
                     }
                     const together = !placedChip.label || placedChip.top === entry.top;
                     nodes.push(
+                      <div
+                        key={`replay-wash-${key}`}
+                        data-block="replay-wash"
+                        data-item-id={entry.item.id}
+                        className="replay-span-wash pointer-events-none absolute"
+                        style={{
+                          top: entry.top,
+                          height: entry.height,
+                          left: 4,
+                          right: 4,
+                          zIndex: 1,
+                          background: `color-mix(in oklab, ${TAG_BAR[itemTag(entry.item)]} 18%, transparent)`,
+                        }}
+                      />,
+                    );
+                    nodes.push(
                       <button
                         key={`replay-${key}`}
                         type="button"
