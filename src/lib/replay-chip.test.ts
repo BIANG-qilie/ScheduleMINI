@@ -18,7 +18,6 @@ describe("replay chip layout", () => {
         dayLayout: true,
         once: true,
         minutes: 18,
-        marked: false,
         band: false,
       }),
     ).toBe(true);
@@ -27,7 +26,6 @@ describe("replay chip layout", () => {
         dayLayout: true,
         once: false,
         minutes: 50,
-        marked: false,
         band: false,
       }),
     ).toBe(false);
@@ -36,7 +34,6 @@ describe("replay chip layout", () => {
         dayLayout: false,
         once: true,
         minutes: 18,
-        marked: false,
         band: false,
       }),
     ).toBe(false);
