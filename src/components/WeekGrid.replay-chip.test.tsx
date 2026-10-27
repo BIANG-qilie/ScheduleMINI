@@ -34,6 +34,24 @@ function dotRailLeft(dot: HTMLElement) {
   return dot.style.left || (dot.parentElement as HTMLElement).style.left;
 }
 
+/** 名字和圆点的中线落在这段起止时间的淡色底上。 */
+function chipsCenteredOnWashes(lane: ParentNode) {
+  const washes = [...lane.querySelectorAll("[data-block='replay-wash']")] as HTMLElement[];
+  expect(washes.length).toBeGreaterThan(0);
+  for (const wash of washes) {
+    const id = wash.getAttribute("data-item-id");
+    const chip = lane.querySelector(
+      `[data-block='replay-chip'][data-item-id='${id}']`,
+    ) as HTMLElement | null;
+    expect(chip).toBeTruthy();
+    const washMid =
+      Number.parseFloat(wash.style.top) + Number.parseFloat(wash.style.height) / 2;
+    const chipMid = Number.parseFloat(chip!.style.top) + 8;
+    expect(Math.abs(chipMid - washMid)).toBeLessThan(0.6);
+    expect(chip!.style.left).toBe("6px");
+  }
+}
+
 /** 每个短名字旁边都有一颗圆点，并且圆点都在同一条竖线上。 */
 function dotsOnChipRows(chips: HTMLElement[], dots: HTMLElement[]) {
   const unused = [...dots];
@@ -122,14 +140,7 @@ describe("replayed short spans", () => {
     const classCard = lane?.querySelector("[data-block='card']") as HTMLElement;
     expect(classCard.style.left).toBe("calc(0% + 4px)");
     expect(classCard.style.width).toBe("calc(100% - 8px)");
-    const classTop = Number.parseFloat(classCard.style.top);
-    const classBottom = classTop + Number.parseFloat(classCard.style.height);
-    for (const chip of laneChips) {
-      const top = Number.parseFloat((chip as HTMLElement).style.top);
-      const box = { top, bottom: top + 16 };
-      const separated = box.bottom + 8 <= classTop || classBottom + 8 <= box.top;
-      expect(separated).toBe(true);
-    }
+    chipsCenteredOnWashes(lane!);
     expect(document.body.textContent).not.toContain("已补录");
     expect(cards.length).toBe(0);
     expect(classCards.length).toBeGreaterThan(0);
@@ -315,20 +326,8 @@ describe("replayed short spans", () => {
       );
     }
 
-    const cardBoxes = classCards.map((card) => {
-      const top = Number.parseFloat(card.style.top);
-      const height = Number.parseFloat(card.style.height);
-      return { top, bottom: top + height };
-    });
-    for (const chip of chips) {
-      const top = Number.parseFloat(chip.style.top);
-      const box = { top, bottom: top + 16 };
-      for (const card of cardBoxes) {
-        const separated = box.bottom + 8 <= card.top || card.bottom + 8 <= box.top;
-        expect(separated).toBe(true);
-      }
-    }
     expect(dotsOnChipRows(chips, dots as HTMLElement[])).toBe(true);
+    chipsCenteredOnWashes(lane!);
     const washes = [...(lane?.querySelectorAll("[data-block='replay-wash']") ?? [])] as HTMLElement[];
     expect(washes).toHaveLength(7);
     expect(washes.map((wash) => wash.getAttribute("data-item-id")).sort()).toEqual(
@@ -449,6 +448,7 @@ describe("replayed short spans", () => {
     expect(dots).toHaveLength(8);
     expect(new Set(dots.map(dotRailLeft))).toEqual(new Set(["6px"]));
     expect(dotsOnChipRows(chips, dots)).toBe(true);
+    chipsCenteredOnWashes(lane!);
     expect(dots.filter((dot) => dot.dataset.owner === "self")).toHaveLength(7);
     expect(dots.filter((dot) => dot.dataset.owner === "partner")).toHaveLength(1);
     const partnerDot = dots.find((dot) => dot.dataset.owner === "partner");
