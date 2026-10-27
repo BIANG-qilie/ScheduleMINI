@@ -1677,12 +1677,7 @@ export function SettingsPage() {
             ) : null}
 
             <div className="space-y-3 rounded-2xl border border-[var(--color-line)] p-4">
-              <div>
-                <h3 className="text-sm font-semibold">日程标签</h3>
-                <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-muted)]">
-                  存储仍用原来的代号（例如娱乐仍是 game），只改你看到的名字。
-                </p>
-              </div>
+              <h3 className="text-sm font-semibold">日程标签</h3>
               <ul className="space-y-2">
                 {SCHEDULE_TAG_OPTIONS.map((opt) => (
                   <li

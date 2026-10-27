@@ -33,16 +33,16 @@ jobs:
             exit 0
           fi
           printf '%s\n' \
-            '0.3.0-beta.10 试用稿（未进 main；安装包版本 0.3.0-10）。' \
+            '0.3.0-beta.11 试用稿（未进 main；安装包版本 0.3.0-11）。' \
             '' \
-            '- 设置「显示」可改本机标签显示名（存储仍是 game 等 id）' \
+            '- 设置「显示」可改日程标签显示名' \
             '- 本机号码名单迁到设置「数据」；补录只指向设置' \
             '- 保留娱乐/社交标签、补录抽屉与列表筛选' \
             > /tmp/release-notes.md
           gh release create "$TAG" \
             --draft \
             --prerelease \
-            --title "小日程 v0.3.0-beta.10" \
+            --title "小日程 v0.3.0-beta.11" \
             --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md
       - uses: actions/setup-node@v4
@@ -117,12 +117,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-10；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.10
+          # 包版本用 MSI 可接受的 0.3.0-11；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.11
           releaseBody: |
-            0.3.0-beta.10 试用稿（未进 main；安装包版本 0.3.0-10）。
+            0.3.0-beta.11 试用稿（未进 main；安装包版本 0.3.0-11）。
 
-            - 设置「显示」可改本机标签显示名（存储仍是 game 等 id）
+            - 设置「显示」可改日程标签显示名
             - 本机号码名单迁到设置「数据」；补录只指向设置
             - 保留娱乐/社交标签、补录抽屉与列表筛选
           releaseDraft: true
@@ -162,11 +162,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 小日程 v0.3.0-beta.10
+          releaseName: 小日程 v0.3.0-beta.11
           releaseBody: |
-            0.3.0-beta.10 试用稿（未进 main；安装包版本 0.3.0-10）。
+            0.3.0-beta.11 试用稿（未进 main；安装包版本 0.3.0-11）。
 
-            - 设置「显示」可改本机标签显示名（存储仍是 game 等 id）
+            - 设置「显示」可改日程标签显示名
             - 本机号码名单迁到设置「数据」；补录只指向设置
             - 保留娱乐/社交标签、补录抽屉与列表筛选
           releaseDraft: true
