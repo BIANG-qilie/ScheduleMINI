@@ -52,8 +52,10 @@ import {
   REPLAY_CHIP_HEIGHT,
   REPLAY_CHIP_RAIL_LEFT,
   isRailMark,
+  placeReplayBand,
   placeReplayLabel,
   replayCapsuleInset,
+  type ReplayRect,
 } from "@/lib/replay-chip";
 import { cn } from "@/lib/utils";
 
@@ -737,16 +739,32 @@ export function WeekGrid({
                       </button>,
                     );
                   }
+                  const cardObstacles: ReplayRect[] = [...layout.cards].flatMap(([id]) => {
+                    const card = byId.get(id);
+                    if (!card) return [];
+                    return [
+                      {
+                        top: card.top,
+                        bottom: card.top + card.height,
+                        left: 0,
+                        right: Math.max(laneForLayout, 1),
+                      },
+                    ];
+                  });
                   for (const entry of replayEntries) {
                     const key = `${entry.item.id}@${entry.startMin}`;
                     const title = itemDisplayTitle(entry.item);
-                    const centeredTop = Math.max(
-                      0,
-                      entry.top + (entry.height - REPLAY_CHIP_HEIGHT) / 2,
-                    );
+                    const spanHeight =
+                      ((entry.endMin - entry.startMin) / 60) * DAY_PX;
+                    const band = placeReplayBand({
+                      top: entry.top,
+                      height: spanHeight,
+                      labelHeight: REPLAY_CHIP_HEIGHT,
+                      obstacles: cardObstacles,
+                    });
                     const placedChip = placeReplayLabel({
                       title,
-                      top: centeredTop,
+                      top: band.labelTop,
                       laneWidth: laneForLayout,
                       obstacles: [],
                       taken: [],
@@ -761,10 +779,12 @@ export function WeekGrid({
                         key={`replay-wash-${key}`}
                         data-block="replay-wash"
                         data-item-id={entry.item.id}
+                        data-span-top={String(entry.top)}
+                        data-span-height={String(spanHeight)}
                         className="replay-span-wash pointer-events-none absolute"
                         style={{
-                          top: entry.top,
-                          height: entry.height,
+                          top: band.washTop,
+                          height: band.washHeight,
                           left: 4,
                           right: 4,
                           zIndex: 1,
@@ -782,7 +802,7 @@ export function WeekGrid({
                         title={itemHoverText(entry.item)}
                         aria-label={title}
                         className="replay-chip pointer-events-auto absolute z-[20]"
-                        style={{ top: centeredTop, left: REPLAY_CHIP_RAIL_LEFT }}
+                        style={{ top: band.labelTop, left: REPLAY_CHIP_RAIL_LEFT }}
                         {...bindItem(entry.item)}
                       >
                         <span

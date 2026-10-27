@@ -4,6 +4,7 @@ import {
   REPLAY_CHIP_RAIL_LEFT,
   isRailMark,
   placeReplayLabel,
+  placeReplayBand,
   replayCapsuleInset,
   replayCardRect,
   replayChipSpan,
@@ -181,6 +182,22 @@ describe("replay chip layout", () => {
         taken: [],
       }).label,
     ).toBe("");
+  });
+
+  it("keeps the wash over the whole span and parks a covering name inside it", () => {
+    const spanTop = (6 * 60 + 52) / 60 * 52;
+    const spanHeight = (16 / 60) * 52;
+    const readTop = 7 * 52;
+    const readHeight = (20 / 60) * 52 - 1;
+    const placed = placeReplayBand({
+      top: spanTop,
+      height: spanHeight,
+      labelHeight: REPLAY_CHIP_HEIGHT,
+      obstacles: [{ top: readTop, bottom: readTop + readHeight, left: 4, right: 300 }],
+    });
+    expect(placed.washTop).toBe(spanTop);
+    expect(placed.washHeight).toBe(spanHeight);
+    expect(placed.labelTop + REPLAY_CHIP_HEIGHT).toBeLessThanOrEqual(readTop);
   });
 
   it("drops the name instead of cutting it in half", () => {

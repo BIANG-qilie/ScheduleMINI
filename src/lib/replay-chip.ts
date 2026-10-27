@@ -126,6 +126,52 @@ export function placeReplayLabel(input: {
   return { top: input.top, label: "", labelLeft: span.labelLeft };
 }
 
+/**
+ * 淡色底只占这段起止时间。名字会压到正课标题时，整行挪到胶囊上方或下方，
+ * 两个标题不占同一块像素。
+ */
+export function placeReplayBand(input: {
+  top: number;
+  height: number;
+  labelHeight: number;
+  obstacles: readonly ReplayRect[];
+  gap?: number;
+}): { washTop: number; washHeight: number; labelTop: number } {
+  const gap = input.gap ?? 8;
+  const spanTop = input.top;
+  const spanHeight = Math.max(0, input.height);
+  const spanBottom = spanTop + spanHeight;
+  const labelH = input.labelHeight;
+  const hits = (top: number) => {
+    const bottom = top + labelH;
+    return input.obstacles.some((block) => bottom > block.top && top < block.bottom);
+  };
+  const overlap = (top: number) =>
+    Math.max(0, Math.min(top + labelH, spanBottom) - Math.max(top, spanTop));
+
+  let labelTop = spanTop + (spanHeight - labelH) / 2;
+  if (hits(labelTop)) {
+    const clear = input.obstacles
+      .flatMap((block) => [block.top - gap - labelH, block.bottom + gap])
+      .filter((top) => !hits(top));
+    if (clear.length) {
+      const center = spanTop + spanHeight / 2;
+      clear.sort((a, b) => {
+        const byOverlap = overlap(b) - overlap(a);
+        if (byOverlap !== 0) return byOverlap;
+        return Math.abs(a + labelH / 2 - center) - Math.abs(b + labelH / 2 - center);
+      });
+      labelTop = clear[0];
+    }
+  }
+
+  return {
+    washTop: spanTop,
+    washHeight: spanHeight,
+    labelTop,
+  };
+}
+
 export function replayCardRect(input: {
   column: number;
   span: number;
