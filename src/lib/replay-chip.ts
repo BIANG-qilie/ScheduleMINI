@@ -136,7 +136,7 @@ export function placeReplayLabel(input: {
 }
 
 /**
- * 淡色底只占这段起止时间。和正课重叠时，名字留在胶囊左侧同一高度，不叠到标题上面。
+ * 淡色底只占这段起止时间。圆点和短名字跟这段底色同一行，垂直中心对齐，不再拆到上下两行。
  */
 export function placeReplayBand(input: {
   top: number;
@@ -154,28 +154,12 @@ export function placeReplayBand(input: {
   const spanHeight = Math.max(0, input.height);
   const spanBottom = spanTop + spanHeight;
   const labelH = input.labelHeight;
-  let labelTop = spanTop + (spanHeight - labelH) / 2;
+  const labelTop = spanTop + (spanHeight - labelH) / 2;
   let bestOverlap = 0;
-  let bestCard: ReplayRect | null = null;
   for (const block of input.obstacles) {
     const top = Math.max(spanTop, block.top);
     const bottom = Math.min(spanBottom, block.bottom);
-    const overlap = bottom - top;
-    if (overlap > bestOverlap) {
-      bestOverlap = overlap;
-      bestCard = block;
-    }
-  }
-  if (bestCard && bestOverlap > 0) {
-    const bandTop = Math.max(spanTop, bestCard.top);
-    const bandBottom = Math.min(spanBottom, bestCard.bottom);
-    labelTop = bandTop + (bandBottom - bandTop - labelH) / 2;
-    if (bestCard.bottom - bestCard.top >= labelH) {
-      labelTop = Math.min(
-        Math.max(labelTop, bestCard.top),
-        bestCard.bottom - labelH,
-      );
-    }
+    bestOverlap = Math.max(bestOverlap, bottom - top);
   }
   return {
     washTop: spanTop,

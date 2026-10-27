@@ -185,7 +185,7 @@ describe("replay chip layout", () => {
     ).toBe("");
   });
 
-  it("keeps a colliding short name beside the class, not above its title", () => {
+  it("centers the short name on its wash when the span overlaps a class", () => {
     const spanTop = (6 * 60 + 52) / 60 * 52;
     const spanHeight = (16 / 60) * 52;
     const readTop = 7 * 52;
@@ -199,8 +199,7 @@ describe("replay chip layout", () => {
     expect(placed.washTop).toBe(spanTop);
     expect(placed.washHeight).toBe(spanHeight);
     expect(placed.besideClass).toBe(true);
-    expect(placed.labelTop).toBeGreaterThanOrEqual(readTop);
-    expect(placed.labelTop).toBeLessThan(readTop + readHeight);
+    expect(placed.labelTop + REPLAY_CHIP_HEIGHT / 2).toBeCloseTo(spanTop + spanHeight / 2, 5);
     expect(REPLAY_OVERLAP_RESERVE_PX).toBeGreaterThan(0);
   });
 

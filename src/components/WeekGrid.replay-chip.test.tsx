@@ -34,7 +34,7 @@ function dotRailLeft(dot: HTMLElement) {
   return dot.style.left || (dot.parentElement as HTMLElement).style.left;
 }
 
-/** 淡色底就是这段起止时间。短名字整行躲开正课胶囊。 */
+/** 淡色底就是这段起止时间。圆点和短名字跟底色垂直居中，合成一行。 */
 function washesCoverSpans(lane: ParentNode) {
   const washes = [...lane.querySelectorAll("[data-block='replay-wash']")] as HTMLElement[];
   const cards = [...lane.querySelectorAll("[data-block='card']")] as HTMLElement[];
@@ -54,6 +54,7 @@ function washesCoverSpans(lane: ParentNode) {
     expect(Math.abs(washTop - spanTop)).toBeLessThan(0.5);
     expect(Math.abs(washHeight - spanHeight)).toBeLessThan(0.5);
     expect(chip!.style.left).toBe("6px");
+    expect(Math.abs(chipTop + 8 - (washTop + washHeight / 2))).toBeLessThan(0.6);
     for (const card of cards) {
       const cardTop = Number.parseFloat(card.style.top);
       const cardBottom = cardTop + Number.parseFloat(card.style.height);
@@ -345,12 +346,28 @@ describe("replayed short spans", () => {
     const read = classCards.find((card) => card.dataset.itemId === "read");
     expect(xin && dy3 && read).toBeTruthy();
     const xinTop = Number.parseFloat(xin!.style.top);
-    const dy3Top = Number.parseFloat(dy3!.style.top);
     const readTop = Number.parseFloat(read!.style.top);
     const readBottom = readTop + Number.parseFloat(read!.style.height);
-    expect(xinTop).toBeGreaterThanOrEqual(readTop - 0.5);
+    expect(xinTop + 16).toBeGreaterThan(readTop);
     expect(xinTop).toBeLessThan(readBottom);
-    expect(dy3Top).toBeGreaterThanOrEqual(xinTop + 16);
+    const xinWash = lane?.querySelector(
+      "[data-block='replay-wash'][data-item-id='xin']",
+    ) as HTMLElement;
+    const washMid =
+      Number.parseFloat(xinWash.style.top) + Number.parseFloat(xinWash.style.height) / 2;
+    expect(Math.abs(xinTop + 8 - washMid)).toBeLessThan(0.6);
+    expect(Number.parseFloat(dy3!.style.top) + 8).toBeCloseTo(
+      Number.parseFloat(
+        (lane?.querySelector("[data-block='replay-wash'][data-item-id='dy3']") as HTMLElement)
+          .style.top,
+      ) +
+        Number.parseFloat(
+          (lane?.querySelector("[data-block='replay-wash'][data-item-id='dy3']") as HTMLElement)
+            .style.height,
+        ) /
+          2,
+      1,
+    );
     expect(xin!.querySelector(".replay-chip-label-clip")).toBeTruthy();
     expect(dotsOnChipRows(chips, dots as HTMLElement[])).toBe(true);
     washesCoverSpans(lane!);
