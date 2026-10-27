@@ -1,4 +1,4 @@
-/** 短标记的圆点留在钟点竖线内侧，名字让开课程胶囊，整名放不下就不写。 */
+/** 短标记的圆点留在钟点竖线内侧。正课胶囊保持整列宽，名字只占竖向空档，放不下就不写。 */
 
 export function estimateTextWidth(text: string, fontPx: number) {
   let width = 0;
@@ -60,26 +60,15 @@ export function replayChipSpan(title: string, fontPx = FONT_PX) {
 }
 
 /**
- * 名字列有多宽时，把胶囊往右让。列宽会把胶囊挤到最小宽度以下时返回 0，
- * 改由名字另找空档。
+ * 不再为短名字预留左列。把胶囊右移会截断「心理健康」「午读 · 五年级」。
+ * 名字改由 placeReplayLabel 找竖向空档。
  */
-export function replayCapsuleInset(input: {
+export function replayCapsuleInset(_input: {
   titles: readonly string[];
   laneWidth: number;
   minCapsule: number;
 }): number {
-  if (input.laneWidth <= 0) return 0;
-  let right = REPLAY_CHIP_RAIL_LEFT;
-  for (const title of input.titles) {
-    const trimmed = title.trim();
-    if (!trimmed) continue;
-    right = Math.max(right, replayChipSpan(trimmed).right);
-  }
-  if (right <= REPLAY_CHIP_RAIL_LEFT) return 0;
-  const cardLeft = Math.ceil(right + CLEAR_GAP);
-  const capsule = input.laneWidth - cardLeft - 4;
-  if (capsule < input.minCapsule) return 0;
-  return Math.max(0, cardLeft - 4);
+  return 0;
 }
 
 function overlaps(a: ReplayRect, b: ReplayRect, gap: number) {
@@ -134,7 +123,7 @@ export function placeReplayLabel(input: {
     }
   }
 
-  return { top: input.top, label: title, labelLeft: span.labelLeft };
+  return { top: input.top, label: "", labelLeft: span.labelLeft };
 }
 
 export function replayCardRect(input: {
