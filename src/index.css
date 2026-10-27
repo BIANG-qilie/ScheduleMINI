@@ -794,8 +794,8 @@ body.widget-body #root {
 .phone-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 2px 0 8px;
+  gap: 12px;
+  padding: 4px 0 12px;
 }
 .phone-list > * + * {
   margin-top: 0 !important;
@@ -807,7 +807,49 @@ body.widget-body #root {
   animation: phone-rise 420ms var(--ease-out) both;
 }
 .phone-card:active {
-  transform: scale(0.99);
+  transform: scale(0.985);
+  background: color-mix(in oklab, var(--color-accent) 7%, var(--color-surface));
+}
+.phone-list-row {
+  background: var(--color-surface);
+  border-color: color-mix(in oklab, var(--color-line) 82%, white);
+}
+.phone-list-title {
+  font-size: 1.2rem;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.phone-list-replay {
+  background: color-mix(in oklab, var(--color-bg) 62%, var(--color-surface));
+  box-shadow: none;
+  color: color-mix(in oklab, var(--color-ink) 78%, var(--color-ink-muted));
+}
+.phone-list-replay .phone-list-title {
+  font-weight: 450;
+}
+.phone-replay-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 99px;
+  border: 1px solid var(--color-line);
+  background: transparent;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted);
+}
+.phone-list-filters select {
+  min-height: 44px;
+  background: var(--color-surface);
+}
+.phone-list-empty {
+  background: color-mix(in oklab, var(--color-surface) 70%, transparent);
+  margin-top: 8px;
+}
+.phone-list-row .flex.shrink-0 button:active {
+  transform: scale(0.97);
 }
 .phone-card > label {
   left: auto !important;
@@ -850,6 +892,96 @@ body.widget-body #root {
     border-radius: 99px;
     background: color-mix(in oklab, var(--color-ink) 20%, transparent);
   }
+}
+.create-sheet {
+  height: auto;
+  max-height: min(33dvh, 320px) !important;
+  border-bottom: 0 !important;
+  border-radius: 28px 28px 0 0 !important;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+@media (max-width: 760px) {
+  .create-sheet {
+    height: 33dvh;
+    max-height: 33dvh !important;
+  }
+}
+.create-choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  height: 100%;
+  align-items: stretch;
+}
+.create-choice {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 12px 14px;
+  border: 1px solid color-mix(in oklab, var(--color-line) 80%, white);
+  border-radius: 22px;
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 252, 246, 0.8);
+  transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+.create-choice:nth-child(2) {
+  background: #f7efe2;
+}
+.create-choice:active {
+  transform: scale(0.98);
+  background: color-mix(in oklab, var(--color-accent) 14%, var(--color-surface));
+}
+.create-choice-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+.create-choice-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.create-choice-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.2;
+}
+.create-choice-desc {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-ink-muted);
+}
+.replay-chip {
+  display: inline-flex;
+  max-width: calc(100% - 8px);
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+.replay-chip-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 99px;
+  background: color-mix(in oklab, var(--color-accent) 42%, var(--color-line));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 12%, transparent);
+}
+.replay-chip-label {
+  white-space: nowrap;
 }
 .phone-sheet {
   height: min(94dvh, 900px);

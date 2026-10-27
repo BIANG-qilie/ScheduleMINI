@@ -26,6 +26,7 @@ import { CreateActionSheet } from "@/components/CreateActionSheet";
 import { CallAllowlistEditor } from "@/components/CallAllowlistEditor";
 import { DayReplayEntry } from "@/components/DayReplayEntry";
 import { hasDayReplayBridge } from "@/lib/day-replay-native";
+import { readReplayMarks, replayItemIds } from "@/lib/replay-marks";
 import type { Draft } from "@/components/ScheduleEditor";
 import {
   readTagLabelOverrides,
@@ -397,6 +398,10 @@ export function SettingsPage() {
     () => queryListItems(config.items, listFilters),
     [config.items, listFilters],
   );
+  const replayIds = useMemo(() => {
+    const live = new Set(config.items.map((item) => item.id));
+    return replayItemIds(readReplayMarks(), live);
+  }, [config.items]);
   const listShowingFilters =
     listFilters.tag !== "all" ||
     listFilters.owner !== "all" ||
@@ -889,6 +894,7 @@ export function SettingsPage() {
               dayOverrides={config.dayOverrides}
               gridStartHour={config.gridStartHour}
               gridEndHour={config.gridEndHour}
+              replayItemIds={replayIds}
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
               onCreateAt={openCreateAt}
@@ -918,7 +924,7 @@ export function SettingsPage() {
               }
             />
           ) : narrow && phoneTab === "now" ? null : sortedItems.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-16 text-center">
+            <div className={cn("flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-16 text-center", narrow && "phone-list-empty")}>
               <p className="font-display text-2xl text-[var(--color-ink)]">
                 还没有安排
               </p>
@@ -934,7 +940,7 @@ export function SettingsPage() {
               <div
                 className={cn(
                   "flex shrink-0 flex-wrap items-end gap-2 border-b border-[var(--color-line)] pb-3",
-                  narrow && "px-0.5",
+                  narrow && "phone-list-filters px-0.5",
                 )}
               >
                 <label className="space-y-1 text-xs text-[var(--color-ink-muted)]">
@@ -1015,7 +1021,7 @@ export function SettingsPage() {
                 </p>
               </div>
               {listItems.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-12 text-center">
+                <div className={cn("flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--color-line)] px-6 py-12 text-center", narrow && "phone-list-empty")}>
                   <p className="font-display text-xl text-[var(--color-ink)]">
                     没有符合的安排
                   </p>
@@ -1034,14 +1040,16 @@ export function SettingsPage() {
                 const subline = formatItemSubline(item);
                 const once = (item.recurrence ?? "weekly") === "once";
                 const courseSwap = itemIsCourseSwap(item);
+                const replayed = replayIds.has(item.id);
                 const color = ownerColor(item, config.couple);
                 return (
                   <li
                     key={item.id}
                     title={itemHoverText(item)}
                     className={cn(
-                      narrow && "phone-card",
-                      "group relative flex flex-col gap-3 rounded-2xl border p-4 transition-[transform,box-shadow] duration-200 hover:-translate-y-px hover:shadow-[0_14px_30px_-22px_rgba(28,22,18,0.55)] sm:flex-row sm:items-start sm:justify-between",
+                      narrow && "phone-card phone-list-row",
+                      narrow && replayed && "phone-list-replay",
+                      "group relative flex flex-col gap-3 rounded-2xl border p-4 transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-px hover:shadow-[0_14px_30px_-22px_rgba(28,22,18,0.55)] sm:flex-row sm:items-start sm:justify-between",
                       (once || courseSwap) && "border-dashed border-[#d7b15a]",
                       selectedIds.has(item.id) &&
                         "ring-2 ring-[var(--color-ink)] ring-offset-2 ring-offset-[var(--color-bg)]",
@@ -1070,6 +1078,9 @@ export function SettingsPage() {
                         <span className={scheduleChipClass(tag)}>
                           {formatTagLabel(tag)}
                         </span>
+                        {narrow && replayed ? (
+                          <span className="phone-replay-badge">已补录</span>
+                        ) : null}
                         {courseSwap ? (
                           <span className="rounded-full border border-[#e4c98a] bg-[#fbf6ea] px-2 py-0.5 text-[10px] text-[#7a5a22]">
                             换课
@@ -1087,7 +1098,7 @@ export function SettingsPage() {
                         className={cn(
                           "font-display text-lg leading-snug",
                           narrow
-                            ? "line-clamp-2 whitespace-normal break-words"
+                            ? "phone-list-title line-clamp-2 whitespace-normal break-words"
                             : "truncate",
                         )}
                       >

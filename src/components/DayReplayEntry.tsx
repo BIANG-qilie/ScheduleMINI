@@ -11,6 +11,12 @@ import {
   rememberAppTags,
 } from "@/lib/app-tag-memory";
 import {
+  annotateReplayCues,
+  readReplayMarks,
+  forgetReplayMarks,
+  rememberReplayMarks,
+} from "@/lib/replay-marks";
+import {
   formatDateKey,
   formatTagLabel,
   SCHEDULE_TAG_OPTIONS,
@@ -37,25 +43,29 @@ import {
 } from "@/lib/day-replay-native";
 import { createId } from "@/lib/utils";
 
-type RowState = ReplaySelection;
+type RowState = ReplaySelection & { filled: boolean };
 
-function rowsFromCues(
-  cues: ReplayCue[],
+function rowsFromAnnotated(
+  annotated: { cue: ReplayCue; filled: boolean }[],
   storage?: KeyValueStore,
 ): RowState[] {
-  return cues.map((cue) =>
+  return annotated.map(({ cue, filled }) =>
     cue.kind === "call"
-      ? { cue, checked: false, title: cue.title, tag: "call" }
+      ? { cue, checked: false, title: cue.title, tag: "call", filled }
       : {
           cue,
           checked: false,
           title: cue.label,
           tag: defaultTagForApp(cue.packageName, storage),
+          filled,
         },
   );
 }
 
 type ScheduleOnceSource = {
+  id?: string;
+  title?: string;
+  tag?: string;
   recurrence?: string;
   date?: string;
   start: string;
@@ -135,13 +145,23 @@ export function DayReplayEntry({
     numbers: string[],
     dateKey: string,
   ) => {
-    const nextRows = rowsFromCues(
-      buildShortReplayCues({
-        events: nextPayload.events,
-        calls: nextPayload.calls,
-        allowlist: numbers,
-        queryTime: nextPayload.queryTime,
-        existingOnce: onceForDay(dateKey),
+    const cues = buildShortReplayCues({
+      events: nextPayload.events,
+      calls: nextPayload.calls,
+      allowlist: numbers,
+      queryTime: nextPayload.queryTime,
+    });
+    const liveIds = new Set(
+      (scheduleItems ?? []).flatMap((item) => (item.id ? [item.id] : [])),
+    );
+    const nextRows = rowsFromAnnotated(
+      annotateReplayCues({
+        cues,
+        marks: readReplayMarks(storage),
+        onceItems: scheduleItems ?? [],
+        dateKey,
+        spans: onceForDay(dateKey),
+        liveIds,
       }),
       storage,
     );
@@ -184,7 +204,7 @@ export function DayReplayEntry({
   };
 
   const commit = async () => {
-    const { drafts, rejected } = confirmReplayDrafts(rows, createId);
+    const { drafts, rejected, marks } = confirmReplayDrafts(rows, createId);
     if (rejected > 0) {
       setFormError("勾选的条目需要有标签。");
       return;
@@ -194,6 +214,7 @@ export function DayReplayEntry({
       return;
     }
     setBusy(true);
+    rememberReplayMarks(marks, storage);
     try {
       await onCommit(drafts);
       rememberAppTags(
@@ -206,6 +227,10 @@ export function DayReplayEntry({
       );
       setOpen(false);
     } catch {
+      forgetReplayMarks(
+        marks.map((mark) => mark.itemId),
+        storage,
+      );
       setFormError("没写进去，本机分类没改。");
     } finally {
       setBusy(false);
@@ -348,6 +373,9 @@ export function DayReplayEntry({
                   style={{ transform: `translateX(${swipeX * 0.35}px)` }}
                   data-testid="replay-cue-card"
                 >
+                  {active.filled ? (
+                    <p className="mb-2 text-xs text-[var(--color-ink-muted)]">已补录</p>
+                  ) : null}
                   {active.cue.kind === "call" ? (
                     <>
                       <p className="text-sm font-medium text-[var(--color-ink)]">

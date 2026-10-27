@@ -25,6 +25,7 @@ test.describe("手机宽度", () => {
   test("新建后列表直接看到备注", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "新建", exact: true }).click();
+    await page.getByRole("button", { name: "新建日程", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "新建日程" });
     await dialog.getByLabel(/标题/).fill("手机备注");
     await dialog.getByLabel("备注").fill("带伞");

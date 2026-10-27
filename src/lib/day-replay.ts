@@ -68,6 +68,9 @@ export const SHORTLIST_MAX_APP_CUES = 8;
 export type ExistingOnceSpan = {
   start: number;
   end: number;
+  id?: string;
+  title?: string;
+  tag?: string;
 };
 
 const SCHEDULE_TAGS = new Set<ScheduleTag>([
@@ -487,6 +490,9 @@ export function buildShortReplayCues(input: {
 /** 当天已有的仅一次日程 → 毫秒区间，供短清单去掉完全重叠的前台。 */
 export function onceItemsToExistingSpans(
   items: readonly {
+    id?: string;
+    title?: string;
+    tag?: string;
     recurrence?: string;
     date?: string;
     start: string;
@@ -542,7 +548,13 @@ export function onceItemsToExistingSpans(
       }
     }
     if (endAt.getTime() > startAt.getTime()) {
-      spans.push({ start: startAt.getTime(), end: endAt.getTime() });
+      spans.push({
+        start: startAt.getTime(),
+        end: endAt.getTime(),
+        id: item.id,
+        title: item.title,
+        tag: item.tag,
+      });
     }
   }
   return spans;
@@ -627,11 +639,21 @@ function draftFromCue(
   };
 }
 
+export type ReplayCueMark = {
+  itemId: string;
+  kind: "app" | "call";
+  packageName: string;
+  label: string;
+  start: number;
+  end: number;
+};
+
 export function confirmReplayDrafts(
   rows: readonly ReplaySelection[],
   newId: () => string,
-): { drafts: ReplayScheduleDraft[]; rejected: number } {
+): { drafts: ReplayScheduleDraft[]; rejected: number; marks: ReplayCueMark[] } {
   const drafts: ReplayScheduleDraft[] = [];
+  const marks: ReplayCueMark[] = [];
   let rejected = 0;
   for (const row of rows) {
     if (!row.checked) continue;
@@ -641,8 +663,16 @@ export function confirmReplayDrafts(
       continue;
     }
     drafts.push(draft);
+    marks.push({
+      itemId: draft.id,
+      kind: row.cue.kind,
+      packageName: row.cue.kind === "app" ? row.cue.packageName : "",
+      label: row.cue.kind === "app" ? row.cue.label : PHONE_CALL_TITLE,
+      start: row.cue.start,
+      end: row.cue.end,
+    });
   }
-  return { drafts, rejected };
+  return { drafts, rejected, marks };
 }
 
 function readString(value: unknown) {
