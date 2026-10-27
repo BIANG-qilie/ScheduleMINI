@@ -33,14 +33,14 @@ jobs:
             exit 0
           fi
           printf '%s\n' \
-            '0.3.0-beta.14 试用稿（未进 main；安装包版本 0.3.0-14）。' \
+            '0.3.0-beta.15 试用稿（未进 main；安装包版本 0.3.0-15）。' \
             '' \
-            '- 周视图里短的一次性安排改成圆点，和正课分开，名字写全' \
+            '- 周视图短安排和正课并排，正课缩短靠右，短名字放不下用省略号，圆点贴在淡底上。' \
             > /tmp/release-notes.md
           gh release create "$TAG" \
             --draft \
             --prerelease \
-            --title "小日程 v0.3.0-beta.14" \
+            --title "小日程 v0.3.0-beta.15" \
             --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md
       - uses: actions/setup-node@v4
@@ -115,12 +115,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          # 包版本用 MSI 可接受的 0.3.0-14；标题仍标 beta，方便认试用稿。
-          releaseName: 小日程 v0.3.0-beta.14
+          # 包版本用 MSI 可接受的 0.3.0-15；标题仍标 beta，方便认试用稿。
+          releaseName: 小日程 v0.3.0-beta.15
           releaseBody: |
-            0.3.0-beta.14 试用稿（未进 main；安装包版本 0.3.0-14）。
+            0.3.0-beta.15 试用稿（未进 main；安装包版本 0.3.0-15）。
 
-            - 周视图里短的一次性安排改成圆点，和正课分开，名字写全
+            - 周视图短安排和正课并排，正课缩短靠右，短名字放不下用省略号，圆点贴在淡底上。
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true
@@ -158,11 +158,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 小日程 v0.3.0-beta.14
+          releaseName: 小日程 v0.3.0-beta.15
           releaseBody: |
-            0.3.0-beta.14 试用稿（未进 main；安装包版本 0.3.0-14）。
+            0.3.0-beta.15 试用稿（未进 main；安装包版本 0.3.0-15）。
 
-            - 周视图里短的一次性安排改成圆点，和正课分开，名字写全
+            - 周视图短安排和正课并排，正课缩短靠右，短名字放不下用省略号，圆点贴在淡底上。
           releaseDraft: true
           prerelease: true
           includeUpdaterJson: true

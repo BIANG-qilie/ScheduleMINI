@@ -63,7 +63,7 @@
     },
     "createUpdaterArtifacts": true,
     "android": {
-      "versionCode": 2022
+      "versionCode": 2023
     }
   },
   "plugins": {
