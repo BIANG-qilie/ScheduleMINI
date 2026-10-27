@@ -54,9 +54,6 @@ import {
   isRailMark,
   placeReplayLabel,
   replayCapsuleInset,
-  replayCardRect,
-  replayChipSpan,
-  type ReplayRect,
 } from "@/lib/replay-chip";
 import { cn } from "@/lib/utils";
 
@@ -740,48 +737,25 @@ export function WeekGrid({
                       </button>,
                     );
                   }
-                  const takenLabels: ReplayRect[] = [];
-                  const cardObstacles = [...layout.cards].flatMap(([id, slot]) => {
-                    const entry = byId.get(id);
-                    if (!entry || laneForLayout <= 0) return [];
-                    return [
-                      replayCardRect({
-                        column: slot.column,
-                        span: slot.span,
-                        columnCount: slot.columnCount,
-                        top: entry.top,
-                        height: entry.height,
-                        laneWidth: laneForLayout,
-                        inset: replayInset,
-                      }),
-                    ];
-                  });
                   for (const entry of replayEntries) {
                     const key = `${entry.item.id}@${entry.startMin}`;
                     const title = itemDisplayTitle(entry.item);
+                    const centeredTop = Math.max(
+                      0,
+                      entry.top + (entry.height - REPLAY_CHIP_HEIGHT) / 2,
+                    );
                     const placedChip = placeReplayLabel({
                       title,
-                      top: entry.top,
+                      top: centeredTop,
                       laneWidth: laneForLayout,
-                      obstacles: cardObstacles,
-                      taken: takenLabels,
+                      obstacles: [],
+                      taken: [],
                     });
-                    if (placedChip.label) {
-                      const span = replayChipSpan(placedChip.label);
-                      takenLabels.push({
-                        top: placedChip.top,
-                        bottom: placedChip.top + REPLAY_CHIP_HEIGHT,
-                        left: span.labelLeft,
-                        right: span.right,
-                      });
-                    }
-                    const together = !placedChip.label || placedChip.top === entry.top;
                     const roleColor = ownerColor(entry.item, couple);
                     const roleDotStyle = {
                       backgroundColor: roleColor,
                       boxShadow: `0 0 0 2px color-mix(in oklab, ${roleColor} 22%, transparent)`,
                     };
-                    const roleOwner = itemOwner(entry.item);
                     nodes.push(
                       <div
                         key={`replay-wash-${key}`}
@@ -803,46 +777,26 @@ export function WeekGrid({
                         key={`replay-${key}`}
                         type="button"
                         data-block="replay-chip"
+                        data-item-id={entry.item.id}
                         data-label={placedChip.label}
                         title={itemHoverText(entry.item)}
                         aria-label={title}
                         className="replay-chip pointer-events-auto absolute z-[20]"
-                        style={
-                          together
-                            ? { top: entry.top, left: REPLAY_CHIP_RAIL_LEFT }
-                            : { top: placedChip.top, left: placedChip.labelLeft }
-                        }
+                        style={{ top: centeredTop, left: REPLAY_CHIP_RAIL_LEFT }}
                         {...bindItem(entry.item)}
                       >
-                        {together ? (
-                          <span
-                            className="replay-chip-dot"
-                            data-replay-dot=""
-                            data-owner={roleOwner}
-                            style={roleDotStyle}
-                            aria-hidden
-                          />
-                        ) : null}
+                        <span
+                          className="replay-chip-dot"
+                          data-replay-dot=""
+                          data-owner={itemOwner(entry.item)}
+                          style={roleDotStyle}
+                          aria-hidden
+                        />
                         {placedChip.label ? (
                           <span className="replay-chip-label">{placedChip.label}</span>
                         ) : null}
                       </button>,
                     );
-                    if (placedChip.label && !together) {
-                      nodes.push(
-                        <span
-                          key={`replay-dot-${key}`}
-                          data-replay-dot=""
-                          data-owner={roleOwner}
-                          className="replay-chip-dot pointer-events-none absolute z-[20]"
-                          style={{
-                            top: placedChip.top + (REPLAY_CHIP_HEIGHT - 6) / 2,
-                            left: REPLAY_CHIP_RAIL_LEFT,
-                            ...roleDotStyle,
-                          }}
-                        />,
-                      );
-                    }
                   }
                   for (const pill of layout.pills) {
                     const hidden = pill.hiddenIds
