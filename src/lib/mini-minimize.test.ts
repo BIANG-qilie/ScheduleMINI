@@ -1,10 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   minimizeDesktopMiniWindow,
+  resetDesktopMiniChromeForTests,
   restoreDesktopMiniChrome,
   showDesktopMiniMinimize,
   type MiniWindowShell,
 } from "@/lib/mini-minimize";
+
+beforeEach(() => {
+  resetDesktopMiniChromeForTests();
+});
 
 function shell(label: string): MiniWindowShell & {
   minimize: ReturnType<typeof vi.fn>;
@@ -98,5 +103,25 @@ describe("restoreDesktopMiniChrome", () => {
     await restoreDesktopMiniChrome(win);
     expect(win.setAlwaysOnTop).not.toHaveBeenCalled();
     expect(win.setSkipTaskbar).not.toHaveBeenCalled();
+  });
+
+  it("窗口还没真正缩下去时，不会把任务栏按钮删掉", async () => {
+    const win = shell("widget");
+    let iconic = false;
+    win.isMinimized.mockImplementation(async () => iconic);
+    await minimizeDesktopMiniWindow(async () => win);
+
+    await restoreDesktopMiniChrome(win);
+    expect(win.setSkipTaskbar).not.toHaveBeenCalledWith(true);
+    expect(win.setAlwaysOnTop).not.toHaveBeenCalledWith(true);
+
+    iconic = true;
+    await restoreDesktopMiniChrome(win);
+    expect(win.setSkipTaskbar).not.toHaveBeenCalledWith(true);
+
+    iconic = false;
+    await restoreDesktopMiniChrome(win);
+    expect(win.setAlwaysOnTop).toHaveBeenCalledWith(true);
+    expect(win.setSkipTaskbar).toHaveBeenCalledWith(true);
   });
 });
