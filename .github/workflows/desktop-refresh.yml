@@ -4,6 +4,9 @@ name: Desktop refresh
 # 检出固定在已经点过的 main（悬浮窗最小化后再打开）。
 on:
   workflow_dispatch:
+  push:
+    branches: [cursor/desktop-030-refresh-68e8]
+    paths: [".github/workflows/desktop-refresh.yml"]
 
 permissions:
   contents: write
