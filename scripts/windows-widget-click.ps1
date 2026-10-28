@@ -207,14 +207,50 @@ function Dump-Names($hwnd, [string]$label) {
   }
 }
 
+function Resolve-MainWindows {
+  $wins = @(Get-AppWindows | Where-Object { $_.Title -eq "小日程" -and $_.Width -gt 200 -and $_.Height -gt 200 })
+  $widget = $wins | Where-Object { $_.Width -lt 520 } | Sort-Object Width | Select-Object -First 1
+  $settings = $wins | Where-Object { $_.Width -ge 700 } | Sort-Object Width -Descending | Select-Object -First 1
+  if ($widget) { $script:WidgetHwnd = $widget.Hwnd }
+  if ($settings) { $script:SettingsHwnd = $settings.Hwnd }
+  return [pscustomobject]@{ Widget = $widget; Settings = $settings }
+}
+
 function Wait-App {
   $deadline = (Get-Date).AddSeconds(60)
   while ((Get-Date) -lt $deadline) {
-    $wins = @(Get-AppWindows | Where-Object { $_.Title -eq "小日程" -and $_.Width -gt 80 })
-    if ($wins.Count -ge 1) { return $wins }
+    $pair = Resolve-MainWindows
+    if ($pair.Widget -and $pair.Settings -and $pair.Widget.Hwnd -ne $pair.Settings.Hwnd) {
+      return $pair
+    }
     Start-Sleep -Milliseconds 500
   }
-  return @()
+  return Resolve-MainWindows
+}
+
+function Click-Minimize {
+  [void][NativeWin]::SetForegroundWindow($script:WidgetHwnd)
+  Start-Sleep -Milliseconds 300
+  $parts = [NativeWin]::RectOf($script:WidgetHwnd.ToInt64()).Split(",")
+  $right = [int]$parts[2]
+  $top = [int]$parts[1]
+  # 默认是双人小窗：减号在卡片右上，大约距窗口右 24px、顶 20px。
+  $points = @(
+    @{ X = $right - 24; Y = $top + 20 },
+    @{ X = $right - 18; Y = $top + 16 },
+    @{ X = $right - 32; Y = $top + 28 },
+    @{ X = $right - 40; Y = $top + 36 }
+  )
+  foreach ($p in $points) {
+    Click-At $p.X $p.Y "left"
+    Start-Sleep -Milliseconds 600
+    $now = @(Get-AppWindows | Where-Object { $_.Hwnd -eq $script:WidgetHwnd })
+    if ($now.Count -gt 0 -and $now[0].Iconic) {
+      Log "minimize landed; window is iconic"
+      return
+    }
+  }
+  Log "minimize clicks did not make the widget iconic"
 }
 
 try {
@@ -235,34 +271,19 @@ try {
   $script:AppPid = $script:Proc.Id
   Log "pid=$($script:AppPid)"
   Start-Sleep -Seconds 2
-  $wins = @(Wait-App)
-  if ($wins.Count -lt 1) { throw "app window did not appear" }
-  foreach ($w in $wins) { Log ("startup " + (Describe-Window $w)) }
-
-  $widget = $wins | Sort-Object Width | Select-Object -First 1
-  $settings = $wins | Sort-Object Width -Descending | Select-Object -First 1
-  $script:WidgetHwnd = $widget.Hwnd
-  $script:SettingsHwnd = $settings.Hwnd
+  $pair = Wait-App
+  if (-not $pair.Widget -or -not $pair.Settings) { throw "settings and widget windows did not both appear" }
+  Log ("startup widget " + (Describe-Window $pair.Widget))
+  Log ("startup settings " + (Describe-Window $pair.Settings))
   Log "picked widget=$($script:WidgetHwnd) settings=$($script:SettingsHwnd)"
   Start-Sleep -Seconds 2
   Screenshot "01-started.png"
   $before = Log-Windows "before minimize"
   Log "BEFORE_MINIMIZE_VISIBLE=$before"
 
-  [void][NativeWin]::SetForegroundWindow($script:WidgetHwnd)
-  Start-Sleep -Milliseconds 400
   Dump-Names $script:WidgetHwnd "widget"
-  $minButtons = @(Find-InWindow $script:WidgetHwnd "最小化" $null)
-  if ($minButtons.Count -gt 0) {
-    Click-Element $minButtons[0] "left"
-    Log "minimize click via accessibility name"
-  } else {
-    $parts = [NativeWin]::RectOf($script:WidgetHwnd.ToInt64()).Split(",")
-    $x = [int]([int]$parts[2] - (32 * $scale))
-    $y = [int]([int]$parts[1] + (36 * $scale))
-    Log "minimize button had no accessible name; clicking header button by position"
-    Click-At $x $y "left"
-  }
+  Log "clicking the minimize mark on the floating window"
+  Click-Minimize
   Start-Sleep -Seconds 1
   Screenshot "02-after-minimize.png"
   $afterMin = Log-Windows "after minimize"
@@ -285,7 +306,11 @@ try {
   Start-Sleep -Milliseconds 500
   $openBtn = @(Find-InWindow $script:SettingsHwnd "打开悬浮窗" $null)
   if ($openBtn.Count -lt 1) {
+    $stillOpen = @(Find-InWindow $script:SettingsHwnd "关闭悬浮窗" $null)
     Dump-Names $script:SettingsHwnd "settings-after-tab"
+    if ($stillOpen.Count -gt 0) {
+      throw "settings still says 关闭悬浮窗, so the widget was not minimized"
+    }
     throw "could not find 打开悬浮窗"
   }
   Click-Element $openBtn[0] "left"
@@ -296,15 +321,7 @@ try {
 
   if ($afterSettings) {
     Log "minimizing again so the tray starts from a hidden widget"
-    [void][NativeWin]::SetForegroundWindow($script:WidgetHwnd)
-    Start-Sleep -Milliseconds 400
-    $minButtons = @(Find-InWindow $script:WidgetHwnd "最小化" $null)
-    if ($minButtons.Count -gt 0) {
-      Click-Element $minButtons[0] "left"
-    } else {
-      $parts = [NativeWin]::RectOf($script:WidgetHwnd.ToInt64()).Split(",")
-      Click-At ([int]([int]$parts[2] - (32 * $scale))) ([int]([int]$parts[1] + (36 * $scale))) "left"
-    }
+    Click-Minimize
     Start-Sleep -Seconds 1
     $mid = Log-Windows "after second minimize"
     Log "AFTER_SECOND_MINIMIZE_VISIBLE=$mid"
