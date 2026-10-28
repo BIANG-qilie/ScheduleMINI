@@ -1,0 +1,283 @@
+name: Desktop refresh
+
+# 手动覆盖当前正式版的 Windows / macOS 安装包。不构建 Android，不新建标签。
+# 检出固定在已经点过的 main（悬浮窗最小化后再打开）。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a309abcf50477d1909fbd0c4fba3c3365beac3eb
+      - name: Built commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "a309abcf50477d1909fbd0c4fba3c3365beac3eb"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Version stays 0.3.0
+        shell: bash
+        run: test "$(node -p "require('./package.json').version")" = "0.3.0"
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
+      - name: Asset name pattern
+        id: names
+        shell: bash
+        run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v0.3.0
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          assetNamePattern: ${{ steps.names.outputs.pattern }}
+          releaseBody: |-
+            可根据手机记录补近几天。
+            新建是矮抽屉，左右两张入口。
+            设置里可改标签显示名，号码名单在数据里。
+            周视图短安排和正课并排，圆点贴在淡底上。
+          args: --config src-tauri/ci-version.json
+      - name: APK and release notes stayed put
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { createHash } from "node:crypto";
+          import { execFileSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+          const rel = JSON.parse(execFileSync("gh", ["api", "repos/BIANG-qilie/ScheduleMINI/releases/tags/v0.3.0"], { encoding: "utf8" }));
+          const body = createHash("sha256").update(rel.body, "utf8").digest("hex");
+          if (body !== "237ea4994b0fd7d1ea1f5441f1c52ebbce60dceeaebadd43143c9b7db0874fcd") {
+            console.error("release body changed", body);
+            process.exit(1);
+          }
+          execFileSync("gh", ["release", "download", "v0.3.0", "--pattern", "ScheduleMINI-0.3.0-universal.apk", "--output", "apk", "--clobber"], { stdio: "inherit" });
+          const apk = createHash("sha256").update(readFileSync("apk")).digest("hex");
+          if (apk !== "e1a396e18501871800e3e85c51ad8daa6521b1da8de33bca1daf821309294eae") {
+            console.error("apk changed", apk);
+            process.exit(1);
+          }
+          JS
+          gh release view v0.3.0 --json assets --jq '.assets[].name' | sort
+          for f in \
+            ScheduleMINI-0.3.0-x64-setup.exe \
+            ScheduleMINI-0.3.0-x64-setup.exe.sig \
+            ScheduleMINI-0.3.0-x64.msi \
+            ScheduleMINI-0.3.0-x64.msi.sig \
+            latest.json \
+            ScheduleMINI-0.3.0-universal.apk
+          do
+            gh release view v0.3.0 --json assets --jq '.assets[].name' | grep -qx "$f"
+          done
+
+  macos:
+    needs: windows
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a309abcf50477d1909fbd0c4fba3c3365beac3eb
+      - name: Built commit
+        run: test "$(git rev-parse HEAD)" = "a309abcf50477d1909fbd0c4fba3c3365beac3eb"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Version stays 0.3.0
+        run: test "$(node -p "require('./package.json').version")" = "0.3.0"
+      - name: Bundle semver
+        run: node scripts/prepare-bundle-version.mjs
+      - name: Asset name pattern
+        id: names
+        run: echo "pattern=ScheduleMINI-$(node -p "require('./package.json').version")-[arch][setup][ext]" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v0.3.0
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          assetNamePattern: ${{ steps.names.outputs.pattern }}
+          releaseBody: |-
+            可根据手机记录补近几天。
+            新建是矮抽屉，左右两张入口。
+            设置里可改标签显示名，号码名单在数据里。
+            周视图短安排和正课并排，圆点贴在淡底上。
+          args: --config src-tauri/ci-version.json --target universal-apple-darwin
+      - name: APK, notes, and desktop names
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { createHash } from "node:crypto";
+          import { execFileSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+          const rel = JSON.parse(execFileSync("gh", ["api", "repos/BIANG-qilie/ScheduleMINI/releases/tags/v0.3.0"], { encoding: "utf8" }));
+          const body = createHash("sha256").update(rel.body, "utf8").digest("hex");
+          if (body !== "237ea4994b0fd7d1ea1f5441f1c52ebbce60dceeaebadd43143c9b7db0874fcd") {
+            console.error("release body changed", body);
+            process.exit(1);
+          }
+          execFileSync("gh", ["release", "download", "v0.3.0", "--pattern", "ScheduleMINI-0.3.0-universal.apk", "--output", "apk", "--clobber"], { stdio: "inherit" });
+          const apk = createHash("sha256").update(readFileSync("apk")).digest("hex");
+          if (apk !== "e1a396e18501871800e3e85c51ad8daa6521b1da8de33bca1daf821309294eae") {
+            console.error("apk changed", apk);
+            process.exit(1);
+          }
+          JS
+          for f in \
+            ScheduleMINI-0.3.0-universal.app.tar.gz \
+            ScheduleMINI-0.3.0-universal.app.tar.gz.sig \
+            ScheduleMINI-0.3.0-universal.dmg \
+            ScheduleMINI-0.3.0-x64-setup.exe \
+            ScheduleMINI-0.3.0-x64-setup.exe.sig \
+            ScheduleMINI-0.3.0-x64.msi \
+            ScheduleMINI-0.3.0-x64.msi.sig \
+            latest.json \
+            ScheduleMINI-0.3.0-universal.apk
+          do
+            gh release view v0.3.0 --json assets --jq '.assets[].name' | grep -qx "$f"
+          done
+          gh release download v0.3.0 --pattern latest.json --output latest.json --clobber
+          node --input-type=module <<'JS'
+          import { readFileSync } from "node:fs";
+          const j = JSON.parse(readFileSync("latest.json", "utf8"));
+          const need = [
+            "windows-x86_64",
+            "windows-x86_64-nsis",
+            "windows-x86_64-msi",
+            "darwin-aarch64",
+            "darwin-aarch64-app",
+            "darwin-x86_64",
+            "darwin-x86_64-app",
+          ];
+          for (const k of need) {
+            if (!j.platforms?.[k]?.signature || !j.platforms[k].url?.includes(k.startsWith("windows") ? "ScheduleMINI-0.3.0-x64" : "ScheduleMINI-0.3.0-universal.app.tar.gz")) {
+              console.error("bad platform", k, j.platforms?.[k]);
+              process.exit(1);
+            }
+          }
+          const notes = "可根据手机记录补近几天。\n新建是矮抽屉，左右两张入口。\n设置里可改标签显示名，号码名单在数据里。\n周视图短安排和正课并排，圆点贴在淡底上。";
+          if (j.version !== "0.3.0" || j.notes !== notes) {
+            console.error("updater manifest notes or version changed");
+            process.exit(1);
+          }
+          JS
+
+  mirror:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a309abcf50477d1909fbd0c4fba3c3365beac3eb
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Upload desktop assets to Sealos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.MIRROR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_S3_SECRET_KEY }}
+          MIRROR_S3_ENDPOINT: ${{ secrets.MIRROR_S3_ENDPOINT }}
+          MIRROR_S3_BUCKET: ${{ secrets.MIRROR_S3_BUCKET }}
+          MIRROR_PUBLIC_BASE: ${{ secrets.MIRROR_PUBLIC_BASE }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${MIRROR_S3_ENDPOINT}" ] && missing+=("MIRROR_S3_ENDPOINT")
+          [ -z "${MIRROR_S3_BUCKET}" ] && missing+=("MIRROR_S3_BUCKET")
+          [ -z "${MIRROR_PUBLIC_BASE}" ] && missing+=("MIRROR_PUBLIC_BASE")
+          [ -z "${AWS_ACCESS_KEY_ID}" ] && missing+=("MIRROR_S3_ACCESS_KEY")
+          [ -z "${AWS_SECRET_ACCESS_KEY}" ] && missing+=("MIRROR_S3_SECRET_KEY")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "mirror upload skipped, missing: ${missing[*]}"
+            exit 1
+          fi
+          app_base=$(node -e "
+            const fs = require('fs');
+            const s = fs.readFileSync('src/lib/update/mirror-endpoints.ts','utf8');
+            const m = s.match(/MIRROR_PUBLIC_BASE\\s*=\\s*\"([^\"]+)\"/);
+            if (!m) process.exit(1);
+            process.stdout.write(m[1]);
+          ")
+          if [ "${MIRROR_PUBLIC_BASE%/}" != "$app_base" ]; then
+            echo "MIRROR_PUBLIC_BASE does not match the in-app mirror host"
+            exit 1
+          fi
+          # shellcheck disable=SC1091
+          source scripts/mirror-s3.sh
+          mirror_s3_setup
+          VERSION=0.3.0
+          TAG="v${VERSION}"
+          mkdir -p assets
+          gh release download "$TAG" --dir assets --clobber
+          echo "e1a396e18501871800e3e85c51ad8daa6521b1da8de33bca1daf821309294eae  assets/ScheduleMINI-0.3.0-universal.apk" | sha256sum -c
+          test -f assets/latest.json
+          node scripts/mirror-manifests.mjs rewrite-latest \
+            assets/latest.json "$MIRROR_PUBLIC_BASE" "$VERSION" assets/mirror-latest.json
+          prefix="schedulemini/v${VERSION}"
+          shopt -s nullglob
+          for f in assets/*; do
+            base=$(basename "$f")
+            case "$base" in
+              latest.json|mirror-latest.json|android-latest.json|notes.md|*.apk)
+                echo "leave unchanged: $base"
+                continue
+                ;;
+            esac
+            ctype=$(node scripts/mirror-manifests.mjs content-type "$base")
+            mirror_s3_put "${prefix}/${base}" "$f" "$ctype" \
+              "public, max-age=31536000, immutable" \
+              "attachment; filename=\"${base}\""
+          done
+          mirror_s3_put "schedulemini/latest.json" assets/mirror-latest.json \
+            "application/json" "no-cache"
+          echo "mirrored desktop objects under ${prefix} and schedulemini/latest.json"
+          curl -fsSL -o /tmp/sealos-apk "${MIRROR_PUBLIC_BASE}/schedulemini/v0.3.0/ScheduleMINI-0.3.0-universal.apk"
+          echo "e1a396e18501871800e3e85c51ad8daa6521b1da8de33bca1daf821309294eae  /tmp/sealos-apk" | sha256sum -c
+          for base in \
+            ScheduleMINI-0.3.0-x64-setup.exe \
+            ScheduleMINI-0.3.0-x64-setup.exe.sig \
+            ScheduleMINI-0.3.0-x64.msi \
+            ScheduleMINI-0.3.0-x64.msi.sig \
+            ScheduleMINI-0.3.0-universal.dmg \
+            ScheduleMINI-0.3.0-universal.app.tar.gz \
+            ScheduleMINI-0.3.0-universal.app.tar.gz.sig
+          do
+            github=$(sha256sum "assets/${base}" | awk '{print $1}')
+            remote=$(curl -fsSL "${MIRROR_PUBLIC_BASE}/schedulemini/v0.3.0/${base}" | sha256sum | awk '{print $1}')
+            echo "$base github=$github sealos=$remote"
+            test "$github" = "$remote"
+          done
