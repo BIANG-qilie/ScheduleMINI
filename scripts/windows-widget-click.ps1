@@ -20,6 +20,7 @@ Add-Type -AssemblyName System.Windows.Forms
 
 Add-Type @"
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Runtime.InteropServices;
 public static class NativeWin {
@@ -38,6 +39,38 @@ public static class NativeWin {
   [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
   public struct RECT { public int Left, Top, Right, Bottom; }
+
+  public static List<string> ListForPid(uint pid) {
+    var rows = new List<string>();
+    EnumWindows((hWnd, lParam) => {
+      uint owner;
+      GetWindowThreadProcessId(hWnd, out owner);
+      if (owner != pid) return true;
+      var sb = new StringBuilder(512);
+      GetWindowText(hWnd, sb, sb.Capacity);
+      if (sb.Length == 0) return true;
+      RECT rect;
+      GetWindowRect(hWnd, out rect);
+      rows.Add(string.Join("|", new string[] {
+        hWnd.ToInt64().ToString(),
+        sb.ToString().Replace("|", "/"),
+        IsWindowVisible(hWnd) ? "1" : "0",
+        IsIconic(hWnd) ? "1" : "0",
+        rect.Left.ToString(),
+        rect.Top.ToString(),
+        (rect.Right - rect.Left).ToString(),
+        (rect.Bottom - rect.Top).ToString()
+      }));
+      return true;
+    }, IntPtr.Zero);
+    return rows;
+  }
+
+  public static string RectOf(long hwnd) {
+    RECT rect;
+    GetWindowRect(new IntPtr(hwnd), out rect);
+    return rect.Left + "," + rect.Top + "," + rect.Right + "," + rect.Bottom;
+  }
 }
 "@
 
@@ -67,36 +100,22 @@ function Get-DpiScale {
 }
 
 function Get-AppWindows {
-  $script:enumFound = New-Object System.Collections.Generic.List[object]
-  $script:enumPid = [uint32]$script:AppPid
-  # 回调必须挂在脚本变量上，否则 EnumWindows 还在走时委托会被回收。
-  $script:enumCb = [NativeWin+EnumProc]{
-    param($hWnd, $lParam)
-    $procId = [uint32]0
-    [void][NativeWin]::GetWindowThreadProcessId($hWnd, [ref]$procId)
-    if ($procId -ne $script:enumPid) { return $true }
-    $sb = New-Object System.Text.StringBuilder 512
-    [void][NativeWin]::GetWindowText($hWnd, $sb, $sb.Capacity)
-    $title = $sb.ToString()
-    if ([string]::IsNullOrWhiteSpace($title)) { return $true }
-    $rect = New-Object NativeWin+RECT
-    [void][NativeWin]::GetWindowRect($hWnd, [ref]$rect)
-    $script:enumFound.Add([pscustomobject]@{
-      Hwnd = $hWnd
-      Title = $title
-      Visible = [NativeWin]::IsWindowVisible($hWnd)
-      Iconic = [NativeWin]::IsIconic($hWnd)
-      Left = $rect.Left
-      Top = $rect.Top
-      Right = $rect.Right
-      Bottom = $rect.Bottom
-      Width = $rect.Right - $rect.Left
-      Height = $rect.Bottom - $rect.Top
-    })
-    return $true
+  $rows = [NativeWin]::ListForPid([uint32]$script:AppPid)
+  $found = @()
+  foreach ($row in $rows) {
+    $p = $row.Split("|")
+    $found += [pscustomobject]@{
+      Hwnd = [IntPtr]::new([int64]$p[0])
+      Title = $p[1]
+      Visible = $p[2] -eq "1"
+      Iconic = $p[3] -eq "1"
+      Left = [int]$p[4]
+      Top = [int]$p[5]
+      Width = [int]$p[6]
+      Height = [int]$p[7]
+    }
   }
-  [void][NativeWin]::EnumWindows($script:enumCb, [IntPtr]::Zero)
-  return @($script:enumFound)
+  return $found
 }
 
 function Describe-Window($w) {
@@ -238,10 +257,9 @@ try {
     Click-Element $minButtons[0] "left"
     Log "minimize click via accessibility name"
   } else {
-    $rect = New-Object NativeWin+RECT
-    [void][NativeWin]::GetWindowRect($script:WidgetHwnd, [ref]$rect)
-    $x = [int]($rect.Right - (32 * $scale))
-    $y = [int]($rect.Top + (36 * $scale))
+    $parts = [NativeWin]::RectOf($script:WidgetHwnd.ToInt64()).Split(",")
+    $x = [int]([int]$parts[2] - (32 * $scale))
+    $y = [int]([int]$parts[1] + (36 * $scale))
     Log "minimize button had no accessible name; clicking header button by position"
     Click-At $x $y "left"
   }
@@ -284,9 +302,8 @@ try {
     if ($minButtons.Count -gt 0) {
       Click-Element $minButtons[0] "left"
     } else {
-      $rect = New-Object NativeWin+RECT
-      [void][NativeWin]::GetWindowRect($script:WidgetHwnd, [ref]$rect)
-      Click-At ([int]($rect.Right - (32 * $scale))) ([int]($rect.Top + (36 * $scale))) "left"
+      $parts = [NativeWin]::RectOf($script:WidgetHwnd.ToInt64()).Split(",")
+      Click-At ([int]([int]$parts[2] - (32 * $scale))) ([int]([int]$parts[1] + (36 * $scale))) "left"
     }
     Start-Sleep -Seconds 1
     $mid = Log-Windows "after second minimize"
