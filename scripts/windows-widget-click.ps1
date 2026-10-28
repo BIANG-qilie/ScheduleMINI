@@ -423,20 +423,39 @@ try {
   }
   if ($icon) {
     Click-Element $icon "right"
-    Start-Sleep -Milliseconds 700
-    $popup = [NativeWin]::FindWindow("#32768", $null)
-    $menu = @()
-    if ($popup -ne [IntPtr]::Zero) {
-      Dump-Names $popup "tray-menu"
-      $menu = @(Find-InWindow $popup "显示/隐藏悬浮窗" $null)
-    } else {
-      Log "tray menu window was not found"
-      foreach ($row in [NativeWin]::WindowsByClassHint()) { Log "after-right-click $row" }
-    }
+    Start-Sleep -Milliseconds 900
+    Screenshot "04b-menu.png"
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $cond = New-Object System.Windows.Automation.PropertyCondition(
+      [System.Windows.Automation.AutomationElement]::NameProperty, "显示/隐藏悬浮窗")
+    $menu = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond))
     Log "menu items: $($menu.Count)"
-    if ($menu.Count -gt 0) {
-      Click-Element $menu[0] "left"
+    foreach ($el in $menu) {
+      $br = $el.Current.BoundingRectangle
+      Log ("menu {0} rect={1},{2},{3}x{4}" -f $el.Current.ControlType.ProgrammaticName, $br.X, $br.Y, $br.Width, $br.Height)
+    }
+    $menuBtn = $menu | Where-Object {
+      $br = $_.Current.BoundingRectangle
+      $br.Width -gt 20 -and $br.Height -gt 8 -and $br.Height -lt 80
+    } | Select-Object -First 1
+    if ($menuBtn) {
+      Click-Element $menuBtn "left"
       $trayClicked = $true
+    } else {
+      $popup = [NativeWin]::FindWindow("#32768", $null)
+      Log "menu hwnd=$popup"
+      if ($popup -ne [IntPtr]::Zero) {
+        $parts = [NativeWin]::RectOf($popup.ToInt64()).Split(",")
+        $left = [int]$parts[0]; $top = [int]$parts[1]; $right = [int]$parts[2]; $bottom = [int]$parts[3]
+        $mx = [int](($left + $right) / 2)
+        $my = [int](($top + $bottom) / 2)
+        Log "clicking middle of tray menu at $mx,$my (rect $left,$top-$right,$bottom)"
+        Click-At $mx $my "left"
+        $trayClicked = $true
+      } else {
+        Log "tray menu item 显示/隐藏悬浮窗 was not clickable"
+        foreach ($row in [NativeWin]::VisibleTop()) { Log "visible-menu $row" }
+      }
     }
   } else {
     Log "notification icon 小日程 was not in the hidden tray"
