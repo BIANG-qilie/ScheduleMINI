@@ -350,50 +350,36 @@ try {
 
   Log "tray right-click"
   $trayClicked = $false
-  foreach ($row in [NativeWin]::WindowsByClassHint()) { Log "win $row" }
-  $candidates = New-Object System.Collections.Generic.List[object]
-  foreach ($row in [NativeWin]::WindowsByClassHint()) {
-    $hwnd = [IntPtr]::new([int64]$row.Split("|")[0])
-    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-    $logged = 0
-    foreach ($el in $all) {
-      $name = $el.Current.Name
-      if ([string]::IsNullOrWhiteSpace($name)) { continue }
-      if ($logged -lt 30) {
-        Log ("  tray-name {0} | {1}" -f $el.Current.ControlType.ProgrammaticName, $name)
-        $logged++
-      }
-      if ($name -eq "小日程" -or $name -like "小日程*") {
-        $candidates.Add($el) | Out-Null
-      }
+  $trayHwnd = [NativeWin]::FindWindow("Shell_TrayWnd", $null)
+  $chevron = $null
+  if ($trayHwnd -ne [IntPtr]::Zero) {
+    foreach ($label in @("Show Hidden Icons", "Show hidden icons", "显示隐藏的图标")) {
+      $hits = @(Find-InWindow $trayHwnd $label $null)
+      if ($hits.Count -gt 0) { $chevron = $hits[0]; break }
     }
   }
-  Log "tray candidates: $($candidates.Count)"
-  if ($candidates.Count -eq 0) {
-    $chevron = $null
-    $trayHwnd = [NativeWin]::FindWindow("Shell_TrayWnd", $null)
-    if ($trayHwnd -ne [IntPtr]::Zero) {
-      foreach ($label in @("Show hidden icons", "显示隐藏的图标")) {
-        $hits = @(Find-InWindow $trayHwnd $label $null)
-        if ($hits.Count -gt 0) { $chevron = $hits[0]; break }
+  $icon = $null
+  if ($chevron) {
+    Log "opening hidden icons"
+    Click-Element $chevron "left"
+    Start-Sleep -Milliseconds 800
+    $overflow = [NativeWin]::FindWindow("NotifyIconOverflowWindow", $null)
+    Log "overflow hwnd=$overflow"
+    if ($overflow -ne [IntPtr]::Zero) {
+      $root = [System.Windows.Automation.AutomationElement]::FromHandle($overflow)
+      $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+      foreach ($el in $all) {
+        $name = $el.Current.Name
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        Log ("  overflow {0} | {1}" -f $el.Current.ControlType.ProgrammaticName, $name)
+        if ($name -eq "小日程") { $icon = $el }
       }
     }
-    if ($chevron) {
-      Log "opening hidden icons"
-      Click-Element $chevron "left"
-      Start-Sleep -Milliseconds 700
-      $overflow = [NativeWin]::FindWindow("NotifyIconOverflowWindow", $null)
-      if ($overflow -ne [IntPtr]::Zero) {
-        $candidates = @(Find-InWindow $overflow "小日程" $null)
-        Log "overflow candidates: $($candidates.Count)"
-      }
-    } else {
-      Log "no hidden-icons chevron"
-    }
+  } else {
+    Log "no hidden-icons chevron"
   }
-  if ($candidates.Count -gt 0) {
-    Click-Element $candidates[0] "right"
+  if ($icon) {
+    Click-Element $icon "right"
     Start-Sleep -Milliseconds 700
     $popup = [NativeWin]::FindWindow("#32768", $null)
     $menu = @()
@@ -402,12 +388,15 @@ try {
       $menu = @(Find-InWindow $popup "显示/隐藏悬浮窗" $null)
     } else {
       Log "tray menu window was not found"
+      foreach ($row in [NativeWin]::WindowsByClassHint()) { Log "after-right-click $row" }
     }
     Log "menu items: $($menu.Count)"
     if ($menu.Count -gt 0) {
       Click-Element $menu[0] "left"
       $trayClicked = $true
     }
+  } else {
+    Log "notification icon 小日程 was not in the hidden tray"
   }
   if (-not $trayClicked) { Log "TRAY_CLICK=failed" } else { Log "TRAY_CLICK=ok" }
   Start-Sleep -Seconds 2
