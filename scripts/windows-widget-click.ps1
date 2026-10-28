@@ -38,6 +38,27 @@ public static class NativeWin {
   [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int index);
   [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+  public static List<string> WindowsByClassHint() {
+    var rows = new List<string>();
+    EnumWindows((hWnd, lParam) => {
+      var cls = new StringBuilder(256);
+      GetClassName(hWnd, cls, cls.Capacity);
+      var title = new StringBuilder(256);
+      GetWindowText(hWnd, title, title.Capacity);
+      string c = cls.ToString();
+      string t = title.ToString();
+      if (c.IndexOf("Tray", StringComparison.OrdinalIgnoreCase) >= 0
+        || c.IndexOf("Notify", StringComparison.OrdinalIgnoreCase) >= 0
+        || c.IndexOf("Xaml", StringComparison.OrdinalIgnoreCase) >= 0
+        || t.IndexOf("小日程", StringComparison.Ordinal) >= 0) {
+        rows.Add(hWnd.ToInt64() + "|" + c + "|" + t.Replace("|", "/"));
+      }
+      return true;
+    }, IntPtr.Zero);
+    return rows;
+  }
   public struct RECT { public int Left, Top, Right, Bottom; }
 
   public static List<string> ListForPid(uint pid) {
@@ -328,30 +349,64 @@ try {
   }
 
   Log "tray right-click"
-  $trayHwnd = [NativeWin]::FindWindow("Shell_TrayWnd", $null)
   $trayClicked = $false
-  if ($trayHwnd -eq [IntPtr]::Zero) {
-    Log "Shell_TrayWnd not found"
-  } else {
-    Dump-Names $trayHwnd "tray"
-    $icons = @(Find-InWindow $trayHwnd "小日程" $null)
-    Log "tray icons named 小日程: $($icons.Count)"
-    if ($icons.Count -gt 0) {
-      Click-Element $icons[0] "right"
-      Start-Sleep -Milliseconds 600
-      $popup = [NativeWin]::FindWindow("#32768", $null)
-      $menu = @()
-      if ($popup -ne [IntPtr]::Zero) {
-        Dump-Names $popup "tray-menu"
-        $menu = @(Find-InWindow $popup "显示/隐藏悬浮窗" $null)
-      } else {
-        Log "tray menu window was not found"
+  foreach ($row in [NativeWin]::WindowsByClassHint()) { Log "win $row" }
+  $candidates = New-Object System.Collections.Generic.List[object]
+  foreach ($row in [NativeWin]::WindowsByClassHint()) {
+    $hwnd = [IntPtr]::new([int64]$row.Split("|")[0])
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $logged = 0
+    foreach ($el in $all) {
+      $name = $el.Current.Name
+      if ([string]::IsNullOrWhiteSpace($name)) { continue }
+      if ($logged -lt 30) {
+        Log ("  tray-name {0} | {1}" -f $el.Current.ControlType.ProgrammaticName, $name)
+        $logged++
       }
-      Log "menu items: $($menu.Count)"
-      if ($menu.Count -gt 0) {
-        Click-Element $menu[0] "left"
-        $trayClicked = $true
+      if ($name -eq "小日程" -or $name -like "小日程*") {
+        $candidates.Add($el) | Out-Null
       }
+    }
+  }
+  Log "tray candidates: $($candidates.Count)"
+  if ($candidates.Count -eq 0) {
+    $chevron = $null
+    $trayHwnd = [NativeWin]::FindWindow("Shell_TrayWnd", $null)
+    if ($trayHwnd -ne [IntPtr]::Zero) {
+      foreach ($label in @("Show hidden icons", "显示隐藏的图标")) {
+        $hits = @(Find-InWindow $trayHwnd $label $null)
+        if ($hits.Count -gt 0) { $chevron = $hits[0]; break }
+      }
+    }
+    if ($chevron) {
+      Log "opening hidden icons"
+      Click-Element $chevron "left"
+      Start-Sleep -Milliseconds 700
+      $overflow = [NativeWin]::FindWindow("NotifyIconOverflowWindow", $null)
+      if ($overflow -ne [IntPtr]::Zero) {
+        $candidates = @(Find-InWindow $overflow "小日程" $null)
+        Log "overflow candidates: $($candidates.Count)"
+      }
+    } else {
+      Log "no hidden-icons chevron"
+    }
+  }
+  if ($candidates.Count -gt 0) {
+    Click-Element $candidates[0] "right"
+    Start-Sleep -Milliseconds 700
+    $popup = [NativeWin]::FindWindow("#32768", $null)
+    $menu = @()
+    if ($popup -ne [IntPtr]::Zero) {
+      Dump-Names $popup "tray-menu"
+      $menu = @(Find-InWindow $popup "显示/隐藏悬浮窗" $null)
+    } else {
+      Log "tray menu window was not found"
+    }
+    Log "menu items: $($menu.Count)"
+    if ($menu.Count -gt 0) {
+      Click-Element $menu[0] "left"
+      $trayClicked = $true
     }
   }
   if (-not $trayClicked) { Log "TRAY_CLICK=failed" } else { Log "TRAY_CLICK=ok" }
