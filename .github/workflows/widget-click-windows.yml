@@ -26,7 +26,7 @@ jobs:
       - run: npm ci
       - name: Build debug desktop app without an installer
         shell: bash
-        run: npx tauri build --debug --bundles none --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        run: npx tauri build --debug --no-bundle --config '{"bundle":{"createUpdaterArtifacts":false}}'
       - name: Click minimize, settings, and tray
         shell: pwsh
         run: ./scripts/windows-widget-click.ps1
