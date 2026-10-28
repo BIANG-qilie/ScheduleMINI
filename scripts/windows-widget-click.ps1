@@ -39,6 +39,26 @@ public static class NativeWin {
   [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+  public static List<string> VisibleTop() {
+    var rows = new List<string>();
+    EnumWindows((hWnd, lParam) => {
+      if (!IsWindowVisible(hWnd)) return true;
+      var cls = new StringBuilder(256);
+      GetClassName(hWnd, cls, cls.Capacity);
+      var title = new StringBuilder(256);
+      GetWindowText(hWnd, title, title.Capacity);
+      RECT rect;
+      GetWindowRect(hWnd, out rect);
+      int w = rect.Right - rect.Left;
+      int h = rect.Bottom - rect.Top;
+      if (w < 2 && h < 2) return true;
+      rows.Add(hWnd.ToInt64() + "|" + cls.ToString() + "|" + title.ToString().Replace("|", "/") + "|" + rect.Left + "," + rect.Top + "," + w + "x" + h);
+      return true;
+    }, IntPtr.Zero);
+    return rows;
+  }
 
   public static List<string> WindowsByClassHint() {
     var rows = new List<string>();
@@ -350,6 +370,9 @@ try {
 
   Log "tray right-click"
   $trayClicked = $false
+  Log "minimizing settings so the tray flyout is not covered"
+  [void][NativeWin]::ShowWindow($script:SettingsHwnd, 6)
+  Start-Sleep -Milliseconds 400
   $trayHwnd = [NativeWin]::FindWindow("Shell_TrayWnd", $null)
   $chevron = $null
   if ($trayHwnd -ne [IntPtr]::Zero) {
@@ -359,24 +382,44 @@ try {
     }
   }
   $icon = $null
+  function Find-TrayIcon {
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $cond = New-Object System.Windows.Automation.PropertyCondition(
+      [System.Windows.Automation.AutomationElement]::NameProperty, "小日程")
+    $found = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond))
+    $hit = $null
+    foreach ($el in $found) {
+      $br = $el.Current.BoundingRectangle
+      Log ("exact 小日程 {0} rect={1},{2},{3}x{4}" -f $el.Current.ControlType.ProgrammaticName, $br.X, $br.Y, $br.Width, $br.Height)
+      if ($hit) { continue }
+      if ($br.Width -gt 4 -and $br.Width -lt 80 -and $br.Height -gt 4 -and $br.Height -lt 80) { $hit = $el }
+    }
+    return $hit
+  }
   if ($chevron) {
-    Log "opening hidden icons"
-    Click-Element $chevron "left"
-    Start-Sleep -Milliseconds 800
-    $overflow = [NativeWin]::FindWindow("NotifyIconOverflowWindow", $null)
-    Log "overflow hwnd=$overflow"
-    if ($overflow -ne [IntPtr]::Zero) {
-      $root = [System.Windows.Automation.AutomationElement]::FromHandle($overflow)
-      $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-      foreach ($el in $all) {
-        $name = $el.Current.Name
-        if ([string]::IsNullOrWhiteSpace($name)) { continue }
-        Log ("  overflow {0} | {1}" -f $el.Current.ControlType.ProgrammaticName, $name)
-        if ($name -eq "小日程") { $icon = $el }
+    $r = $chevron.Current.BoundingRectangle
+    Log ("opening hidden icons rect={0},{1} {2}x{3}" -f $r.X, $r.Y, $r.Width, $r.Height)
+    Click-At ([int]($r.X + $r.Width / 2)) ([int]($r.Y + $r.Height / 2)) "left"
+    Start-Sleep -Milliseconds 700
+    Screenshot "04a-overflow.png"
+    foreach ($row in [NativeWin]::VisibleTop()) { Log "visible $row" }
+    $icon = Find-TrayIcon
+    if (-not $icon) {
+      try {
+        $invoke = $chevron.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+        Log "chevron Invoke"
+        $invoke.Invoke()
+        Start-Sleep -Milliseconds 700
+      } catch {
+        Log "chevron has no Invoke pattern"
       }
+      foreach ($row in [NativeWin]::VisibleTop()) { Log "visible-after-invoke $row" }
+      $icon = Find-TrayIcon
     }
   } else {
     Log "no hidden-icons chevron"
+    foreach ($row in [NativeWin]::VisibleTop()) { Log "visible $row" }
+    $icon = Find-TrayIcon
   }
   if ($icon) {
     Click-Element $icon "right"
