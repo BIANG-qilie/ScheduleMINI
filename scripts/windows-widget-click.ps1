@@ -1,0 +1,341 @@
+# 在真正的 Windows 桌面上点悬浮窗：最小化，再从设置和托盘打开。
+# 记录每次之后窗口是否还在屏幕上。这不是调用顺序的单元测试。
+$ErrorActionPreference = "Stop"
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$OutDir = Join-Path (Get-Location) "widget-click-out"
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$LogPath = Join-Path $OutDir "click-log.txt"
+function Log([string]$msg) {
+  $line = "{0}  {1}" -f (Get-Date -Format "HH:mm:ss.fff"), $msg
+  Add-Content -Path $LogPath -Value $line -Encoding utf8
+  Write-Host $line
+}
+
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class NativeWin {
+  public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc lpEnumFunc, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
+  [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int index);
+  [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+  public struct RECT { public int Left, Top, Right, Bottom; }
+}
+"@
+
+$script:WidgetHwnd = [IntPtr]::Zero
+$script:SettingsHwnd = [IntPtr]::Zero
+$script:AppPid = 0
+$script:Proc = $null
+
+function Screenshot([string]$name) {
+  $path = Join-Path $OutDir $name
+  $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+  $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+  $g.Dispose()
+  $bmp.Dispose()
+  Log "screenshot $name ($($bounds.Width)x$($bounds.Height))"
+}
+
+function Get-DpiScale {
+  $hdc = [NativeWin]::GetDC([IntPtr]::Zero)
+  $dpi = [NativeWin]::GetDeviceCaps($hdc, 88)
+  [void][NativeWin]::ReleaseDC([IntPtr]::Zero, $hdc)
+  if ($dpi -lt 48) { return 1.0 }
+  return [double]$dpi / 96.0
+}
+
+function Get-AppWindows {
+  $script:enumFound = New-Object System.Collections.Generic.List[object]
+  $script:enumPid = [uint32]$script:AppPid
+  # 回调必须挂在脚本变量上，否则 EnumWindows 还在走时委托会被回收。
+  $script:enumCb = [NativeWin+EnumProc]{
+    param($hWnd, $lParam)
+    $procId = [uint32]0
+    [void][NativeWin]::GetWindowThreadProcessId($hWnd, [ref]$procId)
+    if ($procId -ne $script:enumPid) { return $true }
+    $sb = New-Object System.Text.StringBuilder 512
+    [void][NativeWin]::GetWindowText($hWnd, $sb, $sb.Capacity)
+    $title = $sb.ToString()
+    if ([string]::IsNullOrWhiteSpace($title)) { return $true }
+    $rect = New-Object NativeWin+RECT
+    [void][NativeWin]::GetWindowRect($hWnd, [ref]$rect)
+    $script:enumFound.Add([pscustomobject]@{
+      Hwnd = $hWnd
+      Title = $title
+      Visible = [NativeWin]::IsWindowVisible($hWnd)
+      Iconic = [NativeWin]::IsIconic($hWnd)
+      Left = $rect.Left
+      Top = $rect.Top
+      Right = $rect.Right
+      Bottom = $rect.Bottom
+      Width = $rect.Right - $rect.Left
+      Height = $rect.Bottom - $rect.Top
+    })
+    return $true
+  }
+  [void][NativeWin]::EnumWindows($script:enumCb, [IntPtr]::Zero)
+  return @($script:enumFound)
+}
+
+function Describe-Window($w) {
+  $onScreen = $w.Visible -and -not $w.Iconic -and $w.Width -gt 80 -and $w.Height -gt 80 -and $w.Left -gt -2000 -and $w.Top -gt -2000
+  return ("hwnd={0} title={1} visible={2} iconic={3} rect={4},{5},{6}x{7} onScreen={8}" -f $w.Hwnd, $w.Title, $w.Visible, $w.Iconic, $w.Left, $w.Top, $w.Width, $w.Height, $onScreen)
+}
+
+function Log-Windows([string]$label) {
+  Log "---- $label ----"
+  $wins = @(Get-AppWindows)
+  if ($wins.Count -eq 0) { Log "(no titled windows for pid $($script:AppPid))" }
+  foreach ($w in $wins) { Log (Describe-Window $w) }
+  $widget = $wins | Where-Object { $_.Hwnd -eq $script:WidgetHwnd } | Select-Object -First 1
+  if (-not $widget) {
+    Log "WIDGET missing from enum"
+    return $false
+  }
+  $onScreen = $widget.Visible -and -not $widget.Iconic -and $widget.Width -gt 80 -and $widget.Height -gt 80 -and $widget.Left -gt -2000 -and $widget.Top -gt -2000
+  Log "WIDGET_ON_SCREEN=$onScreen"
+  return $onScreen
+}
+
+function Click-At([int]$x, [int]$y, [string]$button) {
+  Log "mouse $button at $x,$y"
+  [void][NativeWin]::SetCursorPos($x, $y)
+  Start-Sleep -Milliseconds 120
+  if ($button -eq "right") {
+    [NativeWin]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+    [NativeWin]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+  } else {
+    [NativeWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [NativeWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  }
+  Start-Sleep -Milliseconds 400
+}
+
+function Click-Element($el, [string]$button) {
+  $name = $el.Current.Name
+  $pt = New-Object System.Windows.Point
+  $ok = $el.TryGetClickablePoint([ref]$pt)
+  if (-not $ok) {
+    try {
+      $scroll = $el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)
+      $scroll.ScrollIntoView()
+      Start-Sleep -Milliseconds 300
+    } catch {}
+    $ok = $el.TryGetClickablePoint([ref]$pt)
+  }
+  if (-not $ok) {
+    $r = $el.Current.BoundingRectangle
+    if ($r.Width -lt 2 -or $r.Height -lt 2) { throw "no clickable point for $name" }
+    $pt = New-Object System.Windows.Point (($r.X + $r.Width / 2), ($r.Y + $r.Height / 2))
+  }
+  Log "uia '$name' control=$($el.Current.ControlType.ProgrammaticName)"
+  Click-At ([int]$pt.X) ([int]$pt.Y) $button
+}
+
+function Find-InWindow($hwnd, [string]$name, $controlType) {
+  $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+  $condName = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+  if ($null -eq $controlType) {
+    return @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condName))
+  }
+  $condType = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $controlType)
+  $both = New-Object System.Windows.Automation.AndCondition($condName, $condType)
+  return @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $both))
+}
+
+function Dump-Names($hwnd, [string]$label) {
+  Log "names in $label :"
+  try {
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $n = 0
+    foreach ($el in $all) {
+      $name = $el.Current.Name
+      if ([string]::IsNullOrWhiteSpace($name)) { continue }
+      if ($name -match "最小化|悬浮|设置|显示|隐藏") {
+        Log ("  {0} | {1}" -f $el.Current.ControlType.ProgrammaticName, $name)
+        $n++
+      }
+      if ($n -ge 40) { break }
+    }
+    if ($n -eq 0) { Log "  (no matching accessible names)" }
+  } catch {
+    Log "  dump failed: $($_.Exception.Message)"
+  }
+}
+
+function Wait-App {
+  $deadline = (Get-Date).AddSeconds(60)
+  while ((Get-Date) -lt $deadline) {
+    $wins = @(Get-AppWindows | Where-Object { $_.Title -eq "小日程" -and $_.Width -gt 80 })
+    if ($wins.Count -ge 1) { return $wins }
+    Start-Sleep -Milliseconds 500
+  }
+  return @()
+}
+
+try {
+  Log "sha=$(git rev-parse HEAD)"
+  Log "session:"
+  query user | ForEach-Object { Log $_ }
+  $scale = Get-DpiScale
+  Log "dpiScale=$scale"
+
+  $exe = Get-ChildItem -Path "src-tauri\target" -Recurse -Filter "*.exe" |
+    Where-Object { $_.FullName -notmatch "\\deps\\|\\build\\" -and $_.Name -notmatch "build-script" } |
+    Sort-Object Length -Descending |
+    Select-Object -First 1
+  if (-not $exe) { throw "no app exe under src-tauri\target" }
+  Log "exe=$($exe.FullName)"
+
+  $script:Proc = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+  $script:AppPid = $script:Proc.Id
+  Log "pid=$($script:AppPid)"
+  Start-Sleep -Seconds 2
+  $wins = @(Wait-App)
+  if ($wins.Count -lt 1) { throw "app window did not appear" }
+  foreach ($w in $wins) { Log ("startup " + (Describe-Window $w)) }
+
+  $widget = $wins | Sort-Object Width | Select-Object -First 1
+  $settings = $wins | Sort-Object Width -Descending | Select-Object -First 1
+  $script:WidgetHwnd = $widget.Hwnd
+  $script:SettingsHwnd = $settings.Hwnd
+  Log "picked widget=$($script:WidgetHwnd) settings=$($script:SettingsHwnd)"
+  Start-Sleep -Seconds 2
+  Screenshot "01-started.png"
+  $before = Log-Windows "before minimize"
+  Log "BEFORE_MINIMIZE_VISIBLE=$before"
+
+  [void][NativeWin]::SetForegroundWindow($script:WidgetHwnd)
+  Start-Sleep -Milliseconds 400
+  Dump-Names $script:WidgetHwnd "widget"
+  $minButtons = @(Find-InWindow $script:WidgetHwnd "最小化" $null)
+  if ($minButtons.Count -gt 0) {
+    Click-Element $minButtons[0] "left"
+    Log "minimize click via accessibility name"
+  } else {
+    $rect = New-Object NativeWin+RECT
+    [void][NativeWin]::GetWindowRect($script:WidgetHwnd, [ref]$rect)
+    $x = [int]($rect.Right - (32 * $scale))
+    $y = [int]($rect.Top + (36 * $scale))
+    Log "minimize button had no accessible name; clicking header button by position"
+    Click-At $x $y "left"
+  }
+  Start-Sleep -Seconds 1
+  Screenshot "02-after-minimize.png"
+  $afterMin = Log-Windows "after minimize"
+  Log "AFTER_MINIMIZE_VISIBLE=$afterMin"
+
+  Log "opening settings button 打开悬浮窗"
+  [void][NativeWin]::SetForegroundWindow($script:SettingsHwnd)
+  Start-Sleep -Milliseconds 400
+  Dump-Names $script:SettingsHwnd "settings"
+  $gear = @(Find-InWindow $script:SettingsHwnd "设置" ([System.Windows.Automation.ControlType]::Button))
+  if ($gear.Count -lt 1) { throw "could not find 设置 button" }
+  Click-Element $gear[0] "left"
+  Start-Sleep -Milliseconds 700
+  $tab = @(Find-InWindow $script:SettingsHwnd "显示" $null | Where-Object { $_.Current.ControlType.ProgrammaticName -match "TabItem|Button|ListItem" })
+  if ($tab.Count -lt 1) {
+    $tab = @(Find-InWindow $script:SettingsHwnd "显示" $null)
+  }
+  if ($tab.Count -lt 1) { throw "could not find 显示 tab" }
+  Click-Element $tab[0] "left"
+  Start-Sleep -Milliseconds 500
+  $openBtn = @(Find-InWindow $script:SettingsHwnd "打开悬浮窗" $null)
+  if ($openBtn.Count -lt 1) {
+    Dump-Names $script:SettingsHwnd "settings-after-tab"
+    throw "could not find 打开悬浮窗"
+  }
+  Click-Element $openBtn[0] "left"
+  Start-Sleep -Seconds 2
+  Screenshot "03-after-settings.png"
+  $afterSettings = Log-Windows "after settings 打开悬浮窗"
+  Log "AFTER_SETTINGS_VISIBLE=$afterSettings"
+
+  if ($afterSettings) {
+    Log "minimizing again so the tray starts from a hidden widget"
+    [void][NativeWin]::SetForegroundWindow($script:WidgetHwnd)
+    Start-Sleep -Milliseconds 400
+    $minButtons = @(Find-InWindow $script:WidgetHwnd "最小化" $null)
+    if ($minButtons.Count -gt 0) {
+      Click-Element $minButtons[0] "left"
+    } else {
+      $rect = New-Object NativeWin+RECT
+      [void][NativeWin]::GetWindowRect($script:WidgetHwnd, [ref]$rect)
+      Click-At ([int]($rect.Right - (32 * $scale))) ([int]($rect.Top + (36 * $scale))) "left"
+    }
+    Start-Sleep -Seconds 1
+    $mid = Log-Windows "after second minimize"
+    Log "AFTER_SECOND_MINIMIZE_VISIBLE=$mid"
+  }
+
+  Log "tray right-click"
+  $trayHwnd = [NativeWin]::FindWindow("Shell_TrayWnd", $null)
+  $trayClicked = $false
+  if ($trayHwnd -eq [IntPtr]::Zero) {
+    Log "Shell_TrayWnd not found"
+  } else {
+    Dump-Names $trayHwnd "tray"
+    $icons = @(Find-InWindow $trayHwnd "小日程" $null)
+    Log "tray icons named 小日程: $($icons.Count)"
+    if ($icons.Count -gt 0) {
+      Click-Element $icons[0] "right"
+      Start-Sleep -Milliseconds 600
+      $popup = [NativeWin]::FindWindow("#32768", $null)
+      $menu = @()
+      if ($popup -ne [IntPtr]::Zero) {
+        Dump-Names $popup "tray-menu"
+        $menu = @(Find-InWindow $popup "显示/隐藏悬浮窗" $null)
+      } else {
+        Log "tray menu window was not found"
+      }
+      Log "menu items: $($menu.Count)"
+      if ($menu.Count -gt 0) {
+        Click-Element $menu[0] "left"
+        $trayClicked = $true
+      }
+    }
+  }
+  if (-not $trayClicked) { Log "TRAY_CLICK=failed" } else { Log "TRAY_CLICK=ok" }
+  Start-Sleep -Seconds 2
+  Screenshot "04-after-tray.png"
+  $afterTray = Log-Windows "after tray"
+  Log "AFTER_TRAY_VISIBLE=$afterTray"
+  Log "DONE settingsVisible=$afterSettings trayClicked=$trayClicked trayVisible=$afterTray"
+  if (-not $afterSettings -or -not $trayClicked -or -not $afterTray) { exit 2 }
+  exit 0
+} catch {
+  Log "ERROR $($_.Exception.Message)"
+  try { Screenshot "99-error.png" } catch {}
+  try { Log-Windows "on error" | Out-Null } catch {}
+  exit 1
+} finally {
+  if ($script:Proc -and -not $script:Proc.HasExited) {
+    Stop-Process -Id $script:Proc.Id -Force -ErrorAction SilentlyContinue
+    Log "killed pid $($script:Proc.Id)"
+  }
+}

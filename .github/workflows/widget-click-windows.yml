@@ -1,0 +1,39 @@
+name: Widget click (Windows)
+
+# 只在这条测试分支上跑。不打标签，不发布安装包。
+on:
+  push:
+    branches:
+      - cursor/windows-widget-click-1612
+
+permissions:
+  contents: read
+
+jobs:
+  click:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build debug desktop app without an installer
+        shell: bash
+        run: npx tauri build --debug --bundles none --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Click minimize, settings, and tray
+        shell: pwsh
+        run: ./scripts/windows-widget-click.ps1
+      - name: Upload click log and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: widget-click
+          path: widget-click-out/
+          if-no-files-found: warn
