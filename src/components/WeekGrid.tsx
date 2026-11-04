@@ -45,9 +45,13 @@ import { onHolidayData, resolveDayState, type DayLabel } from "@/lib/holidays";
 import {
   TAG_BAR,
   formatItemSubline,
-  isCallItem,
   itemHoverText,
 } from "@/lib/schedule-style";
+import {
+  WASH_LINE_OPACITY,
+  capsuleDashClass,
+  washBackground,
+} from "@/lib/week-shape";
 import {
   REPLAY_CHIP_HEIGHT,
   REPLAY_CHIP_RAIL_LEFT,
@@ -100,6 +104,7 @@ type WeekGridProps = {
     end: string,
   ) => void;
   onEditItem: (item: ScheduleItem, dateKey?: string) => void;
+  onOpenCountdown?: (item: ScheduleItem) => void;
   onSkipOccurrence: (item: ScheduleItem, dateKey: string) => void;
   onDeleteItem: (item: ScheduleItem) => void;
   onSetDayOverride: (dateKey: string, value: DayOverride | null) => void;
@@ -160,6 +165,7 @@ export function WeekGrid({
   onToggleSelect,
   onCreateAt,
   onEditItem,
+  onOpenCountdown,
   onSkipOccurrence,
   onDeleteItem,
   onSetDayOverride,
@@ -454,9 +460,7 @@ export function WeekGrid({
                       startMin: entry.startMin,
                       endMin: entry.endMin,
                       durationMin: itemSpanMinutes(entry.item),
-                      overnight: entry.overnight,
-                      spanned: entry.spanned,
-                      call: isCallItem(entry.item),
+                      tag: itemTag(entry.item),
                     });
                   const replayShortIds = new Set(
                     placed
@@ -569,6 +573,7 @@ export function WeekGrid({
                     );
                     const color = ownerColor(item, couple);
                     const ink = spineInk(TAG_BAR[itemTag(item)]);
+                    const onceBand = itemRecurrence(item) === "once";
                     if (!spineOf.has(item.id)) spineOf.set(item.id, spineOf.size);
                     const spine = spineOf.get(item.id) ?? 0;
                     const head =
@@ -586,6 +591,17 @@ export function WeekGrid({
                         className="pointer-events-none absolute inset-x-0"
                         style={{ top, height }}
                       >
+                        <div
+                          data-block="band-wash"
+                          className="absolute rounded-lg"
+                          style={{
+                            top: 2,
+                            bottom: 2,
+                            left: 8 + replayInset,
+                            right: 4,
+                            background: washBackground(TAG_BAR[itemTag(item)], onceBand),
+                          }}
+                        />
                         <button
                           type="button"
                           title={itemHoverText(item)}
@@ -596,7 +612,7 @@ export function WeekGrid({
                         >
                           <span
                             className="absolute inset-y-0.5 left-1 w-0.5 rounded-full"
-                            style={{ backgroundColor: ink }}
+                            style={{ backgroundColor: ink, opacity: WASH_LINE_OPACITY }}
                           />
                         </button>
                         <button
@@ -665,7 +681,7 @@ export function WeekGrid({
                         className={cn(
                           "grid-card absolute overflow-hidden rounded-lg border bg-[var(--color-surface)] text-left text-[var(--color-ink)] hover:z-30",
                           roomy ? "px-2.5 py-1.5" : "flex items-center px-2 py-1",
-                          (once || courseSwap) && "border-dashed",
+                          capsuleDashClass(once || courseSwap),
                           selectedIds?.has(item.id) &&
                             "ring-2 ring-[var(--color-ink)] ring-offset-1",
                         )}
@@ -849,6 +865,27 @@ export function WeekGrid({
                         ) : null}
                       </button>,
                     );
+                  }
+                  if (onOpenCountdown) {
+                    for (const entry of placed) {
+                      if (!entry.item.countdown) continue;
+                      nodes.push(
+                        <button
+                          key={`countdown-${entry.item.id}-${entry.startMin}`}
+                          type="button"
+                          data-countdown="1"
+                          className="countdown-ing pointer-events-auto absolute z-[40]"
+                          style={{ top: entry.top, right: 4 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenCountdown(entry.item);
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          倒数ing
+                        </button>,
+                      );
+                    }
                   }
                   for (const pill of layout.pills) {
                     const hidden = pill.hiddenIds

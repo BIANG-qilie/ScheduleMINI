@@ -1,9 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   CalendarRange,
   Download,
   Eye,
   EyeOff,
+  LayoutGrid,
   List,
   Pencil,
   Plus,
@@ -102,6 +103,12 @@ import {
   useConfigStore,
 } from "@/store/config-store";
 import { useNarrow } from "@/lib/use-narrow";
+import { ToolsPages, type ToolsRoute } from "@/components/ToolsPages";
+import {
+  isCountdownItem,
+  scheduleDeleteMessage,
+  schedulesDeleteMessage,
+} from "@/lib/countdown";
 import { cn } from "@/lib/utils";
 
 const emptyDraft = (): Draft => {
@@ -198,6 +205,9 @@ export function SettingsPage() {
     upsertItem,
     deleteItem,
     deleteItems,
+    setItemCountdown,
+    upsertAnniversary,
+    deleteAnniversary,
     patchItems,
     skipOccurrence,
     unskipOccurrence,
@@ -255,7 +265,15 @@ export function SettingsPage() {
     "couple",
   );
   const narrow = useNarrow();
-  const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list">("now");
+  const [phoneTab, setPhoneTab] = useState<"now" | "week" | "list" | "tools">("now");
+  const [toolsRoute, setToolsRoute] = useState<ToolsRoute>({ name: "hub" });
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsVisible = narrow ? phoneTab === "tools" : toolsOpen;
+  const openCountdown = (item: ScheduleItem) => {
+    setToolsRoute({ name: "countdown", id: item.id });
+    if (narrow) setPhoneTab("tools");
+    else setToolsOpen(true);
+  };
   const [listFilters, setListFilters] =
     useState<ListFilters>(DEFAULT_LIST_FILTERS);
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
@@ -664,8 +682,9 @@ export function SettingsPage() {
   return (
     <div className={cn("flex h-full min-h-full flex-col", narrow && "phone-shell")}>
       {narrow ? (
-        <header className="phone-top">
+        <header className={cn("phone-top", phoneTab === "tools" && "phone-top-stack")}>
           <h1>{APP_DISPLAY_NAME}</h1>
+          {phoneTab === "tools" ? null : (
           <p>
             {phoneTab === "now"
               ? config.soloMode
@@ -673,6 +692,7 @@ export function SettingsPage() {
                 : `${config.couple.selfName} · ${partnerFacingName(config.couple)}`
               : `共 ${sortedItems.length} 条`}
           </p>
+          )}
         </header>
       ) : null}
       {!narrow ? (
@@ -724,7 +744,10 @@ export function SettingsPage() {
                   ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
                   : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]",
               )}
-              onClick={() => void setSettingsViewMode("week")}
+              onClick={() => {
+                setToolsOpen(false);
+                void setSettingsViewMode("week");
+              }}
             >
               <CalendarRange className="h-3.5 w-3.5" />
               周视图
@@ -737,7 +760,10 @@ export function SettingsPage() {
                   ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
                   : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]",
               )}
-              onClick={() => void setSettingsViewMode("list")}
+              onClick={() => {
+                setToolsOpen(false);
+                void setSettingsViewMode("list");
+              }}
             >
               <List className="h-3.5 w-3.5" />
               列表
@@ -757,6 +783,18 @@ export function SettingsPage() {
             </button>
           ) : null}
           <CoexistenceBar />
+          <Button
+            type="button"
+            variant={toolsOpen ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setToolsRoute({ name: "hub" });
+              setToolsOpen((open) => !open);
+            }}
+          >
+            <LayoutGrid className="h-4 w-4" />
+            小工具
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -819,7 +857,7 @@ export function SettingsPage() {
             />
           ) : null}
 
-          {selectedIds.size > 0 && !(narrow && phoneTab === "now") ? (
+          {selectedIds.size > 0 && !toolsVisible && !(narrow && phoneTab === "now") ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-sm shadow-[0_8px_24px_-18px_rgba(28,22,18,0.45)]">
               <span className="tabular px-1 text-xs tracking-wide text-[var(--color-ink-muted)]">
                 已选 {selectedIds.size}
@@ -829,7 +867,16 @@ export function SettingsPage() {
                 size="sm"
                 variant="danger"
                 onClick={() => {
-                  if (window.confirm(`删除选中的 ${selectedIds.size} 条？`)) {
+                  if (
+                    window.confirm(
+                      schedulesDeleteMessage(
+                        selectedIds.size,
+                        config.items.some(
+                          (item) => selectedIds.has(item.id) && isCountdownItem(item),
+                        ),
+                      ),
+                    )
+                  ) {
                     void deleteItems([...selectedIds]).then(clearSelection);
                   }
                 }}
@@ -880,7 +927,21 @@ export function SettingsPage() {
             </div>
           ) : null}
 
-          {(narrow ? phoneTab === "week" : config.settingsViewMode === "week") ? (
+          {toolsVisible ? (
+            <ToolsPages
+              route={toolsRoute}
+              onRoute={setToolsRoute}
+              anniversaries={config.anniversaries}
+              items={config.items}
+              onSaveAnniversary={(item) => void upsertAnniversary(item)}
+              onDeleteAnniversary={(id) => void deleteAnniversary(id)}
+              onSetCountdown={(id, on) => void setItemCountdown(id, on)}
+              onOpenSettings={() => {
+                setPrefsTab("couple");
+                setPrefsOpen(true);
+              }}
+            />
+          ) : (narrow ? phoneTab === "week" : config.settingsViewMode === "week") ? (
             <WeekGrid
               layout={narrow ? "day" : "board"}
               items={config.items}
@@ -898,8 +959,9 @@ export function SettingsPage() {
                   setStatus(`已取消「${item.title}」该次`);
                 });
               }}
+              onOpenCountdown={openCountdown}
               onDeleteItem={(item) => {
-                if (!window.confirm(`确定删除「${item.title}」？`)) return;
+                if (!window.confirm(scheduleDeleteMessage(item.title, isCountdownItem(item)))) return;
                 void deleteItem(item.id).then(() => {
                   setSelectedIds((prev) => {
                     if (!prev.has(item.id)) return prev;
@@ -1029,15 +1091,23 @@ export function SettingsPage() {
                 </div>
               ) : (
             <ul className={cn("min-h-0 flex-1 space-y-2 overflow-auto pr-1", narrow && "phone-list")}>
-              {listItems.map((item) => {
+              {(() => {
+                const pinned = listItems.filter((item) => isCountdownItem(item));
+                const rest = listItems.filter((item) => !isCountdownItem(item));
+                return [...pinned, ...rest];
+              })().map((item, index, ordered) => {
+                const pinnedCount = ordered.filter((entry) => isCountdownItem(entry)).length;
                 const tag = item.tag ?? "work";
                 const subline = formatItemSubline(item);
                 const once = (item.recurrence ?? "weekly") === "once";
                 const courseSwap = itemIsCourseSwap(item);
                 const color = ownerColor(item, config.couple);
                 return (
+                  <Fragment key={item.id}>
+                  {index === pinnedCount && pinnedCount > 0 ? (
+                    <li className="countdown-divider">倒数日</li>
+                  ) : null}
                   <li
-                    key={item.id}
                     title={itemHoverText(item)}
                     className={cn(
                       narrow && "phone-card phone-list-row",
@@ -1082,6 +1152,15 @@ export function SettingsPage() {
                         {!item.enabled ? (
                           <span className="text-xs opacity-60">已停用</span>
                         ) : null}
+                        {isCountdownItem(item) ? (
+                          <button
+                            type="button"
+                            className="countdown-ing"
+                            onClick={() => openCountdown(item)}
+                          >
+                            倒数ing
+                          </button>
+                        ) : null}
                       </div>
                       <p
                         className={cn(
@@ -1120,7 +1199,7 @@ export function SettingsPage() {
                         variant="danger"
                         size="sm"
                         onClick={() => {
-                          if (window.confirm(`确定删除「${item.title}」？`)) {
+                          if (window.confirm(scheduleDeleteMessage(item.title, isCountdownItem(item)))) {
                             void deleteItem(item.id);
                           }
                         }}
@@ -1130,6 +1209,7 @@ export function SettingsPage() {
                       </Button>
                     </div>
                   </li>
+                  </Fragment>
                 );
               })}
             </ul>
@@ -1178,14 +1258,15 @@ export function SettingsPage() {
             </button>
             <button
               type="button"
-              className="phone-tab"
+              aria-current={phoneTab === "tools" ? "page" : undefined}
+              className={cn("phone-tab", phoneTab === "tools" && "phone-tab-on")}
               onClick={() => {
-                setPrefsTab("couple");
-                setPrefsOpen(true);
+                setToolsRoute({ name: "hub" });
+                setPhoneTab("tools");
               }}
             >
-              <Settings aria-hidden />
-              设置
+              <LayoutGrid aria-hidden />
+              小工具
             </button>
           </div>
         </nav>
@@ -1805,11 +1886,47 @@ export function SettingsPage() {
             {draft.id ? (
               <Button
                 type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  const on = !config.items.some(
+                    (item) => item.id === draft.id && isCountdownItem(item),
+                  );
+                  void setItemCountdown(draft.id!, on);
+                }}
+              >
+                {config.items.some((item) => item.id === draft.id && isCountdownItem(item))
+                  ? "取消倒数日"
+                  : "设为倒数日"}
+              </Button>
+            ) : null}
+            {draft.id &&
+            config.items.some((item) => item.id === draft.id && isCountdownItem(item)) ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const current = config.items.find((item) => item.id === draft.id);
+                  if (!current) return;
+                  setEditorOpen(false);
+                  setOccurrenceDate(null);
+                  openCountdown(current);
+                }}
+              >
+                看倒数
+              </Button>
+            ) : null}
+            {draft.id ? (
+              <Button
+                type="button"
                 variant="danger"
                 disabled={busy}
                 onClick={() => {
                   const title = draft.title.trim() || "此日程";
-                  if (!window.confirm(`确定删除「${title}」？`)) return;
+                  const countdown = config.items.some(
+                    (item) => item.id === draft.id && isCountdownItem(item),
+                  );
+                  if (!window.confirm(scheduleDeleteMessage(title, countdown))) return;
                   void deleteItem(draft.id!).then(() => {
                     setEditorOpen(false);
                     setOccurrenceDate(null);
