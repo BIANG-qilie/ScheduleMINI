@@ -91,7 +91,7 @@ import {
   type ListFilters,
 } from "@/lib/list-query";
 import { resolveRelayBaseUrl } from "@/lib/sync/relay";
-import { syncAutostart } from "@/lib/widget-chrome";
+import { syncAutostart, syncWidgetPresentedFlag } from "@/lib/widget-chrome";
 import {
   setWidgetVisible,
   subscribeWidgetVisibility,
@@ -378,6 +378,36 @@ export function SettingsPage() {
       unlisten?.();
     };
   }, [setWidgetVisibleFlag]);
+
+  useEffect(() => {
+    if (!hydrated || !diskSettled) return;
+    let cancelled = false;
+    const sync = () => {
+      const current = useConfigStore.getState().config.widgetVisible;
+      void syncWidgetPresentedFlag(current, async (visible) => {
+        if (cancelled) return;
+        await setWidgetVisibleFlag(visible);
+      });
+    };
+    sync();
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        if (win.label !== "settings") return;
+        unlisten = await win.onFocusChanged(({ payload: focused }) => {
+          if (focused) sync();
+        });
+      } catch {
+        // 浏览器预览没有原生窗口
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [hydrated, diskSettled, setWidgetVisibleFlag]);
 
   const todayLabel = useMemo(
     () => getTodayLabel(new Date(), config.dayOverrides),

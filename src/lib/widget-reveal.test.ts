@@ -19,12 +19,14 @@ describe("widget reveal after minimize", () => {
     const body = reveal![0];
     const skipFalse = body.indexOf("set_skip_taskbar(false)");
     const unminimize = body.indexOf(".unminimize()");
+    const moveOnScreen = body.indexOf("move_parked_widget_on_screen");
     const show = body.indexOf(".show()");
     const alwaysOnTop = body.indexOf("set_always_on_top(true)");
     const skipTrue = body.indexOf("set_skip_taskbar(true)");
     expect(skipFalse).toBeGreaterThanOrEqual(0);
     expect(unminimize).toBeGreaterThan(skipFalse);
-    expect(show).toBeGreaterThan(unminimize);
+    expect(moveOnScreen).toBeGreaterThan(unminimize);
+    expect(show).toBeGreaterThan(moveOnScreen);
     expect(alwaysOnTop).toBeGreaterThan(show);
     expect(skipTrue).toBeGreaterThan(alwaysOnTop);
     expect(lib).toContain("run_on_main_thread");
@@ -54,21 +56,28 @@ describe("widget reveal after minimize", () => {
     expect(notifyCount).toBeGreaterThanOrEqual(2);
   });
 
-  it("最小化或已隐藏时托盘应拉起，而不是再 hide", () => {
-    expect(strategy).toContain("visible && !minimized");
-    expect(lib).toContain("should_conceal_widget(visible, minimized)");
+  it("最小化、已隐藏或停在屏幕外时托盘应拉起，而不是再收起", () => {
+    expect(strategy).toContain("visible && !minimized && on_screen");
+    expect(lib).toContain("should_conceal_widget(visible, minimized, on_screen)");
+    expect(lib).toContain("move_parked_widget_on_screen");
   });
 });
 
 describe("shouldConcealWidget", () => {
-  function shouldConcealWidget(visible: boolean, minimized: boolean) {
-    return visible && !minimized;
+  function shouldConcealWidget(
+    visible: boolean,
+    minimized: boolean,
+    onScreen: boolean,
+  ) {
+    return visible && !minimized && onScreen;
   }
 
-  it("已显示且未最小化才收起", () => {
-    expect(shouldConcealWidget(true, false)).toBe(true);
-    expect(shouldConcealWidget(true, true)).toBe(false);
-    expect(shouldConcealWidget(false, false)).toBe(false);
-    expect(shouldConcealWidget(false, true)).toBe(false);
+  it("已显示、未最小化、并且在屏幕上才收起", () => {
+    expect(shouldConcealWidget(true, false, true)).toBe(true);
+    expect(shouldConcealWidget(true, false, false)).toBe(false);
+    expect(shouldConcealWidget(true, true, true)).toBe(false);
+    expect(shouldConcealWidget(true, true, false)).toBe(false);
+    expect(shouldConcealWidget(false, false, true)).toBe(false);
+    expect(shouldConcealWidget(false, true, false)).toBe(false);
   });
 });

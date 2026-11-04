@@ -46,7 +46,9 @@ import { lanePartnerItems, laneSelfItems } from "@/lib/sync/couple";
 import {
   applyWidgetOpacity,
   persistCurrentWidgetGeometry,
+  readWidgetPresented,
   restoreWidgetGeometry,
+  syncWidgetPresentedFlag,
 } from "@/lib/widget-chrome";
 import {
   startCoupleSyncLoop,
@@ -383,7 +385,19 @@ export function WidgetPage() {
 
   useEffect(() => {
     if (!hydrated) return;
-    void restoreWidgetGeometry();
+    let cancelled = false;
+    void (async () => {
+      await restoreWidgetGeometry();
+      if (cancelled) return;
+      const current = useConfigStore.getState().config.widgetVisible;
+      await syncWidgetPresentedFlag(
+        current,
+        useConfigStore.getState().setWidgetVisible,
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [hydrated]);
 
   useEffect(() => {
@@ -395,7 +409,14 @@ export function WidgetPage() {
     const scheduleSave = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        void persistCurrentWidgetGeometry();
+        void (async () => {
+          await persistCurrentWidgetGeometry();
+          const current = useConfigStore.getState().config.widgetVisible;
+          await syncWidgetPresentedFlag(
+            current,
+            useConfigStore.getState().setWidgetVisible,
+          );
+        })();
       }, 400);
     };
 
@@ -420,8 +441,15 @@ export function WidgetPage() {
         });
         unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
           if (!focused) return;
-          liftIfShown();
           void (async () => {
+            const presented = await readWidgetPresented();
+            if (presented === false) {
+              if (useConfigStore.getState().config.widgetVisible) {
+                await useConfigStore.getState().setWidgetVisible(false);
+              }
+              return;
+            }
+            liftIfShown();
             if (await win.isMinimized()) return;
             if (!useConfigStore.getState().config.widgetVisible) {
               await useConfigStore.getState().setWidgetVisible(true);
