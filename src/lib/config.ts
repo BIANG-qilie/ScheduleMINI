@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isDayOff } from "@/lib/holidays";
 import { migrateSyncRelayUrl } from "@/lib/sync/relay";
 import { createId } from "@/lib/utils";
+import { usesWash } from "@/lib/week-shape";
 
 const TimeSchema = z
   .string()
@@ -398,6 +399,16 @@ export function itemIsCourseSwap(item: {
 export const DayOverrideSchema = z.enum(["off", "work"]);
 export type DayOverride = z.infer<typeof DayOverrideSchema>;
 
+export const AnniversarySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1),
+  date: DateSchema,
+  note: z.string().optional(),
+  yearly: z.boolean().default(false),
+  updatedAt: z.string().optional(),
+});
+export type Anniversary = z.infer<typeof AnniversarySchema>;
+
 export const ScheduleItemSchema = z
   .object({
     id: z.string().min(1),
@@ -449,6 +460,8 @@ export const ScheduleItemSchema = z
     ownerId: z.string().optional(),
     /** ISO 时间；冲突时后写覆盖 */
     updatedAt: z.string().optional(),
+    /** 倒数日高亮。双方都能设、能取消，跟着这条日程一起同步。 */
+    countdown: z.boolean().optional(),
     /**
      * 仅一次的真实时长（分钟）。钟点相同或跨过不止一个午夜时，用它还原起止。
      * 缺省则仍按 start/end 钟点；旧端去掉该字段后只显示钟点。
@@ -618,6 +631,9 @@ export const AppConfigSchema = z
     syncRelayUrl: z.string().default(""),
     /** 同步删除墓碑：条目 id → 删除时间（ISO） */
     deletedItems: z.record(z.string(), z.string()).default({}),
+    /** 纪念日。不进周视图，双方都能改。 */
+    anniversaries: z.array(AnniversarySchema).default([]),
+    deletedAnniversaries: z.record(z.string(), z.string()).default({}),
     /** 共处模式：当前会话 + 本地日志 */
     coexistence: z
       .object({
@@ -841,20 +857,18 @@ export function itemSpanMinutes(item: {
 }
 
 /**
- * 长条背景：跨日、过夜、通话，或时长 ≥ 4 小时。
- * 这类块铺满列宽，不参加分列。
+ * 长条淡底：超过该标签的胶囊上限。
+ * 工作 / 交通 / 学习 / 社交到 2 小时，其余到 1 小时。通话看真实时长。
  */
 export function isOverlapBand(input: {
   startMin: number;
   endMin: number;
   durationMin?: number;
-  overnight?: boolean;
-  spanned?: boolean;
-  call?: boolean;
+  tag?: ScheduleTag;
 }) {
-  if (input.call || input.overnight || input.spanned) return true;
-  const minutes = input.durationMin ?? input.endMin - input.startMin;
-  return minutes >= OVERLAP_BAND_MIN_MINUTES;
+  const minutes =
+    input.durationMin ?? Math.max(0, input.endMin - input.startMin);
+  return usesWash(input.tag ?? "other", minutes);
 }
 
 export type OverlapBlock = {
@@ -1098,6 +1112,8 @@ export function defaultConfig(): AppConfig {
     soloMode: false,
     syncRelayUrl: "",
     deletedItems: {},
+    anniversaries: [],
+    deletedAnniversaries: {},
     coexistence: { current: null, updatedAt: "", log: [] },
     items: [
       {

@@ -1,4 +1,4 @@
-import type { CoupleIdentity, ItemOwner, ScheduleItem } from "@/lib/config";
+import type { Anniversary, CoupleIdentity, ItemOwner, ScheduleItem } from "@/lib/config";
 import { normalizeAddress } from "@/lib/config";
 import {
   decryptPayload,
@@ -39,6 +39,9 @@ export type PersonSlice = {
   addressForThem?: AddressStamp;
   /** 正在进行的共处。记入之前不产生日程条目 */
   coexistence?: SyncedCoexistence;
+  /** 缺省表示这台旧端还不同步纪念日，合并时保留本地 */
+  anniversaries?: Anniversary[];
+  deletedAnniversaries?: Tombstones;
   /**
    * 本身份的绑定快照。同一人的其他设备靠它知道已经和谁配对；
    * 邀请码变了则跟着去新房间。不占第二个身份席位。
@@ -213,15 +216,33 @@ export function applyTombstones(items: ScheduleItem[], tombstones: Tombstones) {
 
 /** 同步结果落盘前再并一次本地状态，避免拉取期间的删除被旧条目盖回。 */
 export function reconcileSyncResult(
-  latest: { items: ScheduleItem[]; deletedItems?: Tombstones },
-  synced: { items: ScheduleItem[]; deletedItems?: Tombstones },
+  latest: {
+    items: ScheduleItem[];
+    deletedItems?: Tombstones;
+    anniversaries?: Anniversary[];
+    deletedAnniversaries?: Tombstones;
+  },
+  synced: {
+    items: ScheduleItem[];
+    deletedItems?: Tombstones;
+    anniversaries?: Anniversary[];
+    deletedAnniversaries?: Tombstones;
+  },
 ) {
   const deletedItems = mergeTombstones(synced.deletedItems, latest.deletedItems);
   const items = applyTombstones(
     mergeItemsLww(synced.items, latest.items),
     deletedItems,
   );
-  return { items, deletedItems };
+  const deletedAnniversaries = mergeTombstones(
+    synced.deletedAnniversaries,
+    latest.deletedAnniversaries,
+  );
+  const anniversaries = applyAnniversaryTombstones(
+    mergeAnniversariesLww(synced.anniversaries ?? [], latest.anniversaries ?? []),
+    deletedAnniversaries,
+  );
+  return { items, deletedItems, anniversaries, deletedAnniversaries };
 }
 
 /** @deprecated 用 PersonSlice */
@@ -245,6 +266,53 @@ export function mergeItemsLww(
     }
   }
   return [...map.values()];
+}
+
+function anniversaryUpdatedAt(item: Anniversary) {
+  return item.updatedAt || "1970-01-01T00:00:00.000Z";
+}
+
+export function mergeAnniversariesLww(local: Anniversary[], incoming: Anniversary[]) {
+  const map = new Map<string, Anniversary>();
+  for (const it of local) map.set(it.id, it);
+  for (const it of incoming) {
+    const cur = map.get(it.id);
+    if (!cur || anniversaryUpdatedAt(it) >= anniversaryUpdatedAt(cur)) {
+      map.set(it.id, it);
+    }
+  }
+  return [...map.values()];
+}
+
+export function applyAnniversaryTombstones(items: Anniversary[], tombstones: Tombstones) {
+  return items.filter((it) => {
+    const at = tombstones[it.id];
+    return !at || anniversaryUpdatedAt(it) > at;
+  });
+}
+
+/**
+ * 切片没带纪念日时不动本地。带了就后写覆盖，墓碑删掉双方都认的条目。
+ */
+export function mergeAnniversarySlice(
+  local: Anniversary[],
+  localTombstones: Tombstones | undefined,
+  slice: Pick<PersonSlice, "anniversaries" | "deletedAnniversaries"> | null | undefined,
+) {
+  if (!slice || (slice.anniversaries == null && slice.deletedAnniversaries == null)) {
+    return {
+      anniversaries: local,
+      deletedAnniversaries: mergeTombstones(localTombstones),
+    };
+  }
+  const deletedAnniversaries = mergeTombstones(localTombstones, slice.deletedAnniversaries);
+  const merged = slice.anniversaries
+    ? mergeAnniversariesLww(local, slice.anniversaries)
+    : local;
+  return {
+    anniversaries: applyAnniversaryTombstones(merged, deletedAnniversaries),
+    deletedAnniversaries,
+  };
 }
 
 /** @deprecated 联合维护后推送全量；保留供多端 rekey */
@@ -315,6 +383,8 @@ export async function buildEncryptedSelfSlice(
   items: ScheduleItem[],
   deletedItems: Tombstones = {},
   coexistence: SyncedCoexistence | null = null,
+  anniversaries?: Anniversary[] | null,
+  deletedAnniversaries?: Tombstones | null,
 ) {
   // 联合维护：推送完整日程（相对本机归属）
   const all = items.map((it) => ({
@@ -332,6 +402,12 @@ export async function buildEncryptedSelfSlice(
     ...(address ? { addressForThem: address } : {}),
     ...(coexistence?.updatedAt ? { coexistence } : {}),
     ...(binding ? { binding } : {}),
+    ...(anniversaries
+      ? {
+          anniversaries,
+          deletedAnniversaries: deletedAnniversaries ?? {},
+        }
+      : {}),
   };
   const payload = await encryptPayload(inviteCode, slice);
   return {
@@ -353,11 +429,15 @@ export async function pullAndMergePartner(args: {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems?: Tombstones;
+  anniversaries?: Anniversary[];
+  deletedAnniversaries?: Tombstones;
   coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
 }): Promise<{
   items: ScheduleItem[];
   deletedItems: Tombstones;
+  anniversaries: Anniversary[];
+  deletedAnniversaries: Tombstones;
   couple: CoupleIdentity;
   coexistence: SyncedCoexistence | null;
   partnerOnline: boolean;
@@ -373,6 +453,8 @@ export async function pullAndMergePartner(args: {
     return {
       items: args.items,
       deletedItems: args.deletedItems ?? {},
+      anniversaries: args.anniversaries ?? [],
+      deletedAnniversaries: mergeTombstones(args.deletedAnniversaries),
       couple: args.couple,
       coexistence: args.coexistence ?? null,
       partnerOnline: false,
@@ -390,6 +472,8 @@ export async function pullAndMergePartner(args: {
 
   let merged = [...args.items];
   let tombstones = mergeTombstones(args.deletedItems);
+  let anniversaries = [...(args.anniversaries ?? [])];
+  let deletedAnniversaries = mergeTombstones(args.deletedAnniversaries);
   let selfSliceMerged = false;
   let addressForThem = addressStamp(
     args.couple.addressForThem,
@@ -412,6 +496,13 @@ export async function pullAndMergePartner(args: {
       if (slice.binding?.updatedAt) selfBinding = slice.binding;
     }
     coexistence = mergeCoexistenceLww(coexistence, slice.coexistence);
+    const nextAnniversaries = mergeAnniversarySlice(
+      anniversaries,
+      deletedAnniversaries,
+      slice,
+    );
+    anniversaries = nextAnniversaries.anniversaries;
+    deletedAnniversaries = nextAnniversaries.deletedAnniversaries;
   };
 
   if (selfEntry?.payload) {
@@ -449,6 +540,8 @@ export async function pullAndMergePartner(args: {
     return {
       items: applyTombstones(merged, tombstones),
       deletedItems: tombstones,
+      anniversaries,
+      deletedAnniversaries,
       couple: withAddress(stampBinding(args.couple, nextCouple)),
       coexistence,
       partnerOnline: Boolean(nextCouple.partnerMemberId),
@@ -469,6 +562,8 @@ export async function pullAndMergePartner(args: {
     return {
       items: applyTombstones(merged, tombstones),
       deletedItems: tombstones,
+      anniversaries,
+      deletedAnniversaries,
       couple: withAddress(stampBinding(args.couple, alone)),
       coexistence,
       partnerOnline: false,
@@ -485,6 +580,8 @@ export async function pullAndMergePartner(args: {
     return {
       items: applyTombstones(merged, tombstones),
       deletedItems: tombstones,
+      anniversaries,
+      deletedAnniversaries,
       couple: withAddress(nextCouple),
       coexistence,
       partnerOnline: false,
@@ -508,7 +605,7 @@ export async function pullAndMergePartner(args: {
     addressForMe = null;
   }
   addressForMe = mergeAddressLww(addressForMe, slice.addressForThem);
-  coexistence = mergeCoexistenceLww(coexistence, slice.coexistence);
+  applySliceMeta(slice, false);
 
   return {
     items: applyTombstones(merged, tombstones),
@@ -523,6 +620,8 @@ export async function pullAndMergePartner(args: {
       }),
     ),
     coexistence,
+    anniversaries,
+    deletedAnniversaries,
     partnerOnline: true,
     selfSliceMerged,
   };
@@ -533,6 +632,8 @@ export async function pushSelfSlice(args: {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems?: Tombstones;
+  anniversaries?: Anniversary[] | null;
+  deletedAnniversaries?: Tombstones | null;
   coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
 }) {
@@ -543,6 +644,8 @@ export async function pushSelfSlice(args: {
     args.items,
     args.deletedItems,
     args.coexistence ?? null,
+    args.anniversaries,
+    args.deletedAnniversaries,
   );
   return pushMemberSlice({
     inviteCode: code,
@@ -559,6 +662,8 @@ export async function pushSelfSlice(args: {
 export type SyncOnceResult = {
   items: ScheduleItem[];
   deletedItems: Tombstones;
+  anniversaries: Anniversary[];
+  deletedAnniversaries: Tombstones;
   couple: CoupleIdentity;
   coexistence: SyncedCoexistence | null;
   partnerOnline: boolean;
@@ -571,6 +676,8 @@ export type SyncOnceResult = {
 export type SyncLatest = {
   items: ScheduleItem[];
   deletedItems: Tombstones;
+  anniversaries?: Anniversary[];
+  deletedAnniversaries?: Tombstones;
   couple?: CoupleIdentity;
   coexistence?: SyncedCoexistence | null;
 };
@@ -580,6 +687,8 @@ export type SyncRoomArgs = {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems: Tombstones;
+  anniversaries?: Anniversary[];
+  deletedAnniversaries?: Tombstones;
   coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
   latest?: () => SyncLatest;
@@ -613,6 +722,8 @@ async function syncRoomOnceAt(
         couple: { ...pulled.couple, inviteCode: pulled.followInviteCode },
         items: pulled.items,
         deletedItems: pulled.deletedItems,
+        anniversaries: pulled.anniversaries,
+        deletedAnniversaries: pulled.deletedAnniversaries,
         coexistence: pulled.coexistence,
       },
       depth + 1,
@@ -623,6 +734,9 @@ async function syncRoomOnceAt(
       ...pulled,
       items: args.items,
       deletedItems: args.deletedItems,
+      anniversaries: args.anniversaries ?? pulled.anniversaries,
+      deletedAnniversaries:
+        args.deletedAnniversaries ?? pulled.deletedAnniversaries,
       coexistence: args.coexistence ?? null,
     };
   }
@@ -632,6 +746,8 @@ async function syncRoomOnceAt(
   const now = args.latest?.() ?? {
     items: args.items,
     deletedItems: args.deletedItems,
+    anniversaries: args.anniversaries,
+    deletedAnniversaries: args.deletedAnniversaries,
     couple: args.couple,
     coexistence: args.coexistence ?? null,
   };
@@ -639,6 +755,17 @@ async function syncRoomOnceAt(
   const items = applyTombstones(
     mergeItemsLww(pulled.items, now.items),
     deletedItems,
+  );
+  const deletedAnniversaries = mergeTombstones(
+    pulled.deletedAnniversaries,
+    now.deletedAnniversaries,
+  );
+  const anniversaries = applyAnniversaryTombstones(
+    mergeAnniversariesLww(
+      pulled.anniversaries,
+      now.anniversaries ?? pulled.anniversaries,
+    ),
+    deletedAnniversaries,
   );
   const addressForThem = mergeAddressLww(
     addressStamp(pulled.couple.addressForThem, pulled.couple.addressForThemAt),
@@ -667,6 +794,8 @@ async function syncRoomOnceAt(
     couple,
     items,
     deletedItems,
+    anniversaries,
+    deletedAnniversaries,
     coexistence,
     baseUrl: args.baseUrl,
   });
@@ -679,6 +808,8 @@ async function syncRoomOnceAt(
     ...pulled,
     items,
     deletedItems,
+    anniversaries,
+    deletedAnniversaries,
     couple,
     coexistence,
     error,
@@ -700,6 +831,8 @@ async function syncRoomOnceAt(
         couple: { ...couple, inviteCode: redirect },
         items,
         deletedItems,
+        anniversaries,
+        deletedAnniversaries,
         coexistence,
       },
       depth + 1,
@@ -714,6 +847,8 @@ async function syncRoomOnceAt(
         couple,
         items,
         deletedItems,
+        anniversaries,
+        deletedAnniversaries,
         coexistence,
       },
       depth + 1,
@@ -729,6 +864,8 @@ export async function publishRoomRedirect(args: {
   couple: CoupleIdentity;
   items: ScheduleItem[];
   deletedItems?: Tombstones;
+  anniversaries?: Anniversary[] | null;
+  deletedAnniversaries?: Tombstones | null;
   coexistence?: SyncedCoexistence | null;
   baseUrl?: string | null;
 }) {
@@ -745,6 +882,8 @@ export async function publishRoomRedirect(args: {
     args.items,
     args.deletedItems,
     args.coexistence ?? null,
+    args.anniversaries,
+    args.deletedAnniversaries,
   );
   return pushMemberSlice({
     inviteCode: fromCode,

@@ -7,6 +7,7 @@ import {
   DEFAULT_CALL_CHANNEL,
   DEFAULT_WORK_KIND,
   formatWorkDisplay,
+  type Anniversary,
   type AppConfig,
   type CallChannel,
   type CoupleIdentity,
@@ -89,6 +90,11 @@ type ConfigState = {
   ) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
   deleteItems: (ids: string[]) => Promise<void>;
+  setItemCountdown: (id: string, on: boolean) => Promise<void>;
+  upsertAnniversary: (
+    item: Omit<Anniversary, "updatedAt"> & { updatedAt?: string },
+  ) => Promise<void>;
+  deleteAnniversary: (id: string) => Promise<void>;
   patchItems: (
     ids: string[],
     patch: Partial<
@@ -181,6 +187,8 @@ async function leaveRedirect(fromCode: string, toCode: string) {
     couple: config.couple,
     items: config.items,
     deletedItems: config.deletedItems,
+    anniversaries: config.anniversaries,
+    deletedAnniversaries: config.deletedAnniversaries,
     coexistence: syncedCoexistence(config),
     baseUrl: config.syncRelayUrl,
   });
@@ -210,6 +218,8 @@ async function runSyncOnce(): Promise<boolean> {
     couple: config.couple,
     items: config.items,
     deletedItems: config.deletedItems,
+    anniversaries: config.anniversaries,
+    deletedAnniversaries: config.deletedAnniversaries,
     coexistence: config.coexistence.updatedAt
       ? {
           current: config.coexistence.current,
@@ -222,6 +232,8 @@ async function runSyncOnce(): Promise<boolean> {
       return {
         items: c.items,
         deletedItems: c.deletedItems,
+        anniversaries: c.anniversaries,
+        deletedAnniversaries: c.deletedAnniversaries,
         couple: c.couple,
         coexistence: c.coexistence.updatedAt
           ? {
@@ -280,6 +292,8 @@ async function runSyncOnce(): Promise<boolean> {
           : latest.coexistence,
         items: reconciled.items,
         deletedItems: reconciled.deletedItems,
+        anniversaries: reconciled.anniversaries,
+        deletedAnniversaries: reconciled.deletedAnniversaries,
       });
     });
   }
@@ -523,11 +537,23 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         workPrimary,
         workSecondary,
         isCourseSwap: isCourseSwap ? true : undefined,
+        countdown: item.countdown ? true : undefined,
         owner,
         ownerId: couple.memberId,
         updatedAt: new Date().toISOString(),
       };
-      const exists = config.items.some((it) => it.id === nextItem.id);
+      const previous = config.items.find((it) => it.id === nextItem.id);
+      const exists = Boolean(previous);
+      const countdown =
+        item.countdown === true
+          ? true
+          : item.countdown === false
+            ? undefined
+            : previous?.countdown
+              ? true
+              : undefined;
+      if (countdown) nextItem.countdown = true;
+      else delete nextItem.countdown;
       const items = exists
         ? config.items.map((it) => (it.id === nextItem.id ? nextItem : it))
         : [...config.items, nextItem];
@@ -554,6 +580,58 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         ...config,
         items: config.items.filter((it) => !drop.has(it.id)),
         deletedItems,
+      });
+      shouldSync = Boolean(config.couple.inviteCode);
+    });
+    if (shouldSync) void get().syncNow();
+  },
+
+  setItemCountdown: async (id, on) => {
+    const { config, upsertItem } = get();
+    const item = config.items.find((it) => it.id === id);
+    if (!item) return;
+    if (Boolean(item.countdown) === on) return;
+    await upsertItem({ ...item, countdown: on });
+  },
+
+  upsertAnniversary: async (item) => {
+    const name = item.name.trim();
+    if (!name || !item.date) return;
+    let shouldSync = false;
+    await enqueueConfigWrite(async () => {
+      const { config, setConfig } = get();
+      const next: Anniversary = {
+        id: item.id,
+        name,
+        date: item.date,
+        note: item.note?.trim() || undefined,
+        yearly: item.yearly,
+        updatedAt: new Date().toISOString(),
+      };
+      const exists = config.anniversaries.some((it) => it.id === next.id);
+      const anniversaries = exists
+        ? config.anniversaries.map((it) => (it.id === next.id ? next : it))
+        : [...config.anniversaries, next];
+      const deletedAnniversaries = { ...config.deletedAnniversaries };
+      delete deletedAnniversaries[next.id];
+      await setConfig({ ...config, anniversaries, deletedAnniversaries });
+      shouldSync = Boolean(config.couple.inviteCode);
+    });
+    if (shouldSync) void get().syncNow();
+  },
+
+  deleteAnniversary: async (id) => {
+    let shouldSync = false;
+    await enqueueConfigWrite(async () => {
+      const { config, setConfig } = get();
+      if (!config.anniversaries.some((it) => it.id === id)) return;
+      await setConfig({
+        ...config,
+        anniversaries: config.anniversaries.filter((it) => it.id !== id),
+        deletedAnniversaries: {
+          ...config.deletedAnniversaries,
+          [id]: new Date().toISOString(),
+        },
       });
       shouldSync = Boolean(config.couple.inviteCode);
     });

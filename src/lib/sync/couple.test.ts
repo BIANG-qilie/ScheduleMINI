@@ -6,6 +6,7 @@ import {
   laneSelfItems,
   mergeAddressLww,
   mergeCoexistenceLww,
+  mergeAnniversarySlice,
   mergeItemsLww,
   reconcileSyncResult,
   rekeyAuthoredItems,
@@ -62,6 +63,35 @@ describe("reconcileSyncResult", () => {
     );
     expect(reconciled.items).toEqual([]);
     expect(reconciled.deletedItems.w).toBe("2026-10-20T09:00:00.000Z");
+  });
+});
+
+describe("mergeAnniversarySlice", () => {
+  const base = {
+    id: "anniv",
+    name: "结婚纪念日",
+    date: "2018-11-04",
+    yearly: true,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+
+  it("keeps local anniversaries when an older client omits the field", () => {
+    const merged = mergeAnniversarySlice([base], {}, {});
+    expect(merged.anniversaries).toEqual([base]);
+  });
+
+  it("lets either person edit or delete", () => {
+    const edited = mergeAnniversarySlice([base], {}, {
+      anniversaries: [{ ...base, name: "我们的日子", updatedAt: "2026-02-01T00:00:00.000Z" }],
+      deletedAnniversaries: {},
+    });
+    expect(edited.anniversaries[0]?.name).toBe("我们的日子");
+
+    const removed = mergeAnniversarySlice([base], {}, {
+      anniversaries: [base],
+      deletedAnniversaries: { anniv: "2026-11-02T00:00:00.000Z" },
+    });
+    expect(removed.anniversaries).toEqual([]);
   });
 });
 

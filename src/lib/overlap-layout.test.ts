@@ -10,21 +10,23 @@ import {
 } from "@/lib/config";
 
 describe("isOverlapBand", () => {
-  it("marks calls, overnight, cross-day, and spans of 4 hours", () => {
-    expect(isOverlapBand({ startMin: 0, endMin: 30, call: true })).toBe(true);
+  it("washes past the capsule limit and keeps short calls on real duration", () => {
+    expect(isOverlapBand({ startMin: 0, endMin: 30, tag: "call" })).toBe(false);
+    expect(isOverlapBand({ startMin: 0, endMin: 90, tag: "call" })).toBe(true);
     expect(
       isOverlapBand({
         startMin: 0,
         endMin: 40,
-        overnight: true,
         durationMin: 40,
+        tag: "commute",
       }),
-    ).toBe(true);
-    expect(isOverlapBand({ startMin: 0, endMin: 30, spanned: true })).toBe(true);
-    expect(isOverlapBand({ startMin: 0, endMin: 4 * 60 })).toBe(true);
-    expect(isOverlapBand({ startMin: 0, endMin: 4 * 60 - 1 })).toBe(false);
+    ).toBe(false);
+    expect(isOverlapBand({ startMin: 0, endMin: 30, tag: "life" })).toBe(false);
+    expect(isOverlapBand({ startMin: 0, endMin: 120, tag: "work" })).toBe(false);
+    expect(isOverlapBand({ startMin: 0, endMin: 121, tag: "work" })).toBe(true);
+    expect(isOverlapBand({ startMin: 0, endMin: 61, tag: "life" })).toBe(true);
     expect(
-      isOverlapBand({ startMin: 0, endMin: 90, durationMin: 5 * 60 }),
+      isOverlapBand({ startMin: 0, endMin: 90, durationMin: 5 * 60, tag: "life" }),
     ).toBe(true);
   });
 
@@ -191,8 +193,8 @@ describe("overnight column", () => {
         band: isOverlapBand({
           startMin: range.startMin,
           endMin: range.endMin,
-          overnight: range.overnight,
           durationMin: itemSpanMinutes(night),
+          tag: night.tag,
         }),
       })),
       { id: "late", start: 16 * 60, end: 16 * 60 + 30 },
@@ -250,9 +252,8 @@ describe("16日 13:40 → 18日 20:00", () => {
         isOverlapBand({
           startMin: range.startMin,
           endMin: range.endMin,
-          overnight: range.overnight,
-          spanned: true,
           durationMin: item.durationMinutes,
+          tag: item.tag,
         }),
       ).toBe(true);
     }

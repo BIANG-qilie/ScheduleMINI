@@ -397,6 +397,16 @@ body.widget-body #root {
   font-weight: 600;
   letter-spacing: 0.2em;
 }
+.phone-top-stack {
+  display: block;
+}
+.phone-top-stack h1 {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
+}
 .phone-top p {
   margin: 0;
   font-size: 12px;
@@ -1147,4 +1157,101 @@ body.widget-body #root {
   100% {
     transform: translateX(280%);
   }
+}
+
+.tools-page {
+  display: flex;
+  min-height: 100%;
+  flex: 1;
+  flex-direction: column;
+  padding: 8px 8px 12px;
+}
+.tools-row {
+  display: flex;
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  background: transparent;
+  padding: 0 18px;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 17px;
+  text-align: left;
+  cursor: pointer;
+}
+.tools-row:first-child {
+  border-top: 0;
+}
+.tools-line {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--color-ink);
+  background: transparent;
+  padding: 10px 0 8px;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.tools-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.tools-switch::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  right: 0;
+  left: 12px;
+  height: 1.5px;
+  background: var(--color-ink);
+}
+.tools-switch span {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 999px;
+  background: var(--color-bg);
+}
+.tools-switch-on span {
+  left: 32px;
+  background: var(--color-ink);
+}
+.countdown-ing {
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-coex) 28%, white);
+  color: var(--color-accent);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 0 16px color-mix(in oklab, var(--color-coex) 75%, transparent);
+  cursor: pointer;
+}
+.countdown-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.countdown-divider::before,
+.countdown-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--color-line);
 }
